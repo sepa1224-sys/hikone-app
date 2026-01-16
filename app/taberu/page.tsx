@@ -41,16 +41,12 @@ export default function Taberu() {
           const formattedData = data.map((s: any) => {
             const rawLat = Number(s.latitude);
             const rawLng = Number(s.longitude);
-
-            // 💡 補正ポイント：北東のズレを直すため、南西方向に数値をずらす
-            // 0.0004 くらい引くと約40mほど南(下)にピンが移動します
             return {
               ...s,
               latitude: rawLat - 0.0004, 
               longitude: rawLng - 0.0002
             };
           });
-          
           setAllShops(formattedData)
           setFilteredShops(formattedData)
         }
@@ -76,15 +72,15 @@ export default function Taberu() {
   return (
     <div className="relative h-screen w-full bg-white overflow-hidden">
       
-      {/* 1. 地図レイヤー */}
+      {/* 1. 地図レイヤー (背景) */}
       <div className="absolute inset-0 z-0">
         <ShopMap shops={filteredShops} />
       </div>
 
-      {/* 2. 上部UI */}
-      <div className="absolute inset-0 z-10 pointer-events-none">
-        <div className="mt-4 px-4 space-y-3">
-          <div className="bg-white shadow-lg rounded-full flex items-center p-3 px-4 gap-3 pointer-events-auto border border-gray-100 max-w-md mx-auto">
+      {/* 2. 上部UI (検索・カテゴリー) */}
+      <div className="absolute inset-x-0 top-0 z-30 pointer-events-none p-4">
+        <div className="space-y-3 max-w-md mx-auto">
+          <div className="bg-white shadow-lg rounded-full flex items-center p-3 px-4 gap-3 pointer-events-auto border border-gray-100">
             <Search size={16} className="text-gray-400" />
             <input type="text" placeholder="お店を検索" className="text-xs font-bold text-gray-800 outline-none w-full bg-transparent" />
           </div>
@@ -108,13 +104,17 @@ export default function Taberu() {
         </div>
       </div>
 
-      {/* 3. 下部リストレイヤー */}
+      {/* 3. 下部リストレイヤー (スクロールの修正) */}
       <div className="absolute inset-0 z-20 pointer-events-none overflow-y-auto no-scrollbar">
-        <div className="mt-[50vh] min-h-screen bg-white rounded-t-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1) border-t border-gray-100 pointer-events-auto pb-32">
+        {/* 地図を触るための空スペース */}
+        <div className="h-[50vh] w-full" />
+
+        {/* 実際のリスト部分：ここだけ pointer-events-auto にする */}
+        <div className="min-h-screen bg-white rounded-t-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] border-t border-gray-100 pointer-events-auto pb-32">
           <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto relative top-3" />
           
           <div className="p-6 pt-10">
-            <h2 className="text-lg font-black text-gray-900 mb-6">近くのスポット <span className="text-xs font-bold text-gray-400 ml-2">{filteredShops.length}件</span></h2>
+            <h2 className="text-lg font-black text-gray-900 mb-6 italic tracking-tighter">Nearby Spots</h2>
 
             <div className="space-y-8">
               {filteredShops.map((shop) => (
@@ -130,9 +130,8 @@ export default function Taberu() {
                   </div>
                   <div className="flex gap-2">
                     <a href={`tel:${shop.phone}`} className="flex-1 bg-gray-50 text-gray-900 text-center py-2.5 rounded-xl font-bold text-[10px]">電話</a>
-                    {/* 💡 ルート案内リンクも補正後の座標を使うように修正 */}
                     <a 
-                      href={`https://www.google.com/maps/dir/?api=1&destination=${shop.latitude},${shop.longitude}`} 
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${shop.latitude + 0.0004},${shop.longitude + 0.0002}`} 
                       target="_blank" 
                       className="flex-1 bg-orange-500 text-white text-center py-2.5 rounded-xl font-bold text-[10px]"
                     >
@@ -145,7 +144,10 @@ export default function Taberu() {
           </div>
         </div>
       </div>
-      <style jsx global>{`.no-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+      <style jsx global>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </div>
   )
 }
