@@ -7,7 +7,7 @@ import 'leaflet/dist/leaflet.css'
 import { Shop } from '@/lib/supabase'
 import { Navigation } from 'lucide-react'
 
-// ブラウザ環境でのみLeafletのアイコンを設定
+// アイコンの設定
 if (typeof window !== 'undefined') {
   delete (L.Icon.Default.prototype as any)._getIconUrl
   L.Icon.Default.mergeOptions({
@@ -19,7 +19,7 @@ if (typeof window !== 'undefined') {
 
 interface ShopMapProps {
   shops: Shop[]
-  selectedShopId?: any // 型エラー防止のため any に変更
+  selectedShopId?: any
   onShopClick?: (shop: Shop) => void
 }
 
@@ -33,21 +33,14 @@ function LocateButton({ onLocate }: { onLocate: (lat: number, lng: number) => vo
           map.setView([latitude, longitude], 15)
           onLocate(latitude, longitude)
         },
-        (error) => {
-          console.error('位置情報の取得に失敗しました:', error)
-          alert('位置情報の取得に失敗しました')
-        }
+        () => alert('位置情報の取得に失敗しました')
       )
-    } else {
-      alert('このブラウザは位置情報をサポートしていません')
     }
   }
-
   return (
     <button
       onClick={handleLocate}
       className="absolute top-4 right-4 z-[1000] bg-white rounded-full p-3 shadow-lg hover:bg-gray-100 transition-colors"
-      aria-label="現在地を表示"
     >
       <Navigation className="w-5 h-5 text-blue-600" />
     </button>
@@ -57,13 +50,10 @@ function LocateButton({ onLocate }: { onLocate: (lat: number, lng: number) => vo
 export default function ShopMap({ shops, selectedShopId, onShopClick }: ShopMapProps) {
   const mapRef = useRef<L.Map | null>(null)
   const [mounted, setMounted] = useState(false)
-
   const defaultCenter: [number, number] = [35.271, 136.257]
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setMounted(true)
-    }
+    setMounted(true)
   }, [])
 
   const shopsWithLocation = (shops || []).filter((shop) => {
@@ -74,7 +64,6 @@ export default function ShopMap({ shops, selectedShopId, onShopClick }: ShopMapP
 
   useEffect(() => {
     if (selectedShopId && mapRef.current && mounted) {
-      // String同士で比較して型エラーを回避
       const selectedShop = shopsWithLocation.find((s) => String(s.id) === String(selectedShopId))
       if (selectedShop) {
         const lat = parseFloat(String(selectedShop.latitude))
@@ -85,12 +74,32 @@ export default function ShopMap({ shops, selectedShopId, onShopClick }: ShopMapP
   }, [selectedShopId, shopsWithLocation, mounted])
 
   if (!mounted || typeof window === 'undefined') {
-    return (
-      <div className="w-full h-[500px] bg-gray-200 rounded-lg flex items-center justify-center">
-        <div className="text-gray-600">地図を読み込み中...</div>
-      </div>
-    )
+    return <div className="w-full h-[500px] bg-gray-200 rounded-lg flex items-center justify-center">読み込み中...</div>
   }
 
   return (
-    <div className="relative w-full rounded
+    <div className="relative w-full rounded-lg overflow-hidden shadow-md" style={{ height: '500px' }}>
+      <MapContainer center={defaultCenter} zoom={14} style={{ height: '100%', width: '100%' }} ref={mapRef}>
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        {shopsWithLocation.map((shop) => {
+          const isSelected = String(shop.id) === String(selectedShopId)
+          const lat = parseFloat(String(shop.latitude))
+          const lng = parseFloat(String(shop.longitude))
+          const markerColor = isSelected ? '#0ea5e9' : '#ef4444'
+          const customIcon = L.divIcon({
+            className: 'custom-marker',
+            html: `<div style="background-color: ${markerColor}; border-radius: 9999px; padding: 8px; border: 2px solid white;"></div>`,
+            iconSize: [24, 24],
+          })
+
+          return (
+            <Marker key={String(shop.id)} position={[lat, lng]} icon={customIcon} eventHandlers={{ click: () => onShopClick?.(shop) }}>
+              <Popup><strong>{shop.name}</strong></Popup>
+            </Marker>
+          )
+        })}
+        <LocateButton onLocate={() => {}} />
+      </MapContainer>
+    </div>
+  )
+}

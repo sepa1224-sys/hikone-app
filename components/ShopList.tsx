@@ -6,12 +6,12 @@ import { MapPin, Phone } from 'lucide-react'
 
 interface ShopListProps {
   shops: Shop[]
-  selectedShopId?: number
+  selectedShopId?: any // stringでもnumberでも受け取れるようにanyに変更
   onShopClick?: (shop: Shop) => void
 }
 
 export default function ShopList({ shops, selectedShopId, onShopClick }: ShopListProps) {
-  if (shops.length === 0) {
+  if (!shops || shops.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow-md p-8 text-center">
         <p className="text-gray-600">該当する店舗がありません</p>
@@ -23,17 +23,18 @@ export default function ShopList({ shops, selectedShopId, onShopClick }: ShopLis
     <div className="space-y-4">
       {shops.map((shop) => {
         const isClosed = shop.status === 'temp_closed'
+        // IDの型が違ってもエラーにならないようにStringに統一して比較
         const isSelected = String(shop.id) === String(selectedShopId)
         const isOpen = isShopOpen(shop.opening_hours)
 
         return (
           <div
             id={`shop-${shop.id}`}
-            key={shop.id}
+            key={String(shop.id)}
             onClick={() => onShopClick?.(shop)}
             className={`bg-white rounded-xl shadow-md overflow-hidden transition-all cursor-pointer ${
               isSelected
-                ? 'ring-2 ring-primary-500 scale-[1.02]'
+                ? 'ring-2 ring-blue-500 scale-[1.02]'
                 : 'hover:scale-[1.01] hover:shadow-lg'
             }`}
           >
@@ -46,7 +47,7 @@ export default function ShopList({ shops, selectedShopId, onShopClick }: ShopLis
                     alt={shop.name || '店舗画像'}
                     fill
                     className="object-cover"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    sizes="(max-width: 768px) 100vw, 50vw"
                     unoptimized
                   />
                   {isClosed && (
@@ -59,7 +60,7 @@ export default function ShopList({ shops, selectedShopId, onShopClick }: ShopLis
                   )}
                 </div>
               ) : (
-                <div className={`w-full h-full flex items-center justify-center bg-gray-300 ${isClosed ? 'grayscale' : ''}`}>
+                <div className={`w-full h-full flex items-center justify-center bg-gray-300 relative ${isClosed ? 'grayscale' : ''}`}>
                   {isClosed && (
                     <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10">
                       <div className="text-center">
@@ -80,7 +81,7 @@ export default function ShopList({ shops, selectedShopId, onShopClick }: ShopLis
                   {shop.name}
                 </h2>
                 {shop.category && (
-                  <span className="bg-primary-100 text-primary-700 text-xs font-semibold px-3 py-1 rounded-full ml-2 whitespace-nowrap">
+                  <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-3 py-1 rounded-full ml-2 whitespace-nowrap">
                     {shop.category}
                   </span>
                 )}
@@ -103,9 +104,10 @@ export default function ShopList({ shops, selectedShopId, onShopClick }: ShopLis
                 )}
               </div>
 
-              {shop.description && (
+              {/* 説明文 (存在する場合のみ表示) */}
+              {(shop as any).description && (
                 <p className="text-gray-600 text-sm mb-3 line-clamp-2">
-                  {shop.description}
+                  {(shop as any).description}
                 </p>
               )}
 
@@ -116,10 +118,11 @@ export default function ShopList({ shops, selectedShopId, onShopClick }: ShopLis
                     <span className="truncate">{shop.address}</span>
                   </div>
                 )}
-                {shop.phone && (
+                {/* 電話番号 (存在する場合のみ表示) */}
+                {(shop as any).phone && (
                   <div className="flex items-center">
                     <Phone className="w-4 h-4 mr-1 flex-shrink-0" />
-                    <span>{shop.phone}</span>
+                    <span>{(shop as any).phone}</span>
                   </div>
                 )}
               </div>
