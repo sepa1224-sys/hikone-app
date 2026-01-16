@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { supabase, Shop, isShopOpen } from '@/lib/supabase'
+import { supabase, Shop } from '@/lib/supabase'
 import ShopFilters from '@/components/ShopFilters'
 import ShopList from '@/components/ShopList'
 
@@ -16,14 +16,16 @@ const ShopMap = dynamic(() => import('@/components/ShopMap'), {
 })
 
 export default function Taberu() {
-  const [selectedShopId, setSelectedShopId] = useState<any>()
-  const [filteredShops, setFilteredShops] = useState<Shop[]>([])
+  // ステート変数の整理
+  const [allShops, setAllShops] = useState<Shop[]>([]) // 取得した全データ
+  const [filteredShops, setFilteredShops] = useState<Shop[]>([]) // 絞り込み後のデータ
   const [selectedShopId, setSelectedShopId] = useState<any>()
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [showOpenOnly, setShowOpenOnly] = useState(false)
   const [hideClosed, setHideClosed] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  // 1. データの初回取得
   useEffect(() => {
     async function fetchShops() {
       try {
@@ -44,11 +46,13 @@ export default function Taberu() {
     fetchShops()
   }, [])
 
+  // 2. 絞り込み処理
   useEffect(() => {
     let result = [...allShops]
     if (selectedCategory) {
       result = result.filter(s => s.category === selectedCategory)
     }
+    // ここに将来的に「営業中のみ」などのフィルターも追加可能
     setFilteredShops(result)
   }, [allShops, selectedCategory])
 
@@ -58,12 +62,10 @@ export default function Taberu() {
     if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
-  // ローディング画面
   if (loading) {
     return <div className="p-10 text-center">読み込み中...</div>
   }
 
-  // メイン画面
   return (
     <div className="container mx-auto px-4 py-6 pb-24">
       <h1 className="text-3xl font-bold text-gray-900 mb-6">たべる</h1>
