@@ -5,6 +5,7 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// --- お店（Shop）関連の型定義 ---
 export type Shop = {
   id: string
   name: string
@@ -14,12 +15,36 @@ export type Shop = {
   longitude: number
   status: string
   opening_hours: string
-  // Vercelでのエラーを防ぐために、画像URLを追加（? をつけて、なくてもOKにします）
   image_url?: string 
 }
 
 export const isShopOpen = (openingHours: string) => {
   if (!openingHours || openingHours === 'NULL') return true
-  // 簡易判定（現在は常に営業中として扱う設定）
   return true 
+}
+
+// --- 電車（Train）関連の型定義と関数 ---
+export interface TrainTimetable {
+  id: number;
+  station_name: string;
+  line_name: string;
+  direction: string;
+  destination_station: string;
+  departure_time: string;
+  train_type: string;
+  is_weekday: boolean;
+}
+
+// ページから呼び出される検索関数
+export async function getTrainTimetables(station: string, destination: string) {
+  const { data, error } = await supabase
+    .from('train_timetables')
+    .select('*')
+    // ボタンの文字とデータベースの文字を比較
+    .eq('station_name', station)
+    .eq('destination_station', destination)
+    .order('departure_time', { ascending: true });
+
+  if (error) throw error;
+  return data as TrainTimetable[];
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Shop } from '@/lib/supabase'
@@ -23,25 +23,17 @@ interface ShopMapProps {
   onShopClick?: (shop: Shop) => void
 }
 
-function LocateButton({ onLocate }: { onLocate: (lat: number, lng: number) => void }) {
+function LocateButton() {
   const map = useMap()
   const handleLocate = () => {
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords
-          map.setView([latitude, longitude], 15)
-          onLocate(latitude, longitude)
-        },
-        () => alert('位置情報の取得に失敗しました')
-      )
+      navigator.geolocation.getCurrentPosition((pos) => {
+        map.setView([pos.coords.latitude, pos.coords.longitude], 15)
+      })
     }
   }
   return (
-    <button
-      onClick={handleLocate}
-      className="absolute top-4 right-4 z-[1000] bg-white rounded-full p-3 shadow-lg hover:bg-gray-100 transition-colors"
-    >
+    <button onClick={handleLocate} className="absolute top-4 right-4 z-[1000] bg-white rounded-full p-3 shadow-lg">
       <Navigation className="w-5 h-5 text-blue-600" />
     </button>
   )
@@ -52,53 +44,45 @@ export default function ShopMap({ shops, selectedShopId, onShopClick }: ShopMapP
   const [mounted, setMounted] = useState(false)
   const defaultCenter: [number, number] = [35.271, 136.257]
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  useEffect(() => { setMounted(true) }, [])
 
-  const shopsWithLocation = (shops || []).filter((shop) => {
-    const lat = parseFloat(String(shop.latitude))
-    const lng = parseFloat(String(shop.longitude))
-    return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0
-  })
+  const shopsWithLocation = (shops || []).filter(s => s.latitude && s.longitude)
 
   useEffect(() => {
-    if (selectedShopId && mapRef.current && mounted) {
-      const selectedShop = shopsWithLocation.find((s) => String(s.id) === String(selectedShopId))
-      if (selectedShop) {
-        const lat = parseFloat(String(selectedShop.latitude))
-        const lng = parseFloat(String(selectedShop.longitude))
-        mapRef.current.setView([lat, lng], 16)
+    if (selectedShopId && mapRef.current) {
+      const target = shopsWithLocation.find(s => String(s.id) === String(selectedShopId))
+      if (target) {
+        mapRef.current.setView([Number(target.latitude), Number(target.longitude)], 16)
       }
     }
-  }, [selectedShopId, shopsWithLocation, mounted])
+  }, [selectedShopId, shopsWithLocation])
 
   if (!mounted || typeof window === 'undefined') {
-    return <div className="w-full h-[500px] bg-gray-200 rounded-lg flex items-center justify-center">読み込み中...</div>
+    return <div className="h-[500px] bg-gray-100 flex items-center justify-center">読み込み中...</div>
   }
 
   return (
-    <div className="relative w-full rounded-lg overflow-hidden shadow-md" style={{ height: '500px' }}>
+    <div className="relative w-full rounded-2xl overflow-hidden shadow-inner h-[500px]">
       <MapContainer center={defaultCenter} zoom={14} style={{ height: '100%', width: '100%' }} ref={mapRef}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         {shopsWithLocation.map((shop) => {
           const isSelected = String(shop.id) === String(selectedShopId)
-          const lat = parseFloat(String(shop.latitude))
-          const lng = parseFloat(String(shop.longitude))
-          const markerColor = isSelected ? '#0ea5e9' : '#ef4444'
           const customIcon = L.divIcon({
             className: 'custom-marker',
-            html: `<div style="background-color: ${markerColor}; border-radius: 9999px; padding: 8px; border: 2px solid white;"></div>`,
-            iconSize: [24, 24],
+            html: `<div style="background-color: ${isSelected ? '#3b82f6' : '#ef4444'}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+            iconSize: [20, 20],
           })
 
           return (
-            <Marker key={String(shop.id)} position={[lat, lng]} icon={customIcon} eventHandlers={{ click: () => onShopClick?.(shop) }}>
-              <Popup><strong>{shop.name}</strong></Popup>
-            </Marker>
+            <Marker 
+              key={String(shop.id)} 
+              position={[Number(shop.latitude), Number(shop.longitude)]} 
+              icon={customIcon} 
+              eventHandlers={{ click: () => onShopClick?.(shop) }}
+            />
           )
         })}
-        <LocateButton onLocate={() => {}} />
+        <LocateButton />
       </MapContainer>
     </div>
   )
