@@ -35,7 +35,9 @@ export default function ShopMap({ shops }: { shops: Shop[] }) {
       center={defaultCenter} 
       zoom={17} 
       style={{ height: '100%', width: '100%' }}
-      zoomControl={false}
+      zoomControl={true}
+      scrollWheelZoom={true}
+      dragging={true}
     >
       <TileLayer
         attribution='&copy; OpenStreetMap'
