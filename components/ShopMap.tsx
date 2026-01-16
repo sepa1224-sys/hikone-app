@@ -6,13 +6,12 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Shop } from '@/lib/supabase'
 
-// 📌 修正ポイント：アイコンの「アンカー（錨）」をピンの先端に設定
 const icon = L.icon({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],      // アイコン画像のサイズ
-  iconAnchor: [12, 41],     // 【重要】ピンの先端の位置。横の半分(12)と、縦の底(41)
-  popupAnchor: [1, -34],   // ポップアップが出る位置
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
   shadowSize: [41, 41]
 })
 
@@ -20,7 +19,6 @@ function MapRecenter({ shops }: { shops: Shop[] }) {
   const map = useMap()
   useEffect(() => {
     if (shops.length > 0) {
-      // ズームレベルを17（かなり詳細）に設定して確認しやすくします
       map.setView([shops[0].latitude, shops[0].longitude], 17)
     }
   }, [shops, map])
@@ -52,10 +50,28 @@ export default function ShopMap({ shops }: { shops: Shop[] }) {
           position={[shop.latitude, shop.longitude]} 
           icon={icon}
         >
-          <Popup>
-            <div className="p-1">
-              <p className="font-black text-sm">{shop.name}</p>
-              <p className="text-[10px] text-gray-500">{shop.category}</p>
+          {/* 💡 ポップアップのデザインを写真付きにアップグレード */}
+          <Popup maxWidth={200}>
+            <div className="w-40 overflow-hidden bg-white">
+              {shop.image_url ? (
+                <img 
+                  src={shop.image_url} 
+                  alt={shop.name} 
+                  className="w-full h-24 object-cover rounded-lg mb-2 shadow-sm"
+                />
+              ) : (
+                <div className="w-full h-20 bg-gray-50 flex items-center justify-center rounded-lg mb-2 border border-gray-100">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">No Photo</span>
+                </div>
+              )}
+              <div className="px-1">
+                <p className="font-black text-sm text-gray-900 leading-tight mb-0.5">{shop.name}</p>
+                <div className="flex items-center gap-1">
+                  <span className="text-[9px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded font-bold">
+                    {shop.category}
+                  </span>
+                </div>
+              </div>
             </div>
           </Popup>
         </Marker>

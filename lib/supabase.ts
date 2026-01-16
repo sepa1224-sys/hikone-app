@@ -11,16 +11,22 @@ export type Shop = {
   name: string
   category: string
   address: string
-  latitude: number      // 追加：緯度
-  longitude: number     // 追加：経度
-  opening_hours: string // 追加：営業時間
-  phone: string         // 追加：電話番号
+  latitude: number      // 緯度
+  longitude: number     // 経度
+  opening_hours: string // 営業時間
+  phone: string         // 電話番号
   image_url?: string 
+  // --- 💡 詳細ページ用の追加フィールド ---
+  description?: string    // お店の紹介文
+  price_range?: string    // 予算 (例: ¥1,000〜¥2,000)
+  menu_items?: string[]   // メニュー名の配列 (Supabaseでは text[] 型)
+  website_url?: string    // 公式サイトやInstagramのURL
 }
 
-// 営業中かどうかを判定する関数（現在は簡易的に全てtrueを返す設定）
+// 営業中かどうかを判定する関数
 export const isShopOpen = (openingHours: string) => {
   if (!openingHours || openingHours === 'NULL') return true
+  // 将来的にはここで現在の時刻(new Date())と比較するロジックを実装可能
   return true 
 }
 
