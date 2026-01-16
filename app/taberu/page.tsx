@@ -34,11 +34,16 @@ export default function Taberu() {
         setLoading(true)
         const { data } = await supabase.from('shops').select('*')
         if (data) {
-          const formattedData = data.map((s: any) => ({
+          let formattedData = data.map((s: any) => ({
             ...s,
             latitude: Number(s.latitude), 
             longitude: Number(s.longitude)
           }))
+          formattedData.sort((a, b) => {
+            if (a.name.includes('せんなり亭')) return -1;
+            if (b.name.includes('せんなり亭')) return 1;
+            return 0;
+          });
           setAllShops(formattedData)
           setFilteredShops(formattedData)
         }
@@ -75,7 +80,6 @@ export default function Taberu() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-
           <div className="flex gap-2">
             <button 
               onClick={() => setOnlyOpen(false)}
@@ -97,16 +101,16 @@ export default function Taberu() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto no-scrollbar relative bg-white">
+      {/* スクロールエリア */}
+      <div className="flex-1 overflow-y-auto no-scrollbar relative bg-white pb-24">
         
-        {/* 地図エリア */}
-        <div className="w-full h-[55vh] relative overflow-hidden">
+        {/* 2. 地図エリア */}
+        <div className="w-full h-[50vh] relative overflow-hidden">
           <div className="absolute inset-0 z-0">
             <ShopMap shops={filteredShops} />
           </div>
-
           <div className="absolute top-4 inset-x-0 z-50 pointer-events-none">
-            <div className="flex overflow-x-auto no-scrollbar gap-2 pl-14 pr-4 py-1 pointer-events-auto">
+            <div className="flex overflow-x-auto no-scrollbar gap-2 pl-4 pr-4 py-1 pointer-events-auto">
               {CATEGORIES.map((cat) => (
                 <button
                   key={cat.id}
@@ -128,15 +132,13 @@ export default function Taberu() {
         </div>
 
         {/* 3. レストランリスト */}
-        <div className="relative z-[60] bg-white rounded-t-[2.5rem] -mt-6 shadow-[0_-15px_50px_rgba(0,0,0,0.15)] border-t border-gray-100 pb-32 min-h-[50vh]">
+        <div className="relative z-[60] bg-white rounded-t-[2.5rem] -mt-6 shadow-[0_-15px_50px_rgba(0,0,0,0.15)] border-t border-gray-100 min-h-[50vh]">
           <div className="w-12 h-1 bg-gray-200 rounded-full mx-auto my-4" />
-          
           <div className="px-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black text-gray-900 italic tracking-tighter">Nearby Spots</h2>
               <span className="bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-[9px] font-black">{filteredShops.length}件</span>
             </div>
-
             <div className="grid gap-6">
               {filteredShops.map((shop) => (
                 <div 
@@ -154,7 +156,6 @@ export default function Taberu() {
                       {shop.category}
                     </div>
                   </div>
-
                   <div className="p-5">
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="text-md font-extrabold text-gray-900 leading-tight">{shop.name}</h3>
@@ -177,100 +178,49 @@ export default function Taberu() {
         </div>
       </div>
 
-      {/* --- 💡 ハーフモーダル（詳細パネル） --- */}
+      {/* 詳細パネル（selectedShopがある時だけ表示） */}
       {selectedShop && (
         <>
-          <div 
-            className="fixed inset-0 bg-black/40 z-[1000] animate-in fade-in duration-300"
-            onClick={() => setSelectedShop(null)}
-          />
-          
-          <div className="fixed bottom-0 inset-x-0 z-[1001] bg-white rounded-t-[3rem] shadow-2xl h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-300 no-scrollbar">
+          <div className="fixed inset-0 bg-black/40 z-[1000]" onClick={() => setSelectedShop(null)} />
+          <div className="fixed bottom-0 inset-x-0 z-[1001] bg-white rounded-t-[3rem] h-[85vh] overflow-y-auto no-scrollbar animate-in slide-in-from-bottom duration-300">
             <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 pt-4 pb-2">
-              <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4 cursor-pointer" onClick={() => setSelectedShop(null)} />
-              <button 
-                onClick={() => setSelectedShop(null)}
-                className="absolute right-6 top-4 bg-gray-100 p-2 rounded-full text-gray-500 hover:bg-gray-200 transition-colors"
-              >
-                <X size={20} />
-              </button>
+              <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4" onClick={() => setSelectedShop(null)} />
+              <button onClick={() => setSelectedShop(null)} className="absolute right-6 top-4 bg-gray-100 p-2 rounded-full text-gray-500"><X size={20} /></button>
             </div>
-
-            <div className="px-6 pb-32">
+            <div className="px-6 pb-40">
               <div className="w-full h-64 rounded-[2.5rem] overflow-hidden mb-6 shadow-lg">
                 <img src={selectedShop.image_url} className="w-full h-full object-cover" alt={selectedShop.name} />
               </div>
-
               <h2 className="text-3xl font-black text-gray-900 mb-2 leading-tight">{selectedShop.name}</h2>
               <div className="flex items-center gap-2 mb-6">
-                <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-xs font-black">
-                  {selectedShop.category}
-                </span>
+                <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-xs font-black">{selectedShop.category}</span>
                 <span className="text-gray-900 font-black text-sm">{selectedShop.price_range}</span>
               </div>
-
               <div className="grid gap-4 bg-gray-50 p-6 rounded-[2rem] mb-8 border border-gray-100">
-                <div className="flex items-start gap-3 text-sm font-bold text-gray-600">
-                  <MapPin size={18} className="text-orange-500 shrink-0" /> {selectedShop.address}
-                </div>
-                <div className="flex items-center gap-3 text-sm font-bold text-gray-600">
-                  <Clock size={18} className="text-orange-500 shrink-0" /> {selectedShop.opening_hours}
-                </div>
-                <a href={`tel:${selectedShop.phone}`} className="flex items-center gap-3 text-sm font-black text-blue-600 hover:opacity-70">
-                  <Phone size={18} className="shrink-0" /> {selectedShop.phone}
-                </a>
+                <div className="flex items-start gap-3 text-sm font-bold text-gray-600"><MapPin size={18} className="text-orange-500 shrink-0" /> {selectedShop.address}</div>
+                <div className="flex items-center gap-3 text-sm font-bold text-gray-600"><Clock size={18} className="text-orange-500 shrink-0" /> {selectedShop.opening_hours}</div>
+                <a href={`tel:${selectedShop.phone}`} className="flex items-center gap-3 text-sm font-black text-blue-600"><Phone size={18} className="shrink-0" /> {selectedShop.phone}</a>
               </div>
-
-              <h3 className="text-xl font-black mb-5 flex items-center gap-2 italic">
-                <UtensilsCrossed size={22} className="text-orange-500" /> Recommendation
-              </h3>
-              
+              <h3 className="text-xl font-black mb-5 italic flex items-center gap-2"><UtensilsCrossed size={22} className="text-orange-500" /> Recommendation</h3>
               <div className="grid gap-4">
-                {selectedShop.menu_items && selectedShop.menu_items.length > 0 ? (
-                  selectedShop.menu_items.map((item, i) => {
-                    // 💡 URL内の「:」を保護して分割
-                    const parts = item.split(':');
-                    const name = parts[0];
-                    const price = parts[1];
-                    const img = parts.slice(2).join(':'); // これで https://... が正しく復元されます
-
-                    return (
-                      <div key={i} className="flex gap-4 p-3 bg-white border border-gray-100 rounded-[1.8rem] shadow-sm items-center">
-                        <div className="w-20 h-20 rounded-2xl overflow-hidden bg-gray-100 shrink-0">
-                          {img ? (
-                            <img src={img} className="w-full h-full object-cover" alt={name} />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-300 font-bold uppercase">No Image</div>
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-black text-sm text-gray-800 mb-1">{name}</p>
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-[10px] text-orange-600 font-bold">¥</span>
-                            <span className="text-lg font-black text-orange-600">
-                              {price ? Number(price).toLocaleString() : '---'}
-                            </span>
-                          </div>
-                        </div>
+                {selectedShop.menu_items?.map((item, i) => {
+                  const [name, price, ...imgParts] = item.split(':');
+                  const img = imgParts.join(':');
+                  return (
+                    <div key={i} className="flex gap-4 p-3 bg-white border border-gray-100 rounded-[1.8rem] shadow-sm items-center">
+                      <div className="w-20 h-20 rounded-2xl overflow-hidden bg-gray-100 shrink-0">
+                        {img ? <img src={img} className="w-full h-full object-cover" alt={name} /> : <div className="text-[10px] text-gray-300 font-bold p-4">No Image</div>}
                       </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-center py-10 bg-gray-50 rounded-3xl border border-dashed border-gray-200">
-                    <p className="text-gray-400 text-sm font-bold">メニューは準備中です 🍳</p>
-                  </div>
-                )}
+                      <div className="flex-1">
+                        <p className="font-black text-sm text-gray-800 mb-1">{name}</p>
+                        <p className="text-lg font-black text-orange-600"><span className="text-[10px]">¥</span>{Number(price).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-
-              {/* 💡 ルート案内ボタンのリンクを修正 */}
-              <a 
-                href={`https://www.google.com/maps/dir/?api=1&destination=${selectedShop.latitude},${selectedShop.longitude}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-10 flex items-center justify-center gap-2 w-full bg-orange-500 text-white py-5 rounded-[2rem] font-black text-lg shadow-xl active:scale-95 transition-all"
-              >
-                <MapPin size={20} />
-                ここに行く
+              <a href={`https://www.google.com/maps/search/?api=1&query=${selectedShop.latitude},${selectedShop.longitude}`} target="_blank" rel="noopener noreferrer" className="mt-10 flex items-center justify-center gap-2 w-full bg-orange-500 text-white py-5 rounded-[2rem] font-black text-lg shadow-xl active:scale-95 transition-all">
+                <MapPin size={20} /> ここに行く
               </a>
             </div>
           </div>
@@ -283,8 +233,6 @@ export default function Taberu() {
         .leaflet-top.leaflet-left { top: 12px !important; }
         @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .animate-in.slide-in-from-bottom { animation: slide-up 0.3s ease-out; }
-        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-        .animate-in.fade-in { animation: fade-in 0.3s ease-out; }
       `}</style>
     </div>
   )
