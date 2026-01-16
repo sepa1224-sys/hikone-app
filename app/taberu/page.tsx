@@ -16,7 +16,7 @@ const ShopMap = dynamic(() => import('@/components/ShopMap'), {
 })
 
 export default function Taberu() {
-  const [allShops, setAllShops] = useState<Shop[]>([])
+  const [selectedShopId, setSelectedShopId] = useState<any>()
   const [filteredShops, setFilteredShops] = useState<Shop[]>([])
   const [selectedShopId, setSelectedShopId] = useState<any>()
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)

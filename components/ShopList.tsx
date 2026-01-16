@@ -23,7 +23,7 @@ export default function ShopList({ shops, selectedShopId, onShopClick }: ShopLis
     <div className="space-y-4">
       {shops.map((shop) => {
         const isClosed = shop.status === 'temp_closed'
-        const isSelected = shop.id === selectedShopId
+        const isSelected = String(shop.id) === String(selectedShopId)
         const isOpen = isShopOpen(shop.opening_hours)
 
         return (
