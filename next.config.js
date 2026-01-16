@@ -1,13 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
-    // これを true にすると、型エラーを無視して無理やり公開します
+    // これを true にすることで、ビルド時の型エラーを強制的に無視します
     ignoreBuildErrors: true,
   },
   eslint: {
-    // これを true にすると、細かい書き方のミスも無視します
+    // これを true にすることで、ビルド時のESLintエラーを無視します
     ignoreDuringBuilds: true,
   },
 };
 
-export default nextConfig;
+module.exports = nextConfig;
