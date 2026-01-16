@@ -16,16 +16,14 @@ const ShopMap = dynamic(() => import('@/components/ShopMap'), {
 })
 
 export default function Taberu() {
-  // ステート変数の整理
-  const [allShops, setAllShops] = useState<Shop[]>([]) // 取得した全データ
-  const [filteredShops, setFilteredShops] = useState<Shop[]>([]) // 絞り込み後のデータ
-  const [selectedShopId, setSelectedShopId] = useState<any>()
+  const [allShops, setAllShops] = useState<Shop[]>([])
+  const [filteredShops, setFilteredShops] = useState<Shop[]>([])
+  const [selectedShopId, setSelectedShopId] = useState<any>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [showOpenOnly, setShowOpenOnly] = useState(false)
   const [hideClosed, setHideClosed] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // 1. データの初回取得
   useEffect(() => {
     async function fetchShops() {
       try {
@@ -34,8 +32,9 @@ export default function Taberu() {
         if (error) {
           console.error('取得失敗:', error.message)
         } else {
-          setAllShops(data || [])
-          setFilteredShops(data || [])
+          const shopsData = data || []
+          setAllShops(shopsData)
+          setFilteredShops(shopsData)
         }
       } catch (err) {
         console.error('通信エラー:', err)
@@ -46,20 +45,20 @@ export default function Taberu() {
     fetchShops()
   }, [])
 
-  // 2. 絞り込み処理
   useEffect(() => {
     let result = [...allShops]
     if (selectedCategory) {
       result = result.filter(s => s.category === selectedCategory)
     }
-    // ここに将来的に「営業中のみ」などのフィルターも追加可能
     setFilteredShops(result)
   }, [allShops, selectedCategory])
 
   const handleShopClick = (shop: Shop) => {
     setSelectedShopId(shop.id)
     const element = document.getElementById(`shop-${shop.id}`)
-    if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
   }
 
   if (loading) {
@@ -69,7 +68,6 @@ export default function Taberu() {
   return (
     <div className="container mx-auto px-4 py-6 pb-24">
       <h1 className="text-3xl font-bold text-gray-900 mb-6">たべる</h1>
-
       <div className="mb-6">
         <ShopMap
           shops={filteredShops}
@@ -77,7 +75,6 @@ export default function Taberu() {
           onShopClick={handleShopClick}
         />
       </div>
-
       <ShopFilters
         shops={allShops}
         selectedCategory={selectedCategory}
@@ -87,11 +84,9 @@ export default function Taberu() {
         onShowOpenOnlyChange={setShowOpenOnly}
         onHideClosedChange={setHideClosed}
       />
-
       <div className="mb-4 text-sm font-bold text-blue-600 bg-blue-50 p-2 rounded">
         ✅ 取得できた数: {allShops.length}件 / 表示中の数: {filteredShops.length}件
       </div>
-
       <ShopList
         shops={filteredShops}
         selectedShopId={selectedShopId}
