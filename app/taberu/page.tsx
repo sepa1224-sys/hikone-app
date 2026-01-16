@@ -5,7 +5,6 @@ import dynamic from 'next/dynamic'
 import { supabase, Shop } from '@/lib/supabase'
 import { MapPin, Heart, Search, Coffee, Beer, Pizza, Utensils, IceCream, Store, Phone, Clock } from 'lucide-react'
 
-// 地図コンポーネントの読み込み
 const ShopMap = dynamic(() => import('@/components/ShopMap'), {
   ssr: false,
   loading: () => <div className="w-full h-full bg-gray-100 flex items-center justify-center font-bold text-gray-400">地図を読み込み中...</div>,
@@ -31,27 +30,18 @@ export default function Taberu() {
       try {
         setLoading(true)
         const { data, error } = await supabase.from('shops').select('*')
-        
-        if (error) {
-          console.error("Supabase Error:", error)
-          return
-        }
-
+        if (error) throw error
         if (data) {
-          const formattedData = data.map((s: any) => {
-            const rawLat = Number(s.latitude);
-            const rawLng = Number(s.longitude);
-            return {
-              ...s,
-              latitude: rawLat - 0.0004, 
-              longitude: rawLng - 0.0002
-            };
-          });
+          const formattedData = data.map((s: any) => ({
+            ...s,
+            latitude: Number(s.latitude) - 0.0004, 
+            longitude: Number(s.longitude) - 0.0002
+          }))
           setAllShops(formattedData)
           setFilteredShops(formattedData)
         }
       } catch (err) {
-        console.error("Fetch Error:", err)
+        console.error(err)
       } finally {
         setLoading(false)
       }
@@ -70,22 +60,22 @@ export default function Taberu() {
   if (loading) return <div className="p-10 text-center font-bold text-blue-600">読み込み中...</div>
 
   return (
-    <div className="relative h-screen w-full bg-white overflow-hidden">
+    <div className="relative h-screen w-full bg-white overflow-hidden flex flex-col">
       
-      {/* 1. 地図レイヤー (背景) */}
-      <div className="absolute inset-0 z-0">
+      {/* 1. 地図レイヤー (背景固定) */}
+      <div className="fixed inset-0 z-0">
         <ShopMap shops={filteredShops} />
       </div>
 
       {/* 2. 上部UI (検索・カテゴリー) */}
-      <div className="absolute inset-x-0 top-0 z-30 pointer-events-none p-4">
-        <div className="space-y-3 max-w-md mx-auto">
-          <div className="bg-white shadow-lg rounded-full flex items-center p-3 px-4 gap-3 pointer-events-auto border border-gray-100">
+      <div className="relative z-30 pointer-events-none p-4">
+        <div className="space-y-3 max-w-md mx-auto pointer-events-auto">
+          <div className="bg-white shadow-lg rounded-full flex items-center p-3 px-4 gap-3 border border-gray-100">
             <Search size={16} className="text-gray-400" />
             <input type="text" placeholder="お店を検索" className="text-xs font-bold text-gray-800 outline-none w-full bg-transparent" />
           </div>
           
-          <div className="flex overflow-x-auto no-scrollbar gap-2 pointer-events-auto pb-2">
+          <div className="flex overflow-x-auto no-scrollbar gap-2 pb-2">
             {CATEGORIES.map((cat) => (
               <button
                 key={cat.id}
@@ -104,36 +94,39 @@ export default function Taberu() {
         </div>
       </div>
 
-      {/* 3. 下部リストレイヤー (スクロールの修正) */}
-      <div className="absolute inset-0 z-20 pointer-events-none overflow-y-auto no-scrollbar">
-        {/* 地図を触るための空スペース */}
-        <div className="h-[50vh] w-full" />
+      {/* 3. 下部リストレイヤー (スクロールエリア) */}
+      <div className="relative z-20 flex-1 overflow-y-auto no-scrollbar pointer-events-none">
+        {/* 地図を触らせるための透明な空間 */}
+        <div className="h-[40vh] w-full" />
 
-        {/* 実際のリスト部分：ここだけ pointer-events-auto にする */}
-        <div className="min-h-screen bg-white rounded-t-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] border-t border-gray-100 pointer-events-auto pb-32">
-          <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto relative top-3" />
+        {/* 白いリスト本体 */}
+        <div className="min-h-screen bg-white rounded-t-[2.5rem] shadow-[0_-15px_50px_rgba(0,0,0,0.15)] border-t border-gray-100 pointer-events-auto pb-32">
+          <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto my-4" />
           
-          <div className="p-6 pt-10">
-            <h2 className="text-lg font-black text-gray-900 mb-6 italic tracking-tighter">Nearby Spots</h2>
+          <div className="px-6 py-4">
+            <h2 className="text-xl font-black text-gray-900 mb-6 italic tracking-tighter">Nearby Spots</h2>
 
-            <div className="space-y-8">
+            <div className="grid gap-6">
               {filteredShops.map((shop) => (
-                <div key={shop.id} className="pb-6 border-b border-gray-50">
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-md font-black text-gray-900">{shop.name}</h3>
+                <div key={shop.id} className="p-4 bg-gray-50 rounded-3xl border border-gray-100 active:scale-[0.98] transition-all">
+                  <div className="flex justify-between items-start mb-3">
+                    <h3 className="text-md font-extrabold text-gray-900">{shop.name}</h3>
                     <Heart size={18} className="text-gray-300" />
                   </div>
-                  <div className="space-y-1 mb-4">
-                    <p className="text-[10px] text-gray-500 flex items-center gap-1"><MapPin size={10} className="text-orange-500" /> {shop.address}</p>
-                    <p className="text-[10px] text-gray-500 flex items-center gap-1"><Clock size={10} className="text-gray-400" /> {shop.opening_hours}</p>
-                    <p className="text-[10px] text-gray-500 flex items-center gap-1"><Phone size={10} className="text-gray-400" /> {shop.phone}</p>
+                  
+                  <div className="space-y-2 mb-5 text-[11px] text-gray-500 font-medium">
+                    <p className="flex items-center gap-2"><MapPin size={12} className="text-orange-500" /> {shop.address}</p>
+                    <p className="flex items-center gap-2"><Clock size={12} /> {shop.opening_hours}</p>
+                    <p className="flex items-center gap-2"><Phone size={12} /> {shop.phone}</p>
                   </div>
-                  <div className="flex gap-2">
-                    <a href={`tel:${shop.phone}`} className="flex-1 bg-gray-50 text-gray-900 text-center py-2.5 rounded-xl font-bold text-[10px]">電話</a>
+
+                  <div className="flex gap-3">
+                    <a href={`tel:${shop.phone}`} className="flex-1 bg-white border border-gray-200 text-gray-900 text-center py-3 rounded-2xl font-bold text-xs shadow-sm">電話</a>
                     <a 
                       href={`https://www.google.com/maps/dir/?api=1&destination=${shop.latitude + 0.0004},${shop.longitude + 0.0002}`} 
                       target="_blank" 
-                      className="flex-1 bg-orange-500 text-white text-center py-2.5 rounded-xl font-bold text-[10px]"
+                      rel="noopener noreferrer"
+                      className="flex-1 bg-orange-500 text-white text-center py-3 rounded-2xl font-bold text-xs shadow-md"
                     >
                       ルート
                     </a>
@@ -144,6 +137,7 @@ export default function Taberu() {
           </div>
         </div>
       </div>
+
       <style jsx global>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
