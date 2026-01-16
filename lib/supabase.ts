@@ -11,13 +11,14 @@ export type Shop = {
   name: string
   category: string
   address: string
-  latitude: number
-  longitude: number
-  status: string
-  opening_hours: string
+  latitude: number      // 追加：緯度
+  longitude: number     // 追加：経度
+  opening_hours: string // 追加：営業時間
+  phone: string         // 追加：電話番号
   image_url?: string 
 }
 
+// 営業中かどうかを判定する関数（現在は簡易的に全てtrueを返す設定）
 export const isShopOpen = (openingHours: string) => {
   if (!openingHours || openingHours === 'NULL') return true
   return true 
@@ -40,7 +41,6 @@ export async function getTrainTimetables(station: string, destination: string) {
   const { data, error } = await supabase
     .from('train_timetables')
     .select('*')
-    // ボタンの文字とデータベースの文字を比較
     .eq('station_name', station)
     .eq('destination_station', destination)
     .order('departure_time', { ascending: true });
