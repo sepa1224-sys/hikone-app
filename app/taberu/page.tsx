@@ -104,9 +104,9 @@ export default function Taberu() {
             <ShopMap shops={filteredShops} />
           </div>
 
-          {/* 💡 ジャンルボタン：地図の上に絶対配置で浮かせる */}
+          {/* 💡 ジャンルボタン：検索バーのすぐ下 (top-4) に配置しつつ、左側の余白 (pl-14) でズームボタンを避ける */}
           <div className="absolute top-4 inset-x-0 z-50 pointer-events-none">
-            <div className="flex overflow-x-auto no-scrollbar gap-2 px-4 py-1 pointer-events-auto">
+            <div className="flex overflow-x-auto no-scrollbar gap-2 pl-14 pr-4 py-1 pointer-events-auto">
               {CATEGORIES.map((cat) => (
                 <button
                   key={cat.id}
@@ -167,6 +167,8 @@ export default function Taberu() {
       <style jsx global>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* 💡 地図のズームボタンの位置を微調整 */
+        .leaflet-top.leaflet-left { top: 12px !important; }
       `}</style>
     </div>
   )
