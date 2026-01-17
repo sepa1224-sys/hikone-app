@@ -1,188 +1,232 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, User, MapPin, LogOut, Save, CheckCircle2, AlertCircle } from 'lucide-react'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle } from 'lucide-react'
+import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
+import BottomNavigation from '@/components/BottomNavigation'
 
 export default function ProfilePage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [saveLoading, setSaveLoading] = useState(false)
-  const [showSuccess, setShowSuccess] = useState(false)
-  const [errorMsg, setErrorMsg] = useState('')
-  const [profile, setProfile] = useState({ username: '', town_name: '' })
+  const [profile, setProfile] = useState<any>(null)
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [showProfileModal, setShowProfileModal] = useState(false)
 
   useEffect(() => {
-    fetchProfile()
+    fetchProfileData()
+    
+    // 認証状態の変更を監視
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        router.push('/')
+      } else if (session?.user) {
+        setCurrentUser(session.user)
+        fetchProfileData()
+      }
+    })
+    
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
-  const fetchProfile = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
+  // プロフィールデータの取得
+  const fetchProfileData = async () => {
+    try {
+      setLoading(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session?.user) {
+        router.push('/')
+        setLoading(false)
+        return
+      }
+
+      setCurrentUser(session.user)
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single()
+
+      if (data) {
+        setProfile(data)
+      } else {
+        // プロフィールがない場合でも、セッション情報を表示
+        setProfile({
+          id: session.user.id,
+          full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'ユーザー',
+          email: session.user.email,
+          avatar_url: session.user.user_metadata?.avatar_url || null
+        })
+      }
+    } catch (error) {
+      console.error('Profile fetch error:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    if (confirm('ログアウトしますか？')) {
+      await supabase.auth.signOut()
+      setProfile(null)
+      setCurrentUser(null)
       router.push('/')
-      return
-    }
-
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('username, town_name')
-      .eq('id', session.user.id)
-      .single()
-
-    if (data) {
-      setProfile({
-        username: data.username || session.user.user_metadata.full_name || '',
-        town_name: data.town_name || ''
-      })
-    } else {
-      // プロフィールがまだない場合はGoogleの情報を初期値にする
-      setProfile({
-        username: session.user.user_metadata.full_name || '',
-        town_name: ''
-      })
-    }
-    setLoading(false)
-  }
-
-  const handleUpdate = async () => {
-    if (!profile.username.trim() || !profile.town_name.trim()) {
-      setErrorMsg('名前と町名を両方入力してほしいニャ！')
-      setTimeout(() => setErrorMsg(''), 3000)
-      return
-    }
-
-    setSaveLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    
-    const { error } = await supabase
-      .from('profiles')
-      .upsert({
-        id: session?.user.id,
-        username: profile.username,
-        town_name: profile.town_name,
-        updated_at: new Date().toISOString()
-      })
-
-    setSaveLoading(false)
-    if (!error) {
-      setShowSuccess(true)
-      setTimeout(() => setShowSuccess(false), 3000)
-    } else {
-      setErrorMsg('保存に失敗しちゃったニャ...')
     }
   }
 
-  if (loading) return (
-    <div className="flex h-screen flex-col items-center justify-center gap-4 bg-orange-50">
-      <div className="animate-spin text-4xl">🐱</div>
-      <p className="font-black text-gray-500">読み込み中ニャ...</p>
-    </div>
-  )
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <div className="animate-spin text-4xl mb-4">🐱</div>
+        <p className="font-black text-gray-400">読み込み中...</p>
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* ヘッダー */}
-      <div className="bg-white px-6 py-6 flex items-center border-b sticky top-0 z-10 shadow-sm">
-        <button onClick={() => router.push('/')} className="mr-4 p-2 hover:bg-gray-100 rounded-full transition-colors">
-          <ArrowLeft size={24} className="text-gray-600" />
-        </button>
-        <h1 className="text-xl font-black text-gray-800">会員情報の設定</h1>
-      </div>
-
-      <div className="p-6 max-w-md mx-auto space-y-6 mt-4">
-        {/* 通知エリア */}
-        <div className="h-14">
-          {showSuccess && (
-            <div className="bg-green-500 text-white px-6 py-3 rounded-full flex items-center gap-2 shadow-lg animate-in zoom-in duration-300">
-              <CheckCircle2 size={20} />
-              <span className="font-bold">情報を更新したニャ！</span>
+    <div className="max-w-xl mx-auto p-6 pb-24 animate-in fade-in duration-500">
+      <div className="space-y-6">
+        {/* プロフィールヘッダー */}
+        <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden">
+          <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full" />
+          <div className="relative z-10">
+            <div className="flex items-center gap-4 mb-4">
+              {profile?.avatar_url ? (
+                <img 
+                  src={profile.avatar_url} 
+                  alt={profile.full_name || 'ユーザー'} 
+                  className="w-20 h-20 rounded-full border-4 border-white/30 object-cover"
+                />
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center border-4 border-white/30">
+                  <UserCircle size={40} className="text-white" />
+                </div>
+              )}
+              <div className="flex-1">
+                <h2 className="text-2xl font-black mb-1">
+                  {profile?.full_name || 'ユーザー'}
+                </h2>
+                {profile?.email && (
+                  <p className="text-sm text-white/80 font-bold flex items-center gap-1">
+                    <Mail size={14} />
+                    {profile.email}
+                  </p>
+                )}
+              </div>
             </div>
-          )}
-          {errorMsg && (
-            <div className="bg-red-500 text-white px-6 py-3 rounded-full flex items-center gap-2 shadow-lg animate-in shake duration-300">
-              <AlertCircle size={20} />
-              <span className="font-bold">{errorMsg}</span>
-            </div>
-          )}
+          </div>
         </div>
 
-        {/* メイン入力カード */}
-        <div className="bg-white rounded-[3rem] p-10 shadow-xl shadow-gray-200/50 border border-white space-y-8 relative overflow-hidden">
-          {/* 装飾用の丸 */}
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-red-50 rounded-full opacity-50" />
-          
-          <div className="space-y-4 relative">
-            <div className="flex items-center gap-2 ml-2">
-              <div className="w-1.5 h-4 bg-red-500 rounded-full" />
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ニックネーム</label>
-            </div>
-            <div className="relative">
-              <User className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={22} />
-              <input
-                type="text"
-                value={profile.username}
-                onChange={(e) => setProfile({ ...profile, username: e.target.value })}
-                className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-5 pl-14 pr-6 font-bold text-gray-700 focus:border-red-400 focus:bg-white focus:outline-none transition-all"
-                placeholder="名前を教えてニャ"
-              />
+        {/* プロフィール情報カード */}
+        <div className="bg-white rounded-[2.5rem] p-6 shadow-lg border border-gray-100 space-y-6">
+          {/* 基本情報 */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-black text-gray-800 flex items-center gap-2">
+              <User size={20} className="text-orange-500" />
+              基本情報
+            </h3>
+            
+            <div className="space-y-3">
+              {profile?.gender && (
+                <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm font-bold text-gray-500">性別</span>
+                  <span className="text-sm font-black text-gray-800">{profile.gender}</span>
+                </div>
+              )}
+              
+              {profile?.age_range && (
+                <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm font-bold text-gray-500">年代</span>
+                  <span className="text-sm font-black text-gray-800">{profile.age_range}</span>
+                </div>
+              )}
+              
+              {profile?.residence && (
+                <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm font-bold text-gray-500 flex items-center gap-1">
+                    <MapPin size={14} />
+                    居住地
+                  </span>
+                  <span className="text-sm font-black text-gray-800">{profile.residence}</span>
+                </div>
+              )}
+              
+              {profile?.interests && profile.interests.length > 0 && (
+                <div className="py-2">
+                  <span className="text-sm font-bold text-gray-500 block mb-3">興味関心</span>
+                  <div className="flex flex-wrap gap-2">
+                    {profile.interests.map((interest: string, index: number) => (
+                      <span 
+                        key={index}
+                        className="bg-orange-100 text-orange-600 px-3 py-1.5 rounded-full text-xs font-black"
+                      >
+                        {interest}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {profile?.last_login && (
+                <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm font-bold text-gray-500 flex items-center gap-1">
+                    <Calendar size={14} />
+                    最終ログイン
+                  </span>
+                  <span className="text-sm font-black text-gray-800">
+                    {new Date(profile.last_login).toLocaleDateString('ja-JP')}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="space-y-4 relative">
-            <div className="flex items-center gap-2 ml-2">
-              <div className="w-1.5 h-4 bg-red-500 rounded-full" />
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest">お住まいの町名</label>
-            </div>
-            <div className="relative">
-              <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={22} />
-              <input
-                type="text"
-                value={profile.town_name}
-                onChange={(e) => setProfile({ ...profile, town_name: e.target.value })}
-                className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-5 pl-14 pr-6 font-bold text-gray-700 focus:border-red-400 focus:bg-white focus:outline-none transition-all"
-                placeholder="例：本町、金亀町"
-              />
-            </div>
-            <p className="text-[10px] text-gray-400 font-bold ml-4 italic">※町名に合わせてゴミの日を表示するニャ！</p>
-          </div>
-
-          <button
-            onClick={handleUpdate}
-            disabled={saveLoading}
-            className="w-full bg-[#ff0033] hover:bg-[#cc002c] text-white py-5 rounded-[1.5rem] font-black shadow-xl shadow-red-200 active:scale-95 transition-all flex items-center justify-center gap-3 group"
-          >
-            {saveLoading ? (
-              <Loader2 className="animate-spin" size={24} />
-            ) : (
-              <>
-                <Save size={22} className="group-hover:rotate-12 transition-transform" />
-                <span>保存するニャ！</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* ログアウトエリア */}
-        <div className="pt-4 px-4">
+          {/* 編集ボタン */}
           <button
             onClick={() => {
-              if(confirm('ログアウトしていいのかニャ？')) {
-                supabase.auth.signOut()
-                router.push('/')
+              if (currentUser) {
+                setShowProfileModal(true)
               }
             }}
-            className="w-full flex items-center justify-center gap-2 text-gray-400 font-bold text-sm hover:text-red-500 transition-colors py-2"
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-[1.5rem] font-black shadow-xl shadow-orange-200 active:scale-95 transition-all flex items-center justify-center gap-3"
+          >
+            <Edit size={20} />
+            <span>プロフィールを編集</span>
+          </button>
+        </div>
+
+        {/* ログアウトボタン */}
+        <div className="pt-4 pb-8">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 text-gray-400 font-bold text-sm hover:text-red-500 transition-colors py-3"
           >
             <LogOut size={18} />
-            ログアウトする
+            ログアウト
           </button>
         </div>
       </div>
+
+      {/* プロフィール編集モーダル */}
+      {showProfileModal && currentUser && (
+        <ProfileRegistrationModal
+          userId={currentUser.id}
+          userEmail={currentUser.email}
+          userFullName={currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || profile?.full_name}
+          onComplete={() => {
+            setShowProfileModal(false)
+            fetchProfileData() // プロフィールページのデータを更新
+          }}
+        />
+      )}
+      
+      {/* 下部ナビゲーション */}
+      <BottomNavigation />
     </div>
   )
 }

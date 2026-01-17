@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { supabase, Shop, isShopOpen } from '@/lib/supabase'
 import { MapPin, Heart, Search, Coffee, Beer, Pizza, Utensils, IceCream, Store, CheckCircle2, X, Clock, Phone, UtensilsCrossed } from 'lucide-react'
+import BottomNavigation from '@/components/BottomNavigation'
 
 const ShopMap = dynamic(() => import('@/components/ShopMap'), {
   ssr: false,
@@ -233,7 +234,10 @@ export default function Taberu() {
         .leaflet-top.leaflet-left { top: 12px !important; }
         @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .animate-in.slide-in-from-bottom { animation: slide-up 0.3s ease-out; }
-      `}</style>
+      `}      </style>
+      
+      {/* 下部ナビゲーション */}
+      <BottomNavigation />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { ShoppingBag, MapPin, Store, ShoppingCart, BookOpen, Pill, ChevronRight } from 'lucide-react'
+import BottomNavigation from '@/components/BottomNavigation'
 
 export default function Kaimono() {
   // カテゴリーに応じてアイコンと色を出し分ける設定
@@ -84,6 +85,9 @@ export default function Kaimono() {
           <ShoppingBag className="absolute -bottom-2 -right-2 text-white/10" size={100} />
         </div>
       </div>
+      
+      {/* 下部ナビゲーション */}
+      <BottomNavigation />
     </div>
   )
 }

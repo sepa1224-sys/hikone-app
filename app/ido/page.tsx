@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { getTrainTimetables, TrainTimetable } from '@/lib/supabase'
 import { Train, Clock, MapPin, CalendarDays, ChevronRight } from 'lucide-react'
+import BottomNavigation from '@/components/BottomNavigation'
 
 const HIKONE_STATIONS = ['彦根', '南彦根', '河瀬', '稲枝', '彦根口', '高宮']
 const DESTINATIONS = ['京都', '米原', '多賀大社前', '近江八幡']
@@ -117,6 +118,9 @@ export default function IdoPage() {
           </div>
         )}
       </div>
+      
+      {/* 下部ナビゲーション */}
+      <BottomNavigation />
     </div>
   )
 }
