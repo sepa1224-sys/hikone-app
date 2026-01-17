@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { usePathname, useRouter } from 'next/navigation'
 import { 
   Sun, Send, X, Home, Trash2, UserCircle, Sparkles, Building2, Map as MapIcon, 
-  Utensils, Train, ChevronRight, Store, LogOut, Edit, Mail, Calendar, MapPin, User, Bus, ShoppingBag
+  Utensils, Train, ChevronRight, Store, LogOut, Edit, Mail, Calendar, MapPin, User, Bus, ShoppingBag, Search
 } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
@@ -21,10 +21,67 @@ const cityData: Record<string, any> = {
   tsuruga: { name: '敦賀市', food: '越前ガニ', move: 'ぐるっと敦賀周遊バス', shop: '日本海さかな街', color: 'from-emerald-600 to-teal-500' }
 }
 
-const prefectures = [
-  { name: '滋賀県', cities: [{ id: 'hikone', name: '彦根市' }, { id: 'nagahama', name: '長浜市' }] },
-  { name: '福井県', cities: [{ id: 'tsuruga', name: '敦賀市' }] }
+// 日本全国の都道府県リスト
+const ALL_PREFECTURES = [
+  '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
+  '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
+  '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県', '岐阜県',
+  '静岡県', '愛知県', '三重県', '滋賀県', '京都府', '大阪府', '兵庫県',
+  '奈良県', '和歌山県', '鳥取県', '島根県', '岡山県', '広島県', '山口県',
+  '徳島県', '香川県', '愛媛県', '高知県', '福岡県', '佐賀県', '長崎県',
+  '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県'
 ]
+
+// 都道府県ごとの主要市区町村リスト
+const PREFECTURE_CITIES: Record<string, string[]> = {
+  '北海道': ['札幌市', '函館市', '旭川市', '釧路市', '帯広市', '北見市', '小樽市', '苫小牧市', '千歳市', '江別市'],
+  '青森県': ['青森市', '弘前市', '八戸市', '黒石市', '五所川原市', '十和田市', 'むつ市'],
+  '岩手県': ['盛岡市', '宮古市', '大船渡市', '花巻市', '北上市', '久慈市', '遠野市', '一関市', '陸前高田市', '釜石市'],
+  '宮城県': ['仙台市', '石巻市', '塩竈市', '気仙沼市', '白石市', '名取市', '角田市', '多賀城市', '岩沼市'],
+  '秋田県': ['秋田市', '能代市', '横手市', '大館市', '男鹿市', '湯沢市', '鹿角市', '由利本荘市', '潟上市'],
+  '山形県': ['山形市', '米沢市', '鶴岡市', '酒田市', '新庄市', '寒河江市', '上山市', '村山市', '長井市', '天童市'],
+  '福島県': ['福島市', '会津若松市', '郡山市', 'いわき市', '白河市', '須賀川市', '喜多方市', '相馬市', '二本松市', '田村市'],
+  '茨城県': ['水戸市', '日立市', '土浦市', '古河市', '石岡市', '結城市', '龍ケ崎市', '下妻市', '常総市', '常陸太田市'],
+  '栃木県': ['宇都宮市', '足利市', '栃木市', '佐野市', '鹿沼市', '日光市', '小山市', '真岡市', '大田原市', '那須塩原市'],
+  '群馬県': ['前橋市', '高崎市', '桐生市', '伊勢崎市', '太田市', '沼田市', '館林市', '渋川市', '藤岡市', '富岡市'],
+  '埼玉県': ['さいたま市', '川越市', '熊谷市', '川口市', '行田市', '秩父市', '所沢市', '飯能市', '加須市', '本庄市'],
+  '千葉県': ['千葉市', '銚子市', '市川市', '船橋市', '館山市', '木更津市', '松戸市', '野田市', '茂原市', '成田市'],
+  '東京都': ['千代田区', '中央区', '港区', '新宿区', '文京区', '台東区', '墨田区', '江東区', '品川区', '目黒区', '大田区', '世田谷区', '渋谷区', '中野区', '杉並区', '練馬区', '北区', '荒川区', '板橋区', '足立区', '葛飾区', '江戸川区'],
+  '神奈川県': ['横浜市', '川崎市', '相模原市', '横須賀市', '平塚市', '鎌倉市', '藤沢市', '小田原市', '茅ヶ崎市', '厚木市'],
+  '新潟県': ['新潟市', '長岡市', '三条市', '柏崎市', '新発田市', '小千谷市', '加茂市', '十日町市', '見附市', '村上市'],
+  '富山県': ['富山市', '高岡市', '魚津市', '氷見市', '滑川市', '黒部市', '砺波市', '小矢部市', '南砺市', '射水市'],
+  '石川県': ['金沢市', '七尾市', '小松市', '輪島市', '珠洲市', '加賀市', '羽咋市', 'かほく市', '白山市', '能美市'],
+  '福井県': ['福井市', '敦賀市', '小浜市', '大野市', '勝山市', '鯖江市', 'あわら市', '越前市', '坂井市', '永平寺町'],
+  '山梨県': ['甲府市', '富士吉田市', '都留市', '山梨市', '大月市', '韮崎市', '南アルプス市', '北杜市', '甲斐市', '笛吹市'],
+  '長野県': ['長野市', '松本市', '上田市', '岡谷市', '飯田市', '諏訪市', '須坂市', '小諸市', '伊那市', '駒ヶ根市'],
+  '岐阜県': ['岐阜市', '大垣市', '高山市', '多治見市', '関市', '中津川市', '美濃市', '瑞浪市', '羽島市', '恵那市'],
+  '静岡県': ['静岡市', '浜松市', '沼津市', '熱海市', '三島市', '富士宮市', '伊東市', '島田市', '富士市', '磐田市'],
+  '愛知県': ['名古屋市', '豊橋市', '岡崎市', '一宮市', '瀬戸市', '半田市', '春日井市', '豊川市', '津島市', '碧南市'],
+  '三重県': ['津市', '四日市市', '伊勢市', '松阪市', '桑名市', '鈴鹿市', '名張市', '尾鷲市', '亀山市', '鳥羽市'],
+  '滋賀県': ['大津市', '彦根市', '長浜市', '近江八幡市', '草津市', '守山市', '栗東市', '甲賀市', '野洲市', '湖南市'],
+  '京都府': ['京都市', '福知山市', '舞鶴市', '綾部市', '宇治市', '宮津市', '亀岡市', '城陽市', '向日市', '長岡京市'],
+  '大阪府': ['大阪市', '堺市', '岸和田市', '豊中市', '池田市', '吹田市', '泉大津市', '高槻市', '貝塚市', '守口市'],
+  '兵庫県': ['神戸市', '姫路市', '尼崎市', '明石市', '西宮市', '洲本市', '芦屋市', '伊丹市', '相生市', '豊岡市'],
+  '奈良県': ['奈良市', '大和高田市', '大和郡山市', '天理市', '橿原市', '桜井市', '五條市', '御所市', '生駒市', '香芝市'],
+  '和歌山県': ['和歌山市', '海南市', '橋本市', '有田市', '御坊市', '田辺市', '新宮市', '紀の川市', '岩出市', '有田郡'],
+  '鳥取県': ['鳥取市', '米子市', '倉吉市', '境港市'],
+  '島根県': ['松江市', '浜田市', '出雲市', '益田市', '大田市', '安来市', '江津市', '雲南市'],
+  '岡山県': ['岡山市', '倉敷市', '津山市', '玉野市', '笠岡市', '井原市', '総社市', '高梁市', '新見市', '備前市'],
+  '広島県': ['広島市', '呉市', '竹原市', '三原市', '尾道市', '福山市', '府中市', '三次市', '庄原市', '大竹市'],
+  '山口県': ['下関市', '宇部市', '山口市', '萩市', '防府市', '下松市', '岩国市', '光市', '長門市', '柳井市'],
+  '徳島県': ['徳島市', '鳴門市', '小松島市', '阿南市', '吉野川市', '阿波市', '美馬市', '三好市'],
+  '香川県': ['高松市', '丸亀市', '坂出市', '善通寺市', '観音寺市', 'さぬき市', '東かがわ市', '三豊市'],
+  '愛媛県': ['松山市', '今治市', '宇和島市', '八幡浜市', '新居浜市', '西条市', '大洲市', '伊予市', '四国中央市', '西予市'],
+  '高知県': ['高知市', '室戸市', '安芸市', '南国市', '土佐市', '須崎市', '宿毛市', '土佐清水市', '四万十市', '香南市'],
+  '福岡県': ['福岡市', '北九州市', '大牟田市', '久留米市', '直方市', '飯塚市', '田川市', '柳川市', '八女市', '筑後市'],
+  '佐賀県': ['佐賀市', '唐津市', '鳥栖市', '多久市', '伊万里市', '武雄市', '鹿島市', '小城市', '嬉野市', '神埼市'],
+  '長崎県': ['長崎市', '佐世保市', '島原市', '諫早市', '大村市', '平戸市', '松浦市', '対馬市', '壱岐市', '五島市'],
+  '熊本県': ['熊本市', '八代市', '人吉市', '荒尾市', '水俣市', '玉名市', '山鹿市', '菊池市', '宇土市', '上天草市'],
+  '大分県': ['大分市', '別府市', '中津市', '日田市', '佐伯市', '臼杵市', '津久見市', '竹田市', '豊後高田市', '杵築市'],
+  '宮崎県': ['宮崎市', '都城市', '延岡市', '日南市', '小林市', '日向市', '串間市', '西都市', 'えびの市', '三股町'],
+  '鹿児島県': ['鹿児島市', '鹿屋市', '枕崎市', '阿久根市', '出水市', '指宿市', '西之表市', '垂水市', '薩摩川内市', '日置市'],
+  '沖縄県': ['那覇市', '宜野湾市', '石垣市', '浦添市', '名護市', '糸満市', '沖縄市', '豊見城市', 'うるま市', '宮古島市']
+}
 
 export default function AppHome() {
   const pathname = usePathname()
@@ -41,7 +98,9 @@ export default function AppHome() {
   const [mode, setMode] = useState<'local' | 'tourist'>('local') 
   const [selectedCityId, setSelectedCityId] = useState<string>('hikone')
   const [isCitySelectorOpen, setIsCitySelectorOpen] = useState(false)
-  const [tempPref, setTempPref] = useState<any>(null)
+  const [tempPref, setTempPref] = useState<string | null>(null)
+  const [citySearchQuery, setCitySearchQuery] = useState<string>('')
+  const [selectedDestinationName, setSelectedDestinationName] = useState<string>('')
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [messages, setMessages] = useState([{ role: 'ai', text: '何かお手伝いするニャ？' }])
@@ -55,6 +114,33 @@ export default function AppHome() {
   // プロフィールページ用のステート
   const [profile, setProfile] = useState<any>(null)
   const [profileLoading, setProfileLoading] = useState(false) // 初期値をfalseにして、ゲストモードで即座に表示できるようにする
+  
+  // 編集フォーム用のステート
+  const [username, setUsername] = useState<string>('')
+  const [avatarUrl, setAvatarUrl] = useState<string>('')
+  const [prefecture, setPrefecture] = useState<string>('')
+  const [city, setCity] = useState<string>('')
+  const [saving, setSaving] = useState(false)
+  
+  // 都道府県リスト（プロフィール編集用：47都道府県+海外）
+  const PREFECTURES = [
+    '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
+    '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
+    '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県', '岐阜県',
+    '静岡県', '愛知県', '三重県', '滋賀県', '京都府', '大阪府', '兵庫県',
+    '奈良県', '和歌山県', '鳥取県', '島根県', '岡山県', '広島県', '山口県',
+    '徳島県', '香川県', '愛媛県', '高知県', '福岡県', '佐賀県', '長崎県',
+    '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県', '海外'
+  ]
+  
+  // 海外の主要国リスト
+  const COUNTRIES = [
+    'アメリカ', 'イギリス', 'フランス', 'ドイツ', 'イタリア', 'スペイン',
+    'カナダ', 'オーストラリア', 'ニュージーランド', '韓国', '中国', '台湾',
+    'タイ', 'シンガポール', 'マレーシア', 'インドネシア', 'フィリピン',
+    'インド', 'ブラジル', 'メキシコ', 'アルゼンチン', 'チリ', '南アフリカ',
+    'エジプト', 'トルコ', 'ロシア', 'その他'
+  ]
 
   useEffect(() => {
     const savedMode = localStorage.getItem('app_mode') as 'local' | 'tourist'
@@ -102,6 +188,10 @@ export default function AppHome() {
         if (session?.user) {
           // プロフィール作成処理（DBトリガーが動いていない場合の保険）
           createProfileIfNotExists(session.user)
+          // ログイン後、即座にプロフィール情報を取得してStateにセット
+          if (view === 'profile') {
+            fetchProfileDataForEdit()
+          }
           // 注意: viewを変更する処理は一切行わない
           // ホーム画面にいる場合のみプロフィールチェックを実行（viewを変更しない）
           if (view === 'main') {
@@ -169,7 +259,7 @@ export default function AppHome() {
           const { data: { session } } = await supabase.auth.getSession()
           if (session?.user) {
             setCurrentUser(session.user)
-            fetchProfileData()
+            fetchProfileDataForEdit()
           } else {
             // セッションがない場合
             setCurrentUser(null)
@@ -341,6 +431,51 @@ export default function AppHome() {
     }
   }
 
+  // 編集用のプロフィールデータ取得（Stateに反映）
+  const fetchProfileDataForEdit = async () => {
+    try {
+      setProfileLoading(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session?.user) {
+        setProfileLoading(false)
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single()
+
+      if (data) {
+        setProfile(data)
+        // 編集フォームのStateに反映
+        setUsername(data.full_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'ユーザー')
+        setAvatarUrl(data.avatar_url || session.user.user_metadata?.avatar_url || '')
+        setPrefecture(data.prefecture || '')
+        setCity(data.city || '')
+      } else {
+        // プロフィールがない場合
+        const defaultName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'ユーザー'
+        setProfile({
+          id: session.user.id,
+          full_name: defaultName,
+          email: session.user.email,
+          avatar_url: session.user.user_metadata?.avatar_url || null
+        })
+        setUsername(defaultName)
+        setAvatarUrl(session.user.user_metadata?.avatar_url || '')
+        setPrefecture('')
+        setCity('')
+      }
+    } catch (error) {
+      console.error('Profile fetch error:', error)
+    } finally {
+      setProfileLoading(false)
+    }
+  }
+
   // プロフィールが存在しない場合に作成する（DBトリガーの保険）
   const createProfileIfNotExists = async (user: any) => {
     try {
@@ -375,11 +510,25 @@ export default function AppHome() {
     }
   }
 
+  // ポップアップをキャンセルする処理
+  const handleCancelCitySelection = () => {
+    setIsCitySelectorOpen(false)
+    setTempPref(null)
+    setCitySearchQuery('')
+    setSelectedDestinationName('')
+    // 観光モードをOFFに戻す
+    setMode('local')
+    // ひこにゃんメッセージを表示
+    alert('お出かけはやめるのかニャ？地元でゆっくりするのもいいニャ！')
+  }
+
   const handleToggleMode = () => {
     if (mode === 'local') {
-      setMode('tourist')
+      // 観光モードに切り替える場合は、まずポップアップを開く
+      // 目的地が選択されるまではmodeは'tourist'にしない（pending状態）
       setIsCitySelectorOpen(true)
     } else {
+      // 地元モードに戻す
       setMode('local')
     }
   }
@@ -397,12 +546,105 @@ export default function AppHome() {
     }
   }
 
+  // プロフィール保存処理
+  const handleSaveProfile = async () => {
+    if (!currentUser) {
+      alert('ログインが必要です')
+      return
+    }
+
+    if (!username.trim()) {
+      alert('ユーザー名を入力してください')
+      return
+    }
+
+    // 都道府県が選択されている場合は市区町村も必須
+    if (prefecture && prefecture !== '海外' && !city.trim()) {
+      alert('市区町村を選択してください')
+      return
+    }
+
+    // 海外が選択されている場合は国名も必須
+    if (prefecture === '海外' && !city.trim()) {
+      alert('国名を選択してください')
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      // 保存用データの準備
+      const updateData: any = {
+        id: currentUser.id,
+        full_name: username.trim(),
+        updated_at: new Date().toISOString()
+      }
+
+      // オプショナルフィールドの設定
+      if (avatarUrl.trim()) {
+        updateData.avatar_url = avatarUrl.trim()
+      } else {
+        updateData.avatar_url = null
+      }
+
+      if (prefecture && prefecture.trim()) {
+        updateData.prefecture = prefecture.trim()
+      } else {
+        updateData.prefecture = null
+      }
+
+      if (city && city.trim()) {
+        updateData.city = city.trim()
+      } else {
+        updateData.city = null
+      }
+
+      console.log('保存データ:', updateData)
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .upsert(updateData, {
+          onConflict: 'id'
+        })
+        .select()
+
+      if (error) {
+        console.error('Profile upsert error:', error)
+        console.error('Error details:', JSON.stringify(error, null, 2))
+        alert(`保存に失敗しました: ${error.message}\n詳細はコンソールを確認してください。\nprefectureとcityカラムが存在するか確認してください。`)
+      } else {
+        console.log('保存成功:', data)
+        alert('保存したニャ！')
+        // 画面上の名前を即座に更新
+        setProfile((prev: any) => ({
+          ...prev,
+          full_name: username.trim(),
+          avatar_url: avatarUrl.trim() || null,
+          prefecture: prefecture || null,
+          city: city.trim() || null
+        }))
+        // プロフィール情報を再取得
+        await fetchProfileDataForEdit()
+      }
+    } catch (error: any) {
+      console.error('Unexpected error:', error)
+      console.error('Error stack:', error?.stack)
+      alert(`予期しないエラーが発生しました: ${error?.message || '不明なエラー'}\n詳細はコンソールを確認してください。`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleLogout = async () => {
     if (confirm('ログアウトしますか？')) {
       await supabase.auth.signOut()
       setProfile(null)
       setCurrentUser(null)
       setView('main')
+      setUsername('')
+      setAvatarUrl('')
+      setPrefecture('')
+      setCity('')
     }
   }
 
@@ -499,7 +741,7 @@ export default function AppHome() {
               </button>
             </div>
           ) : (
-            /* ログイン済みならプロフィールを表示 */
+            /* ログイン済みなら編集フォームを直接表示（ProfileEditView） */
             <div className="p-6 animate-in slide-in-from-bottom-4 max-w-xl mx-auto">
               {profileLoading ? (
                 <div className="flex flex-col items-center justify-center py-20">
@@ -508,114 +750,188 @@ export default function AppHome() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {/* プロフィールヘッダー */}
-                  <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden">
-                    <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full" />
-                    <div className="relative z-10">
-                      <div className="flex items-center gap-4 mb-4">
-                        {profile?.avatar_url ? (
+                  {/* プロフィール編集フォーム */}
+                  <div className="bg-white rounded-[2.5rem] p-6 shadow-lg border border-gray-100 space-y-6">
+                    <h3 className="text-xl font-black text-gray-800 flex items-center gap-2">
+                      <Edit size={24} className="text-orange-500" />
+                      プロフィール編集
+                    </h3>
+
+                    {/* ユーザー名入力欄 */}
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-2 ml-2">
+                        <div className="w-1.5 h-4 bg-orange-500 rounded-full" />
+                        <span className="text-xs font-black text-gray-400 uppercase tracking-widest">ユーザー名</span>
+                      </label>
+                      <div className="relative">
+                        <User className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                        <input
+                          type="text"
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                          className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm"
+                          placeholder="ユーザー名を入力"
+                        />
+                      </div>
+                    </div>
+
+                    {/* アイコン画像URL入力欄（オプション） */}
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-2 ml-2">
+                        <div className="w-1.5 h-4 bg-orange-500 rounded-full" />
+                        <span className="text-xs font-black text-gray-400 uppercase tracking-widest">アイコン画像URL（任意）</span>
+                      </label>
+                      <div className="relative">
+                        <UserCircle className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                        <input
+                          type="url"
+                          value={avatarUrl}
+                          onChange={(e) => setAvatarUrl(e.target.value)}
+                          className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm"
+                          placeholder="https://example.com/avatar.png"
+                        />
+                      </div>
+                      {avatarUrl && (
+                        <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                           <img 
-                            src={profile.avatar_url} 
-                            alt={profile.full_name || 'ユーザー'} 
-                            className="w-20 h-20 rounded-full border-4 border-white/30 object-cover"
+                            src={avatarUrl} 
+                            alt="プレビュー" 
+                            className="w-12 h-12 rounded-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none'
+                            }}
                           />
-                        ) : (
-                          <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center border-4 border-white/30">
-                            <UserCircle size={40} className="text-white" />
-                          </div>
-                        )}
-                        <div className="flex-1">
-                          <h2 className="text-2xl font-black mb-1">
-                            {profile?.full_name || 'ユーザー'}
-                          </h2>
-                          {profile?.email && (
-                            <p className="text-sm text-white/80 font-bold flex items-center gap-1">
-                              <Mail size={14} />
-                              {profile.email}
-                            </p>
+                          <span className="text-xs font-bold text-gray-500">プレビュー</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 居住地：都道府県選択 */}
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-2 ml-2">
+                        <div className="w-1.5 h-4 bg-orange-500 rounded-full" />
+                        <span className="text-xs font-black text-gray-400 uppercase tracking-widest">どこの街から来たのか教えてニャ！</span>
+                      </label>
+                      <p className="text-xs text-gray-500 font-bold ml-2 mb-2">まず都道府県を選んでニャ</p>
+                      <div className="relative">
+                        <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                        <select
+                          value={prefecture}
+                          onChange={(e) => {
+                            setPrefecture(e.target.value)
+                            // 都道府県が変更されたら市区町村をリセット
+                            setCity('')
+                          }}
+                          className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
+                        >
+                          <option value="">都道府県を選択してください</option>
+                          {PREFECTURES.map((pref) => (
+                            <option key={pref} value={pref}>{pref}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* 居住地：市区町村選択（都道府県が選択されている場合のみ表示） */}
+                    {prefecture && prefecture !== '海外' && PREFECTURE_CITIES[prefecture] && (
+                      <div className="space-y-3">
+                        <label className="flex items-center gap-2 ml-2">
+                          <div className="w-1.5 h-4 bg-orange-500 rounded-full" />
+                          <span className="text-xs font-black text-gray-400 uppercase tracking-widest">市区町村を選んでニャ</span>
+                        </label>
+                        <div className="relative">
+                          <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                          <select
+                            value={city}
+                            onChange={(e) => setCity(e.target.value)}
+                            className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
+                            required
+                          >
+                            <option value="">市区町村を選択してください</option>
+                            {PREFECTURE_CITIES[prefecture].map((cityName) => (
+                              <option key={cityName} value={cityName}>{cityName}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 居住地：国名選択（海外が選択された場合のみ表示） */}
+                    {prefecture === '海外' && (
+                      <div className="space-y-3">
+                        <label className="flex items-center gap-2 ml-2">
+                          <div className="w-1.5 h-4 bg-orange-500 rounded-full" />
+                          <span className="text-xs font-black text-gray-400 uppercase tracking-widest">国名を選んでニャ</span>
+                        </label>
+                        <div className="relative">
+                          <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                          <select
+                            value={city}
+                            onChange={(e) => setCity(e.target.value)}
+                            className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
+                            required
+                          >
+                            <option value="">国名を選択してください</option>
+                            {COUNTRIES.map((country) => (
+                              <option key={country} value={country}>{country}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 保存ボタン */}
+                    <button
+                      onClick={handleSaveProfile}
+                      disabled={saving || !username.trim()}
+                      className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-4 rounded-[1.5rem] font-black shadow-xl shadow-orange-200 active:scale-95 transition-all flex items-center justify-center gap-3"
+                    >
+                      {saving ? (
+                        <>
+                          <div className="animate-spin">🐱</div>
+                          <span>保存中...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Edit size={20} />
+                          <span>保存するニャ！</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* 現在のプロフィール情報（参考表示） */}
+                  {profile && (
+                    <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden">
+                      <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full" />
+                      <div className="relative z-10">
+                        <div className="flex items-center gap-4 mb-4">
+                          {profile?.avatar_url ? (
+                            <img 
+                              src={profile.avatar_url} 
+                              alt={profile.full_name || 'ユーザー'} 
+                              className="w-20 h-20 rounded-full border-4 border-white/30 object-cover"
+                            />
+                          ) : (
+                            <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center border-4 border-white/30">
+                              <UserCircle size={40} className="text-white" />
+                            </div>
                           )}
+                          <div className="flex-1">
+                            <h2 className="text-2xl font-black mb-1">
+                              {profile?.full_name || 'ユーザー'}
+                            </h2>
+                            {profile?.email && (
+                              <p className="text-sm text-white/80 font-bold flex items-center gap-1">
+                                <Mail size={14} />
+                                {profile.email}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-
-                  {/* プロフィール情報カード */}
-                  <div className="bg-white rounded-[2.5rem] p-6 shadow-lg border border-gray-100 space-y-6">
-                    {/* 基本情報 */}
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-black text-gray-800 flex items-center gap-2">
-                        <User size={20} className="text-orange-500" />
-                        基本情報
-                      </h3>
-                      
-                      <div className="space-y-3">
-                        {profile?.gender && (
-                          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                            <span className="text-sm font-bold text-gray-500">性別</span>
-                            <span className="text-sm font-black text-gray-800">{profile.gender}</span>
-                          </div>
-                        )}
-                        
-                        {profile?.age_range && (
-                          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                            <span className="text-sm font-bold text-gray-500">年代</span>
-                            <span className="text-sm font-black text-gray-800">{profile.age_range}</span>
-                          </div>
-                        )}
-                        
-                        {profile?.residence && (
-                          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                            <span className="text-sm font-bold text-gray-500 flex items-center gap-1">
-                              <MapPin size={14} />
-                              居住地
-                            </span>
-                            <span className="text-sm font-black text-gray-800">{profile.residence}</span>
-                          </div>
-                        )}
-                        
-                        {profile?.interests && profile.interests.length > 0 && (
-                          <div className="py-2">
-                            <span className="text-sm font-bold text-gray-500 block mb-3">興味関心</span>
-                            <div className="flex flex-wrap gap-2">
-                              {profile.interests.map((interest: string, index: number) => (
-                                <span 
-                                  key={index}
-                                  className="bg-orange-100 text-orange-600 px-3 py-1.5 rounded-full text-xs font-black"
-                                >
-                                  {interest}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {profile?.last_login && (
-                          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                            <span className="text-sm font-bold text-gray-500 flex items-center gap-1">
-                              <Calendar size={14} />
-                              最終ログイン
-                            </span>
-                            <span className="text-sm font-black text-gray-800">
-                              {new Date(profile.last_login).toLocaleDateString('ja-JP')}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* 編集ボタン */}
-                    <button
-                      onClick={() => {
-                        if (currentUser) {
-                          setShowProfileModal(true)
-                        }
-                      }}
-                      className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-[1.5rem] font-black shadow-xl shadow-orange-200 active:scale-95 transition-all flex items-center justify-center gap-3"
-                    >
-                      <Edit size={20} />
-                      <span>プロフィールを編集</span>
-                    </button>
-                  </div>
+                  )}
 
                   {/* ログアウトボタン */}
                   <div className="pt-4 pb-8">
@@ -682,20 +998,181 @@ export default function AppHome() {
         </>
       )}
 
-      {/* 街選択ポップアップ */}
+      {/* 街選択ポップアップ（全国対応） */}
       {isCitySelectorOpen && (
-        <div className="fixed inset-0 z-[2500] flex items-end justify-center bg-black/60 backdrop-blur-md">
-          <div className="bg-white w-full max-w-md rounded-t-[3rem] p-8 pb-12 animate-in slide-in-from-bottom">
-            <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-black">どこへ行くニャ？</h3><button onClick={() => setIsCitySelectorOpen(false)} className="p-2 bg-gray-100 rounded-full"><X size={20}/></button></div>
-            <div className="space-y-3">
-              {!tempPref ? prefectures.map(p => (
-                <button key={p.name} onClick={() => setTempPref(p)} className="w-full p-5 bg-gray-50 rounded-2xl font-black flex justify-between items-center">{p.name} <ChevronRight size={18}/></button>
-              )) : tempPref.cities.map((c: any) => (
-                <button key={c.id} onClick={() => { setSelectedCityId(c.id); setIsCitySelectorOpen(false); setTempPref(null); }} className="w-full p-5 bg-orange-500 text-white rounded-2xl font-black flex justify-between items-center shadow-lg">{c.name} <Sparkles size={18}/></button>
-              ))}
+        <>
+          {/* Backdrop - クリックでキャンセル */}
+          <div 
+            className="fixed inset-0 z-[2499] bg-black/60 backdrop-blur-md"
+            onClick={handleCancelCitySelection}
+          />
+          <div className="fixed inset-0 z-[2500] flex items-end justify-center pointer-events-none">
+            <div className="bg-white w-full max-w-md rounded-t-[3rem] p-8 pb-12 animate-in slide-in-from-bottom max-h-[90vh] flex flex-col pointer-events-auto">
+              {/* ヘッダー */}
+              <div className="flex justify-between items-center mb-6 flex-shrink-0">
+                <div>
+                  <h3 className="text-xl font-black">どこへ行くニャ？</h3>
+                  {selectedDestinationName && (
+                    <p className="text-sm text-orange-500 font-bold mt-1">
+                      {selectedDestinationName}は良いところだニャ〜！
+                    </p>
+                  )}
+                </div>
+                <button 
+                  onClick={handleCancelCitySelection}
+                  className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+                >
+                  <X size={20}/>
+                </button>
+              </div>
+
+            {/* コンテンツエリア（スクロール可能） */}
+            <div className="flex-1 overflow-y-auto space-y-4">
+              {!tempPref ? (
+                /* 都道府県選択 */
+                <div className="space-y-3">
+                  <p className="text-sm font-bold text-gray-500 mb-4">次はどこへお出かけするニャ？都道府県を選んでニャ！</p>
+                  {/* 都道府県検索 */}
+                  <div className="relative mb-4">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
+                    <input
+                      type="text"
+                      value={citySearchQuery}
+                      onChange={(e) => setCitySearchQuery(e.target.value)}
+                      placeholder="都道府県を検索..."
+                      className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-3 pl-12 pr-4 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm"
+                    />
+                  </div>
+                  {/* 都道府県リスト */}
+                  <div className="space-y-2">
+                    {ALL_PREFECTURES.filter(pref => 
+                      !citySearchQuery || pref.includes(citySearchQuery)
+                    ).map(pref => (
+                      <button 
+                        key={pref} 
+                        onClick={() => {
+                          setTempPref(pref)
+                          setCitySearchQuery('')
+                        }} 
+                        className="w-full p-4 bg-gray-50 hover:bg-orange-50 rounded-2xl font-black flex justify-between items-center transition-all hover:scale-[1.02]"
+                      >
+                        <span>{pref}</span>
+                        <ChevronRight size={18} className="text-gray-400"/>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                /* 市区町村選択 */
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 mb-4">
+                    <button
+                      onClick={() => {
+                        setTempPref(null)
+                        setCitySearchQuery('')
+                      }}
+                      className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+                    >
+                      <ChevronRight size={18} className="rotate-180 text-gray-600"/>
+                    </button>
+                    <h4 className="text-lg font-black text-gray-800">{tempPref}</h4>
+                  </div>
+                  
+                  {/* 市区町村検索 */}
+                  <div className="relative mb-4">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
+                    <input
+                      type="text"
+                      value={citySearchQuery}
+                      onChange={(e) => setCitySearchQuery(e.target.value)}
+                      placeholder="市区町村を検索..."
+                      className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-3 pl-12 pr-4 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm"
+                    />
+                  </div>
+
+                  {/* 市区町村リスト */}
+                  <div className="space-y-2">
+                    {(PREFECTURE_CITIES[tempPref] || []).filter(city => 
+                      !citySearchQuery || city.includes(citySearchQuery)
+                    ).map(city => (
+                      <button 
+                        key={city} 
+                        onClick={() => {
+                          const cityKey = city.toLowerCase().replace(/[市県区]/g, '')
+                          // cityDataに存在しない場合は、新しいエントリを作成
+                          if (!cityData[cityKey]) {
+                            cityData[cityKey] = {
+                              name: city,
+                              food: '名物料理',
+                              move: '交通情報',
+                              shop: 'おすすめスポット',
+                              color: 'from-orange-500 to-red-600'
+                            }
+                          }
+                          setSelectedCityId(cityKey)
+                          setSelectedDestinationName(city)
+                          // 目的地が確定したので、観光モードに切り替える
+                          setMode('tourist')
+                          // メッセージを表示してからポップアップを閉じる
+                          setTimeout(() => {
+                            setIsCitySelectorOpen(false)
+                            setTempPref(null)
+                            setCitySearchQuery('')
+                            // ポップアップが閉じた後にメッセージをクリア
+                            setTimeout(() => {
+                              setSelectedDestinationName('')
+                            }, 2000)
+                          }, 800)
+                        }} 
+                        className="w-full p-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-black flex justify-between items-center shadow-lg transition-all hover:scale-[1.02] active:scale-95"
+                      >
+                        <span>{city}</span>
+                        <Sparkles size={18}/>
+                      </button>
+                    ))}
+                    {/* 自由入力オプション（検索に該当しない場合） */}
+                    {citySearchQuery && !PREFECTURE_CITIES[tempPref]?.some(city => city.includes(citySearchQuery)) && (
+                      <button
+                        onClick={() => {
+                          const cityName = citySearchQuery.trim()
+                          if (cityName) {
+                            const cityKey = cityName.toLowerCase().replace(/[市県区]/g, '')
+                            cityData[cityKey] = {
+                              name: cityName,
+                              food: '名物料理',
+                              move: '交通情報',
+                              shop: 'おすすめスポット',
+                              color: 'from-orange-500 to-red-600'
+                            }
+                            setSelectedCityId(cityKey)
+                            setSelectedDestinationName(cityName)
+                            // 目的地が確定したので、観光モードに切り替える
+                            setMode('tourist')
+                            // メッセージを表示してからポップアップを閉じる
+                            setTimeout(() => {
+                              setIsCitySelectorOpen(false)
+                              setTempPref(null)
+                              setCitySearchQuery('')
+                              // ポップアップが閉じた後にメッセージをクリア
+                              setTimeout(() => {
+                                setSelectedDestinationName('')
+                              }, 2000)
+                            }, 800)
+                          }
+                        }}
+                        className="w-full p-4 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl font-black flex justify-between items-center shadow-lg transition-all hover:scale-[1.02]"
+                      >
+                        <span>「{citySearchQuery}」を追加する</span>
+                        <Sparkles size={18}/>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        </div>
+          </div>
+        </>
       )}
 
       {/* プロフィール登録・編集モーダル */}

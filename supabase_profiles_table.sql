@@ -92,7 +92,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- ========================================
+-- ======================================== 
 -- 補足: 既存ユーザーがいる場合のマイグレーション用SQL
 -- ========================================
 
@@ -106,6 +106,26 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- FROM auth.users
 -- WHERE id NOT IN (SELECT id FROM public.profiles)
 -- ON CONFLICT (id) DO NOTHING;
+
+-- ========================================
+-- prefecture と city カラムの追加（既存テーブルへのマイグレーション）
+-- ========================================
+
+-- prefectureカラムの追加（既存テーブルへのマイグレーション）
+ALTER TABLE public.profiles 
+ADD COLUMN IF NOT EXISTS prefecture TEXT;
+
+-- cityカラムの追加（既存テーブルへのマイグレーション）
+ALTER TABLE public.profiles 
+ADD COLUMN IF NOT EXISTS city TEXT;
+
+-- インデックスの作成（パフォーマンス向上）
+CREATE INDEX IF NOT EXISTS profiles_prefecture_idx ON public.profiles(prefecture);
+CREATE INDEX IF NOT EXISTS profiles_city_idx ON public.profiles(city);
+
+-- コメントの追加
+COMMENT ON COLUMN public.profiles.prefecture IS '都道府県';
+COMMENT ON COLUMN public.profiles.city IS '市区町村・地域名';
 
 -- ========================================
 -- コメント（オプション）
