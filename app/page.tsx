@@ -4,11 +4,13 @@ import { useState, useRef, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { usePathname, useRouter } from 'next/navigation'
 import { 
-  Sun, Send, X, Home, Trash2, UserCircle, Sparkles, Building2, Map as MapIcon, 
-  Utensils, Train, ChevronRight, Store, LogOut, Edit, Mail, Calendar, MapPin, User, Bus, ShoppingBag, Search
+  Sun, Send, X, UserCircle, Sparkles, Building2, Map as MapIcon, 
+  ChevronRight, LogOut, Edit, Mail, MapPin, User, Search,
+  Cloud, CloudRain, CloudSun, Droplets, Wind, Ticket, Gift, CalendarDays, PartyPopper, ShoppingBag
 } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
+import WasteScheduleCard, { HikoneWasteMaster } from '@/components/home/WasteScheduleCard'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -20,6 +22,37 @@ const cityData: Record<string, any> = {
   nagahama: { name: '長浜市', food: '焼鯖そうめん', move: '北国街道さんぽ', shop: '黒壁スクエア', color: 'from-blue-600 to-cyan-500' },
   tsuruga: { name: '敦賀市', food: '越前ガニ', move: 'ぐるっと敦賀周遊バス', shop: '日本海さかな街', color: 'from-emerald-600 to-teal-500' }
 }
+
+// 時系列天気データ（モック）
+const HOURLY_WEATHER = [
+  { time: '今', temp: 12, icon: Sun, precipitation: 0 },
+  { time: '10時', temp: 14, icon: Sun, precipitation: 0 },
+  { time: '11時', temp: 15, icon: CloudSun, precipitation: 0 },
+  { time: '12時', temp: 16, icon: CloudSun, precipitation: 10 },
+  { time: '13時', temp: 17, icon: Cloud, precipitation: 20 },
+  { time: '14時', temp: 16, icon: Cloud, precipitation: 30 },
+  { time: '15時', temp: 15, icon: CloudRain, precipitation: 50 },
+  { time: '16時', temp: 14, icon: CloudRain, precipitation: 60 },
+  { time: '17時', temp: 13, icon: Cloud, precipitation: 40 },
+  { time: '18時', temp: 12, icon: Cloud, precipitation: 20 },
+  { time: '19時', temp: 11, icon: CloudSun, precipitation: 10 },
+  { time: '20時', temp: 10, icon: Sun, precipitation: 0 },
+]
+
+// クーポン情報（モック）
+const COUPONS = [
+  { id: 1, shop: 'せんなり亭', discount: '10%OFF', description: 'ランチメニュー全品', expires: '1/31まで', color: 'from-orange-500 to-red-500' },
+  { id: 2, shop: 'カフェ琵琶湖', discount: 'ドリンク1杯無料', description: 'ケーキセット注文で', expires: '1/25まで', color: 'from-emerald-500 to-teal-500' },
+  { id: 3, shop: '彦根銀座商店街', discount: '500円引き', description: '2,000円以上お買い上げで', expires: '2/10まで', color: 'from-purple-500 to-pink-500' },
+]
+
+// イベント情報（モック）
+const EVENTS = [
+  { id: 1, title: '彦根城 梅まつり', date: '2/1〜3/15', location: '彦根城', category: 'お祭り', icon: PartyPopper },
+  { id: 2, title: '湖東地域フリーマーケット', date: '1/28(日)', location: '彦根市民会館', category: 'イベント', icon: ShoppingBag },
+  { id: 3, title: '確定申告相談会', date: '2/16〜3/15', location: '市役所1F', category: '行政', icon: CalendarDays },
+  { id: 4, title: 'ひこにゃん誕生祭', date: '4/13', location: '彦根城 天守前', category: 'お祭り', icon: Gift },
+]
 
 // 日本全国の都道府県リスト
 const ALL_PREFECTURES = [
@@ -106,6 +139,21 @@ export default function AppHome() {
   const [messages, setMessages] = useState([{ role: 'ai', text: '何かお手伝いするニャ？' }])
   const scrollRef = useRef<HTMLDivElement>(null)
   
+  // 経路検索用のステート
+  const [startPoint, setStartPoint] = useState<string>('彦根駅')
+  const [goalPoint, setGoalPoint] = useState<string>('京都駅')
+  const [departureDateTime, setDepartureDateTime] = useState<string>(() => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    const hours = String(now.getHours()).padStart(2, '0')
+    const minutes = String(now.getMinutes()).padStart(2, '0')
+    return `${year}-${month}-${day}T${hours}:${minutes}`
+  })
+  const [routes, setRoutes] = useState<any[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  
   // プロフィール登録モーダル用のステート
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(null)
@@ -115,12 +163,30 @@ export default function AppHome() {
   const [profile, setProfile] = useState<any>(null)
   const [profileLoading, setProfileLoading] = useState(false) // 初期値をfalseにして、ゲストモードで即座に表示できるようにする
   
+  // ユーザーの登録都市（ホーム画面のパーソナライズ用）
+  const [userCity, setUserCity] = useState<string | null>(null)
+  // ユーザーの選択エリア（profiles.selected_area）
+  const [userSelectedArea, setUserSelectedArea] = useState<string | null>(null)
+  // ユーザーのゴミ収集スケジュール（hikone_waste_master テーブルから取得）
+  const [userWasteSchedule, setUserWasteSchedule] = useState<HikoneWasteMaster | null>(null)
+  
   // 編集フォーム用のステート
   const [username, setUsername] = useState<string>('')
   const [avatarUrl, setAvatarUrl] = useState<string>('')
   const [prefecture, setPrefecture] = useState<string>('')
   const [city, setCity] = useState<string>('')
+  const [selectedArea, setSelectedArea] = useState<string>('') // エリア選択用
   const [saving, setSaving] = useState(false)
+  
+  // 彦根市のエリアリスト（hikone_waste_master の area_name に対応）
+  const HIKONE_AREAS = [
+    '河瀬・亀山・稲枝東・稲枝北・稲枝西',
+    '旭森・鳥居本・佐和山',
+    '平田・金城',
+    '城西',
+    '城南・城陽・若葉・高宮',
+    '城東・城北'
+  ]
   
   // 都道府県リスト（プロフィール編集用：47都道府県+海外）
   const PREFECTURES = [
@@ -155,16 +221,50 @@ export default function AppHome() {
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user) {
           setCurrentUser(session.user)
+          
+          // ユーザーの登録都市とエリアを取得（ホーム画面のパーソナライズ用）
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('city, selected_area')
+            .eq('id', session.user.id)
+            .single()
+          if (profile?.city) {
+            setUserCity(profile.city)
+          }
+          if (profile?.selected_area) {
+            setUserSelectedArea(profile.selected_area)
+            console.log(`🗑️ ユーザーのエリア: ${profile.selected_area}`)
+            
+            // selected_area がある場合は hikone_waste_master からスケジュールを取得
+            const { data: wasteData, error: wasteError } = await supabase
+              .from('hikone_waste_master')
+              .select('*')
+              .eq('area_name', profile.selected_area)
+              .single()
+            
+            if (wasteError) {
+              console.error('🗑️ hikone_waste_master 取得エラー:', wasteError)
+            }
+            
+            if (wasteData) {
+              console.log(`🗑️ ゴミ収集スケジュール取得成功:`, wasteData)
+              setUserWasteSchedule(wasteData)
+            } else {
+              console.log(`🗑️ ゴミ収集スケジュールが見つかりません（area_name: ${profile.selected_area}）`)
+            }
+          } else {
+            console.log(`🗑️ ユーザーのエリアが未設定です`)
+          }
+          
           // ホーム画面にいる場合のみプロフィールチェックを実行（viewを変更しない）
-          // 初期ロード時は view が 'main' なので、この条件は true になる
-          // ただし、この時点で既に 'profile' に切り替えられている場合は実行しない
-          // 注意: checkProfileCompletion 内でも view を変更しないことを確認済み
           checkProfileCompletion()
         } else {
           // セッションがnull（未ログイン）の場合
-          // 注意: view を変更しない（setView('main') を呼ばない）
           setCurrentUser(null)
           setProfileChecked(true)
+          setUserCity(null)
+          setUserSelectedArea(null)
+          setUserWasteSchedule(null)
         }
       } catch (error) {
         console.error('Session check error:', error)
@@ -296,7 +396,7 @@ export default function AppHome() {
       // プロフィール情報を取得
       const { data: profile, error } = await supabase
         .from('profiles')
-        .select('full_name, gender, age_range, residence, interests')
+        .select('full_name, gender, birthday, location, city, interests')
         .eq('id', session.user.id)
         .single()
       
@@ -348,24 +448,24 @@ export default function AppHome() {
                          profile.full_name !== null && 
                          profile.full_name !== undefined
       
-      // age_range の厳密なチェック
-      const hasAgeRange = profile.age_range && 
-                         profile.age_range !== '' && 
-                         profile.age_range !== null && 
-                         profile.age_range !== undefined
+      // birthday の厳密なチェック
+      const hasBirthday = profile.birthday && 
+                         profile.birthday !== '' && 
+                         profile.birthday !== null && 
+                         profile.birthday !== undefined
       
-      // residence の厳密なチェック
-      const hasResidence = profile.residence && 
-                          profile.residence !== '' && 
-                          profile.residence !== null && 
-                          profile.residence !== undefined
+      // location の厳密なチェック（居住地：都道府県）
+      const hasLocation = profile.location && 
+                          profile.location !== '' && 
+                          profile.location !== null && 
+                          profile.location !== undefined
       
-      // 詳細情報（年代、居住地のいずれか）が入力されているかチェック
-      const hasDetails = hasAgeRange || hasResidence
+      // 詳細情報（生年月日、居住地のいずれか）が入力されているかチェック
+      const hasDetails = hasBirthday || hasLocation
       
       console.log('hasFullName:', hasFullName, '| value:', profile.full_name)
-      console.log('hasAgeRange:', hasAgeRange, '| value:', profile.age_range)
-      console.log('hasResidence:', hasResidence, '| value:', profile.residence)
+      console.log('hasBirthday:', hasBirthday, '| value:', profile.birthday)
+      console.log('hasLocation:', hasLocation, '| value:', profile.location)
       console.log('hasDetails:', hasDetails)
       
       // ログイン済み かつ プロフィール未入力時: ホーム画面にのみ、登録を促すポップアップを1回だけ表示
@@ -451,10 +551,19 @@ export default function AppHome() {
       if (data) {
         setProfile(data)
         // 編集フォームのStateに反映
+        console.log('📝 プロフィール読み込み:', {
+          location: data.location,
+          city: data.city,
+          selected_area: data.selected_area
+        })
         setUsername(data.full_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'ユーザー')
         setAvatarUrl(data.avatar_url || session.user.user_metadata?.avatar_url || '')
-        setPrefecture(data.prefecture || '')
+        setPrefecture(data.location || data.prefecture || '')
         setCity(data.city || '')
+        setSelectedArea(data.selected_area || '')
+        // ホーム画面のパーソナライズ用に登録都市とエリアを設定
+        setUserCity(data.city || null)
+        setUserSelectedArea(data.selected_area || null)
       } else {
         // プロフィールがない場合
         const defaultName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'ユーザー'
@@ -468,6 +577,9 @@ export default function AppHome() {
         setAvatarUrl(session.user.user_metadata?.avatar_url || '')
         setPrefecture('')
         setCity('')
+        setSelectedArea('')
+        setUserCity(null)
+        setUserSelectedArea(null)
       }
     } catch (error) {
       console.error('Profile fetch error:', error)
@@ -533,6 +645,47 @@ export default function AppHome() {
     }
   }
 
+  // ルート検索関数
+  const handleSearchRoute = async () => {
+    setIsSearching(true)
+    try {
+      // departureDateTime を UNIX タイムスタンプ（秒）に変換
+      const departureTime = Math.floor(new Date(departureDateTime).getTime() / 1000)
+      
+      // テスト用: 彦根駅と京都駅の緯度経度を固定値で送信
+      const params = new URLSearchParams({
+        startLat: '35.2746',
+        startLon: '136.2522',
+        goalLat: '34.9858',
+        goalLon: '135.7588',
+        departure_time: departureTime.toString(),
+      })
+      
+      const res = await fetch(`/api/transport/route?${params.toString()}`)
+      const data = await res.json()
+      
+      // デバッグ: 取得したデータをコンソールに出力
+      console.log("取得したデータ:", data)
+      
+      // status が OK 以外の場合はエラー内容を alert で表示
+      if (data.status && data.status !== 'OK') {
+        alert(`エラー: ${data.status}\n詳細: ${data.msg || data.error_message || data.detail || 'エラーが発生しました'}`)
+      }
+      
+      if (res.ok && data.routes) {
+        setRoutes(data.routes || [])
+        console.log("取得したデータ:", data)
+      } else {
+        setRoutes([])
+      }
+    } catch (e) {
+      console.error('経路検索エラー:', e)
+      setRoutes([])
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
   const handleGoogleLogin = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -588,15 +741,22 @@ export default function AppHome() {
       }
 
       if (prefecture && prefecture.trim()) {
-        updateData.prefecture = prefecture.trim()
+        updateData.location = prefecture.trim() // locationカラムに都道府県を保存
       } else {
-        updateData.prefecture = null
+        updateData.location = null
       }
 
       if (city && city.trim()) {
         updateData.city = city.trim()
       } else {
         updateData.city = null
+      }
+
+      // 彦根市の場合はエリアを保存、それ以外はnull
+      if (city === '彦根市' && selectedArea) {
+        updateData.selected_area = selectedArea
+      } else {
+        updateData.selected_area = null
       }
 
       console.log('保存データ:', updateData)
@@ -620,9 +780,26 @@ export default function AppHome() {
           ...prev,
           full_name: username.trim(),
           avatar_url: avatarUrl.trim() || null,
-          prefecture: prefecture || null,
-          city: city.trim() || null
+          location: prefecture || null,
+          city: city.trim() || null,
+          selected_area: city === '彦根市' ? selectedArea : null
         }))
+        // ホーム画面のパーソナライズ用に更新
+        setUserCity(city.trim() || null)
+        setUserSelectedArea(city === '彦根市' ? selectedArea : null)
+        // エリアが設定された場合はゴミ収集スケジュールを更新
+        if (city === '彦根市' && selectedArea) {
+          const { data: wasteData } = await supabase
+            .from('hikone_waste_master')
+            .select('*')
+            .eq('area_name', selectedArea)
+            .single()
+          if (wasteData) {
+            setUserWasteSchedule(wasteData)
+          }
+        } else {
+          setUserWasteSchedule(null)
+        }
         // プロフィール情報を再取得
         await fetchProfileDataForEdit()
       }
@@ -688,31 +865,145 @@ export default function AppHome() {
       <main className="flex-1 overflow-y-auto p-6 pb-24">
         {/* 条件付きレンダリングを1箇所に集約（ガードなし） */}
         {view === 'main' && (
-          /* ホームコンテンツ */
-          <div className="max-w-xl mx-auto animate-in fade-in duration-500">
-            <div className={`bg-gradient-to-br ${mode === 'local' ? 'from-blue-500 to-indigo-600' : currentCity.color} rounded-[2.5rem] p-8 text-white shadow-xl mb-8 relative overflow-hidden transition-all duration-500`}>
-              <div className="relative z-10">
-                <p className="text-5xl font-black mb-2 tracking-tighter">12°C</p>
-                <p className="font-bold text-lg">{mode === 'local' ? '彦根市は今日も快晴ニャ！' : `${currentCity.name}を満喫してニャ！`}</p>
-              </div>
-              <Sun size={140} className="absolute -right-6 -bottom-6 opacity-20 rotate-12" />
-            </div>
+          /* ホームコンテンツ - 新UI */
+          <div className="max-w-xl mx-auto animate-in fade-in duration-500 space-y-4">
+            
+            {/* 1. ゴミ収集情報カード（独立コンポーネント） */}
+            <WasteScheduleCard
+              userCity={userCity}
+              userSelectedArea={userSelectedArea}
+              userWasteSchedule={userWasteSchedule}
+              onSetupClick={() => setView('profile')}
+            />
 
-            {mode === 'local' ? (
-              <div className="bg-white p-6 rounded-[2rem] shadow-sm flex items-center gap-4 border border-white">
-                <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center text-red-500"><Trash2 size={24}/></div>
-                <div><h3 className="font-black text-gray-800">明日のゴミ収集</h3><p className="text-sm text-gray-400 font-bold">燃やせるゴミの日ニャ</p></div>
+            {/* 2. 天気予報セクション */}
+            <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-[2rem] p-5 text-white shadow-xl relative overflow-hidden">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase opacity-80 mb-1">{userCity || '彦根市'}の天気</p>
+                  <div className="flex items-end gap-2">
+                    <p className="text-5xl font-black tracking-tighter">12°C</p>
+                    <p className="text-lg font-bold mb-2 opacity-90">晴れ</p>
+                  </div>
+                  <div className="flex items-center gap-3 mt-2 text-sm opacity-80">
+                    <span className="flex items-center gap-1"><Droplets size={14} /> 20%</span>
+                    <span className="flex items-center gap-1"><Wind size={14} /> 3m/s</span>
+                  </div>
+                </div>
+                <Sun size={70} className="text-yellow-300 opacity-90" />
               </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex justify-between items-center px-1"><h2 className="font-black text-gray-400 text-[10px] uppercase tracking-widest">Tourism</h2><button onClick={() => setIsCitySelectorOpen(true)} className="text-[10px] font-black text-orange-500 bg-white px-3 py-1 rounded-full border">街を変更</button></div>
-                <div className="bg-white p-5 rounded-[2rem] shadow-sm flex items-center gap-4">
-                  <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-orange-500"><Utensils size={20}/></div>
-                  <div className="flex-1"><p className="text-[9px] font-black text-gray-400 uppercase">Eating</p><p className="font-black text-gray-800">{currentCity.food}</p></div>
-                  <ChevronRight size={18} className="text-gray-200" />
+              
+              {/* 時系列天気（横スクロール） */}
+              <div className="mt-4 pt-4 border-t border-white/20">
+                <p className="text-[10px] font-black uppercase opacity-70 mb-3">12時間予報</p>
+                <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                  {HOURLY_WEATHER.map((hour, idx) => {
+                    const WeatherIcon = hour.icon
+                    return (
+                      <div key={idx} className="flex flex-col items-center min-w-[50px] bg-white/10 rounded-xl p-2">
+                        <p className="text-[10px] font-bold opacity-80">{hour.time}</p>
+                        <WeatherIcon size={20} className="my-1" />
+                        <p className="text-sm font-black">{hour.temp}°</p>
+                        {hour.precipitation > 0 && (
+                          <p className="text-[9px] text-blue-200">{hour.precipitation}%</p>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
-            )}
+            </div>
+
+            {/* 3. クーポン・バナーセクション */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <Ticket size={16} className="text-orange-500" />
+                  <h2 className="text-sm font-black text-gray-800">今日のクーポン</h2>
+                </div>
+                <button className="text-[10px] font-black text-orange-500">すべて見る</button>
+              </div>
+              
+              {/* クーポン横スクロール */}
+              <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                {COUPONS.map((coupon) => (
+                  <div 
+                    key={coupon.id} 
+                    className={`min-w-[200px] bg-gradient-to-br ${coupon.color} rounded-2xl p-4 text-white shadow-lg relative overflow-hidden`}
+                  >
+                    <div className="absolute -right-4 -bottom-4 opacity-10">
+                      <Gift size={60} />
+                    </div>
+                    <p className="text-[10px] font-bold opacity-80">{coupon.shop}</p>
+                    <p className="text-xl font-black mb-1">{coupon.discount}</p>
+                    <p className="text-[11px] font-bold opacity-90">{coupon.description}</p>
+                    <p className="text-[9px] font-bold opacity-70 mt-2">{coupon.expires}</p>
+                  </div>
+                ))}
+                {/* 広告枠プレースホルダー */}
+                <div className="min-w-[200px] bg-gray-100 rounded-2xl p-4 border-2 border-dashed border-gray-300 flex flex-col items-center justify-center">
+                  <Sparkles size={24} className="text-gray-300 mb-2" />
+                  <p className="text-[10px] font-black text-gray-400 text-center">あなたのお店の<br/>クーポンを掲載しませんか？</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. イベント情報リスト */}
+            <div className="bg-white rounded-[2rem] p-5 shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <CalendarDays size={18} className="text-purple-500" />
+                  <h2 className="text-sm font-black text-gray-800">イベント情報</h2>
+                </div>
+                <button className="text-[10px] font-black text-purple-500">もっと見る</button>
+              </div>
+              
+              <div className="space-y-3">
+                {EVENTS.map((event) => {
+                  const EventIcon = event.icon
+                  return (
+                    <div 
+                      key={event.id}
+                      className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl active:scale-[0.98] transition-all cursor-pointer"
+                    >
+                      <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center shrink-0">
+                        <EventIcon size={18} className="text-purple-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-sm text-gray-800 truncate">{event.title}</p>
+                        <div className="flex items-center gap-2 text-[10px] text-gray-500 font-bold">
+                          <span>{event.date}</span>
+                          <span>•</span>
+                          <span className="truncate">{event.location}</span>
+                        </div>
+                      </div>
+                      <span className={`text-[9px] font-black px-2 py-1 rounded-full shrink-0 ${
+                        event.category === 'お祭り' ? 'bg-orange-100 text-orange-600' :
+                        event.category === 'イベント' ? 'bg-blue-100 text-blue-600' :
+                        'bg-gray-200 text-gray-600'
+                      }`}>
+                        {event.category}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* ひこにゃんAI バナー */}
+            <div 
+              onClick={() => setIsChatOpen(true)}
+              className="bg-gradient-to-r from-orange-500 to-red-500 rounded-[2rem] p-5 text-white shadow-xl relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all"
+            >
+              <div className="flex items-center gap-4">
+                <img src={HIKONYAN_IMAGE} className="w-16 h-16 object-contain" alt="ひこにゃん" />
+                <div>
+                  <p className="font-black text-lg">困ったことがあったら</p>
+                  <p className="text-sm font-bold opacity-90">ひこにゃんAIに聞いてニャ！</p>
+                </div>
+              </div>
+              <Sparkles size={40} className="absolute right-4 top-1/2 -translate-y-1/2 opacity-20" />
+            </div>
           </div>
         )}
         
@@ -819,8 +1110,9 @@ export default function AppHome() {
                           value={prefecture}
                           onChange={(e) => {
                             setPrefecture(e.target.value)
-                            // 都道府県が変更されたら市区町村をリセット
+                            // 都道府県が変更されたら市区町村とエリアをリセット
                             setCity('')
+                            setSelectedArea('')
                           }}
                           className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                         >
@@ -843,7 +1135,13 @@ export default function AppHome() {
                           <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
                           <select
                             value={city}
-                            onChange={(e) => setCity(e.target.value)}
+                            onChange={(e) => {
+                              setCity(e.target.value)
+                              // 彦根市以外に変更された場合はエリアをリセット
+                              if (e.target.value !== '彦根市') {
+                                setSelectedArea('')
+                              }
+                            }}
                             className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                             required
                           >
@@ -855,6 +1153,52 @@ export default function AppHome() {
                         </div>
                       </div>
                     )}
+
+                    {/* お住まいのエリア選択セクション */}
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-2 ml-2">
+                        <div className="w-1.5 h-4 bg-blue-500 rounded-full" />
+                        <span className="text-xs font-black text-gray-400 uppercase tracking-widest">お住まいのエリア（彦根市限定）</span>
+                      </label>
+                      
+                      {city === '彦根市' ? (
+                        <>
+                          <div className="relative">
+                            <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-400" size={20} />
+                            <select
+                              value={selectedArea}
+                              onChange={(e) => setSelectedArea(e.target.value)}
+                              className="w-full bg-blue-50 border-2 border-transparent rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-700 focus:border-blue-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
+                            >
+                              <option value="">エリアを選択してください</option>
+                              {HIKONE_AREAS.map((area) => (
+                                <option key={area} value={area}>{area}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <p className="text-[10px] text-gray-500 ml-2">
+                            ※ エリアに合わせた情報（ゴミ収集日等）をお届けします
+                          </p>
+                          {selectedArea && (
+                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl">
+                              <p className="text-xs font-bold text-blue-700">
+                                📍 選択中: {selectedArea.split('・')[0]}...
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl">
+                          <p className="text-xs text-gray-500 text-center">
+                            {city ? (
+                              <>現在「{city}」が選択されています。<br/>エリア選択は彦根市在住の方のみご利用いただけます。</>
+                            ) : (
+                              <>上で「滋賀県」→「彦根市」を選択すると、<br/>詳細なエリアを設定できます。</>
+                            )}
+                          </p>
+                        </div>
+                      )}
+                    </div>
 
                     {/* 居住地：国名選択（海外が選択された場合のみ表示） */}
                     {prefecture === '海外' && (
@@ -929,6 +1273,30 @@ export default function AppHome() {
                             )}
                           </div>
                         </div>
+                        
+                        {/* 居住地情報 */}
+                        {(profile?.location || profile?.city) && (
+                          <div className="mt-4 pt-4 border-t border-white/20">
+                            <p className="text-xs text-white/60 font-bold mb-2">居住地</p>
+                            <div className="flex items-center gap-2">
+                              <MapPin size={16} className="text-white/80" />
+                              <p className="text-sm font-bold text-white">
+                                {profile?.location && profile?.city 
+                                  ? `${profile.location} ${profile.city}`
+                                  : profile?.location || profile?.city || ''
+                                }
+                              </p>
+                            </div>
+                            {/* エリア表示 */}
+                            {profile?.selected_area && (
+                              <div className="mt-2 px-3 py-1.5 bg-white/20 rounded-xl inline-block">
+                                <p className="text-xs font-bold text-white">
+                                  📍 {profile.selected_area.split('・')[0]}... エリア
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1202,16 +1570,8 @@ export default function AppHome() {
         />
       )}
 
-      {/* --- 下部ナビゲーション（app/page.tsx内で管理） --- */}
+      {/* --- 下部ナビゲーション --- */}
       <BottomNavigation 
-        currentView={view}
-        onViewChange={(newView) => {
-          // 強制移動ルール：ただのスイッチとして動作
-          // 他の条件判定を一切挟まず、ただviewを変更するだけ
-          console.log("ナビバー切り替え:", newView)
-          setIsChatOpen(false) // チャットが開いていたら閉じるだけ
-          setView(newView) // これだけ実行（リダイレクトや条件分岐なし）
-        }}
         onNavigate={() => {
           setIsChatOpen(false) // 他のページに遷移する時もチャットを閉じる
         }}

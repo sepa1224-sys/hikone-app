@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle } from 'lucide-react'
+import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
 
@@ -31,6 +31,29 @@ export default function ProfilePage() {
       subscription.unsubscribe()
     }
   }, [])
+
+  // 生年月日を読みやすい形式に整形する関数
+  const formatBirthday = (birthday: string | null | undefined): string => {
+    if (!birthday) return ''
+    try {
+      const date = new Date(birthday)
+      const year = date.getFullYear()
+      const month = date.getMonth() + 1
+      const day = date.getDate()
+      return `${year}年${month}月${day}日`
+    } catch {
+      return birthday
+    }
+  }
+
+  // 居住地を組み合わせて表示する関数
+  const formatLocation = (location: string | null | undefined, city: string | null | undefined): string => {
+    if (!location && !city) return ''
+    if (location && city) {
+      return `${location} ${city}`
+    }
+    return location || city || ''
+  }
 
   // プロフィールデータの取得
   const fetchProfileData = async () => {
@@ -131,34 +154,73 @@ export default function ProfilePage() {
               基本情報
             </h3>
             
-            <div className="space-y-3">
+            <div className="space-y-4">
+              {/* お名前 */}
+              {profile?.full_name && (
+                <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                  <span className="text-sm font-bold text-gray-500 flex items-center gap-2">
+                    <User size={16} className="text-orange-500" />
+                    お名前
+                  </span>
+                  <span className="text-sm font-black text-gray-800">{profile.full_name}</span>
+                </div>
+              )}
+
+              {/* 性別 */}
               {profile?.gender && (
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <span className="text-sm font-bold text-gray-500">性別</span>
+                <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                  <span className="text-sm font-bold text-gray-500 flex items-center gap-2">
+                    <UserCircle size={16} className="text-orange-500" />
+                    性別
+                  </span>
                   <span className="text-sm font-black text-gray-800">{profile.gender}</span>
                 </div>
               )}
-              
-              {profile?.age_range && (
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <span className="text-sm font-bold text-gray-500">年代</span>
-                  <span className="text-sm font-black text-gray-800">{profile.age_range}</span>
+
+              {/* 生年月日 */}
+              {profile?.birthday && (
+                <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                  <span className="text-sm font-bold text-gray-500 flex items-center gap-2">
+                    <Cake size={16} className="text-orange-500" />
+                    生年月日
+                  </span>
+                  <span className="text-sm font-black text-gray-800">{formatBirthday(profile.birthday)}</span>
                 </div>
               )}
-              
-              {profile?.residence && (
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <span className="text-sm font-bold text-gray-500 flex items-center gap-1">
-                    <MapPin size={14} />
+
+              {/* 居住地 */}
+              {formatLocation(profile?.location, profile?.city) && (
+                <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                  <span className="text-sm font-bold text-gray-500 flex items-center gap-2">
+                    <MapPin size={16} className="text-orange-500" />
                     居住地
                   </span>
-                  <span className="text-sm font-black text-gray-800">{profile.residence}</span>
+                  <span className="text-sm font-black text-gray-800">
+                    {formatLocation(profile?.location, profile?.city)}
+                  </span>
+                </div>
+              )}
+
+              {/* お住まいのエリア */}
+              {profile?.selected_area && (
+                <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                  <span className="text-sm font-bold text-gray-500 flex items-center gap-2">
+                    <MapPin size={16} className="text-blue-500" />
+                    お住まいのエリア
+                  </span>
+                  <span className="text-sm font-black text-blue-600">
+                    {profile.selected_area.split('・')[0]}...
+                  </span>
                 </div>
               )}
               
+              {/* 興味関心 */}
               {profile?.interests && profile.interests.length > 0 && (
-                <div className="py-2">
-                  <span className="text-sm font-bold text-gray-500 block mb-3">興味関心</span>
+                <div className="py-3 border-b border-gray-100">
+                  <span className="text-sm font-bold text-gray-500 block mb-3 flex items-center gap-2">
+                    <Heart size={16} className="text-orange-500" />
+                    興味関心
+                  </span>
                   <div className="flex flex-wrap gap-2">
                     {profile.interests.map((interest: string, index: number) => (
                       <span 
@@ -169,18 +231,6 @@ export default function ProfilePage() {
                       </span>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {profile?.last_login && (
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <span className="text-sm font-bold text-gray-500 flex items-center gap-1">
-                    <Calendar size={14} />
-                    最終ログイン
-                  </span>
-                  <span className="text-sm font-black text-gray-800">
-                    {new Date(profile.last_login).toLocaleDateString('ja-JP')}
-                  </span>
                 </div>
               )}
             </div>

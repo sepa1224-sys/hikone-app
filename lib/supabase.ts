@@ -11,16 +11,18 @@ export type Shop = {
   name: string
   category: string
   address: string
-  latitude: number      // 緯度
-  longitude: number     // 経度
-  opening_hours: string // 営業時間
-  phone: string         // 電話番号
+  latitude: number | null  // 緯度（未取得の場合はnull）
+  longitude: number | null // 経度（未取得の場合はnull）
+  place_id?: string        // Google Place ID（座標補正用）
+  opening_hours: string    // 営業時間
+  phone: string            // 電話番号
   image_url?: string 
+  image_urls?: string[]    // Google Places APIから取得した写真URL配列（最大5枚）
   // --- 💡 詳細ページ用の追加フィールド ---
-  description?: string    // お店の紹介文
-  price_range?: string    // 予算 (例: ¥1,000〜¥2,000)
-  menu_items?: string[]   // メニュー名の配列 (Supabaseでは text[] 型)
-  website_url?: string    // 公式サイトやInstagramのURL
+  description?: string     // お店の紹介文
+  price_range?: string     // 予算 (例: ¥1,000〜¥2,000)
+  menu_items?: string[]    // メニュー名の配列 (Supabaseでは text[] 型)
+  website_url?: string     // 公式サイトやInstagramのURL
 }
 
 // 営業中かどうかを判定する関数

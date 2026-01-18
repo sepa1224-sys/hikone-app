@@ -7,10 +7,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja">
-      <body className="bg-gray-50 pb-20"> {/* バーの高さ分、下に余白を空ける */}
+      <body className="bg-gray-50 pb-20">
         {/* メインコンテンツ */}
+        {/* ボトムナビゲーションは各ページで個別に呼び出し（onNavigateプロパティ対応のため） */}
         <main>{children}</main>
-        {/* ナビゲーションバーは各ページで管理 */}
       </body>
     </html>
   )

@@ -1,607 +1,329 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Train, MapPin, Search, Clock, ArrowUpDown, Bus, History, AlertCircle, X } from 'lucide-react'
+import { 
+  Train, MapPin, Search, Clock, ArrowUpDown, AlertCircle, 
+  ArrowLeft, ArrowRight, RefreshCw
+} from 'lucide-react'
 import BottomNavigation from '@/components/BottomNavigation'
+import { supabase } from '@/lib/supabase'
 
-const HIKONYAN_IMAGE = "https://kawntunevmabyxqmhqnv.supabase.co/storage/v1/object/public/images/hikonyan.png"
-
-// 1段目: 彦根エリア
-const HIKONE_STATIONS = {
-  jr: ['彦根', '南彦根', '河瀬', '稲枝'],
-  omi: ['ひこね芹川', '彦根口', '高宮', '鳥居本', 'フジテック前']
+const QUICK_STATIONS = {
+  hikone: ['彦根', '南彦根', '河瀬', '稲枝', 'ひこね芹川', '彦根口', '高宮', '鳥居本', 'フジテック前'],
+  major: ['米原', '長浜', '安土', '近江八幡', '野洲', '草津', '京都']
 }
 
-// 2段目: 周辺主要駅
-const NEARBY_STATIONS = ['米原', '長浜', '安土', '近江八幡', '野洲', '守山', '草津', '栗東', '瀬田']
-
-// 3段目: 広域エリアの駅
-const REGIONAL_STATIONS: Record<string, string[]> = {
-  '滋賀県（その他）': ['大津', '石山', '膳所', '南草津', '堅田', '比叡山坂本'],
-  '大阪': ['大阪', '新大阪', '天王寺', '梅田', '難波', '京橋', '鶴橋'],
-  '京都': ['京都', '山科', '伏見', '宇治', '亀岡', '園部'],
-  '愛知': ['名古屋', '豊橋', '岡崎', '一宮', '岐阜', '大垣']
-}
-
-// 駅名から駅IDを検索するマッピング（既知の駅）
-// 修正: JR西日本の東海道本線（琵琶湖線）は TokaidoSanyo を使用
-const STATION_ID_MAP: Record<string, string> = {
-  '彦根': 'odpt.Station:JR-West.TokaidoSanyo.Hikone',
-  '南彦根': 'odpt.Station:JR-West.TokaidoSanyo.MinamiHikone',
-  '河瀬': 'odpt.Station:JR-West.TokaidoSanyo.Kawase',
-  '稲枝': 'odpt.Station:JR-West.TokaidoSanyo.Inae',
-  'ひこね芹川': 'odpt.Station:Omi-Railway.Ohmi-Main.HikoneSerikawa',
-  '彦根口': 'odpt.Station:Omi-Railway.Ohmi-Main.Hikoneguchi',
-  '高宮': 'odpt.Station:Omi-Railway.Ohmi-Main.Takamiya',
-  '鳥居本': 'odpt.Station:Omi-Railway.Ohmi-Main.ToriiMoto',
-  'フジテック前': 'odpt.Station:Omi-Railway.Ohmi-Main.FujitecMae',
-  '米原': 'odpt.Station:JR-West.TokaidoSanyo.Maibara',
-  '長浜': 'odpt.Station:JR-West.Hokuriku.Nagahama',
-  '草津': 'odpt.Station:JR-West.TokaidoSanyo.Kusatsu',
-  '京都': 'odpt.Station:JR-West.TokaidoSanyo.Kyoto',
-  '大阪': 'odpt.Station:JR-West.TokaidoSanyo.Osaka',
-  '名古屋': 'odpt.Station:JR-Central.Tokaido.Nagoya'
-}
-
-interface RouteSection {
-  type: string
-  lineName?: string
-  from?: string
-  to?: string
-  departureTime?: string
-  arrivalTime?: string
-  trainType?: string
-  duration?: number
-  distance?: number
-}
-
-interface Route {
-  departure: string
-  arrival: string
-  duration: number
-  fare: number
-  transfers: number
-  sections: RouteSection[]
-}
-
-interface SearchHistoryItem {
-  departure: string
-  arrival: string
+// 修正ポイント：Google Directions APIで確実にヒットする Place ID を定義
+const STATION_DATA: Record<string, { lat: number; lon: number; id: string }> = {
+  '彦根': { lat: 35.2746, lon: 136.2522, id: 'ChIJqSwSmsjUA2ARUaJr69Vmcc4' },
+  '南彦根': { lat: 35.2467, lon: 136.2361, id: 'ChIJV4Y763HVA2ARp0Y3uGz9YgQ' },
+  '河瀬': { lat: 35.2206, lon: 136.2217, id: 'ChIJN6r3qD_XA2AR72Fv-qjC1mE' },
+  '稲枝': { lat: 35.1983, lon: 136.2069, id: 'ChIJP46O24vWA2ARFm9Y6v7O82E' },
+  '草津': { lat: 35.0222, lon: 135.9593, id: 'ChIJtz4xbz9yAWAREwliauTa0LQ' },
+  '京都': { lat: 34.9858, lon: 135.7588, id: 'ChIJ0eJ88pOnAWARn3oV1S68CIs' },
+  '米原': { lat: 35.3147, lon: 136.2908, id: 'ChIJz-S8C-3VA2ARf6WkI6yvL8g' },
+  '近江八幡': { lat: 35.1281, lon: 136.0986, id: 'ChIJs9kG9KDyA2AR3fW4zI785rE' },
 }
 
 export default function IdoPage() {
-  const [departure, setDeparture] = useState<string>('')
-  const [arrival, setArrival] = useState<string>('')
-  const [routes, setRoutes] = useState<Route[]>([])
+  const [departure, setDeparture] = useState('')
+  const [arrival, setArrival] = useState('')
+  const [focusedField, setFocusedField] = useState<'dep' | 'arr'>('dep')
+  const [routes, setRoutes] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string>('')
-  const [currentTime, setCurrentTime] = useState('')
-  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([])
-  const [isRegionalModalOpen, setIsRegionalModalOpen] = useState(false)
-  const [selectedRegion, setSelectedRegion] = useState<string>('滋賀県（その他）')
+  const [error, setError] = useState('')
+  const [searchDate, setSearchDate] = useState('')
+  const [searchTime, setSearchTime] = useState('')
+  const [isCached, setIsCached] = useState(false) // キャッシュから取得したかどうか
+  const [isFirstTrain, setIsFirstTrain] = useState(false) // 始発表示フラグ
 
-  // 現在時刻の更新
   useEffect(() => {
-    const timer = setInterval(() => {
-      const now = new Date()
-      setCurrentTime(now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0'))
-    }, 1000)
-    return () => clearInterval(timer)
+    const now = new Date()
+    setSearchDate(now.toISOString().split('T')[0])
+    setSearchTime(now.toTimeString().slice(0, 5))
   }, [])
 
-  // 検索履歴をローカルストレージから読み込み
-  useEffect(() => {
-    const saved = localStorage.getItem('transport_search_history')
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        setSearchHistory(parsed)
-      } catch (e) {
-        console.error('履歴読み込みエラー:', e)
-      }
-    }
-  }, [])
+  const formatTime = (time: any) => {
+    if (!time) return "--:--"
+    const date = new Date(time)
+    return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+  }
 
-  // 観光モードとの連動
-  useEffect(() => {
-    const mode = localStorage.getItem('app_mode')
-    const selectedCityId = localStorage.getItem('selected_city_id')
+  // ===== キャッシュ戦略: DB保存型 =====
+  const handleSearch = async (forceRefresh = false) => {
+    const cleanDep = departure.replace('駅', '')
+    const cleanArr = arrival.replace('駅', '')
+    const start = STATION_DATA[cleanDep]
+    const goal = STATION_DATA[cleanArr]
     
-    if (mode === 'tourist' && selectedCityId) {
-      const cityData: Record<string, any> = {
-        hikone: { name: '彦根市' },
-        nagahama: { name: '長浜市' },
-        tsuruga: { name: '敦賀市' }
-      }
-      
-      const cityName = cityData[selectedCityId]?.name
-      if (cityName && !arrival) {
-        const stationMap: Record<string, string> = {
-          '彦根市': '彦根',
-          '長浜市': '長浜',
-          '敦賀市': '敦賀'
-        }
-        if (stationMap[cityName]) {
-          setArrival(stationMap[cityName])
-        }
-      }
-    }
-  }, [])
-
-  // 出発駅をクイックセレクト（出発地の入力欄に入力するだけ）
-  // ステップ5: UIへの反映 - クイックセレクト時に「駅」を付加
-  const handleDepartureSelect = (station: string) => {
-    // 「駅」が含まれていない場合は「駅」を追加
-    const stationWithEki = station.includes('駅') ? station : `${station}駅`
-    setDeparture(stationWithEki)
-    setError('')
-    setRoutes([])
-  }
-
-  // 到着駅をクイックセレクト
-  // ステップ5: UIへの反映 - クイックセレクト時に「駅」を付加
-  const handleArrivalSelect = (station: string) => {
-    // 「駅」が含まれていない場合は「駅」を追加
-    const stationWithEki = station.includes('駅') ? station : `${station}駅`
-    setArrival(stationWithEki)
-    setError('')
-  }
-
-  // 履歴から選択（出発→到着の組み合わせ）
-  const handleHistorySelect = (item: SearchHistoryItem) => {
-    setDeparture(item.departure)
-    setArrival(item.arrival)
-    setError('')
-  }
-
-  // 検索実行（NAVITIME Route APIを使用）
-  const handleSearch = async () => {
-    if (!departure.trim()) {
-      setError('出発地を入力してください')
-      return
-    }
-
-    if (!arrival.trim()) {
-      setError('到着地を入力してください')
-      return
+    if (!start || !goal) { 
+      setError('リストにある主要駅（彦根、草津、京都、米原など）を選択してください')
+      return 
     }
 
     setLoading(true)
     setError('')
-    setRoutes([])
+    setIsCached(false)
+    setIsFirstTrain(false)
 
     try {
-      // NAVITIME Route APIで経路検索
-      const response = await fetch(
-        `/api/transport/route?start=${encodeURIComponent(departure)}&goal=${encodeURIComponent(arrival)}&start_time=${encodeURIComponent(currentTime)}`
-      )
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        const errorMessage = errorData.error || '経路検索に失敗しました'
+      // ===== 1. キャッシュ優先: Supabase から検索 =====
+      if (!forceRefresh) {
+        console.log('🔍 キャッシュを検索中...')
+        const now = new Date().toISOString()
         
-        // ステップ4: 究極のデバッグ - APIの生のメッセージを表示
-        let fullErrorMessage = errorMessage
-        if (errorData.apiMessage) {
-          fullErrorMessage += `\n\n[API詳細] ${errorData.apiMessage}`
-        }
-        if (errorData.apiErrorDetail) {
-          fullErrorMessage += `\n${errorData.apiErrorDetail}`
-        }
+        const { data: cachedData, error: cacheError } = await supabase
+          .from('train_routes')
+          .select('*')
+          .eq('departure_station', cleanDep)
+          .eq('arrival_station', cleanArr)
+          .gt('valid_until', now) // valid_until が現在時刻より後
+          .order('created_at', { ascending: false })
+          .limit(1)
         
-        // エラーメッセージが既にひこにゃん風ならそのまま使用
-        if (errorMessage.includes('ニャ')) {
-          setError(fullErrorMessage)
-        } else {
-          setError(`そんな場所は見当たらないニャ... もっと詳しく教えてほしいニャ！${errorData.apiMessage ? `\n\n[API詳細] ${errorData.apiMessage}` : ''}`)
+        if (!cacheError && cachedData && cachedData.length > 0) {
+          console.log('✅ キャッシュヒット！DBから経路を取得')
+          const cached = cachedData[0]
+          
+          // route_data を復元
+          const routeData = typeof cached.route_data === 'string' 
+            ? JSON.parse(cached.route_data) 
+            : cached.route_data
+          
+          setRoutes(routeData || [])
+          setIsCached(true)
+          setLoading(false)
+          return
         }
-        return
+        console.log('📭 キャッシュなし、APIを呼び出します')
+      } else {
+        console.log('🔄 強制更新モード: キャッシュを無視してAPIを呼び出します')
       }
 
-      const data = await response.json()
+      // ===== 2. API取得: キャッシュがない場合のみ =====
+      const startTime = `${searchDate}T${searchTime}:00`
+      const departureTime = Math.floor(new Date(startTime).getTime() / 1000)
       
-      if (!data.routes || data.routes.length === 0) {
-        setError('経路が見つからなかったニャ... 出発地と到着地を確認してニャ！')
-        return
+      console.log('[API] 経路検索パラメータ:', { cleanDep, cleanArr, departureTime })
+      
+      const params = new URLSearchParams({
+        start_id: start.id,
+        goal_id: goal.id,
+        startLat: start.lat.toString(),
+        startLon: start.lon.toString(),
+        goalLat: goal.lat.toString(),
+        goalLon: goal.lon.toString(),
+        departure_time: departureTime.toString(),
+      })
+      
+      const res = await fetch(`/api/transport/route?${params.toString()}`)
+      const data = await res.json()
+
+      if (res.ok && data.routes && data.routes.length > 0) {
+        setRoutes(data.routes)
+        setError('')
+        
+        // 始発フラグを設定
+        if (data.isFirstTrain) {
+          setIsFirstTrain(true)
+        }
+        
+        // ===== 3. DB保存: 取得した経路をキャッシュとして保存 =====
+        const validUntil = new Date()
+        validUntil.setHours(validUntil.getHours() + 1) // 1時間後
+        
+        const { error: saveError } = await supabase
+          .from('train_routes')
+          .insert({
+            departure_station: cleanDep,
+            arrival_station: cleanArr,
+            route_data: data.routes,
+            valid_until: validUntil.toISOString(),
+          })
+        
+        if (saveError) {
+          console.error('❌ キャッシュ保存失敗:', saveError.message)
+        } else {
+          console.log('✅ 経路をDBにキャッシュ保存完了（有効期限: 1時間）')
+        }
+      } else if (res.ok && data.routes && data.routes.length === 0) {
+        setRoutes([])
+        setError('指定された時間の経路は見つかりませんでした。別の時間を試してください')
+      } else {
+        setError(data.error || '経路が見つかりませんでした。時刻を少し遅らせてみてください。')
+        setRoutes([])
       }
-
-      setRoutes(data.routes)
-
-      // 履歴に追加（出発→到着の組み合わせ）
-      const historyItem: SearchHistoryItem = { departure, arrival }
-      const newHistory = [historyItem, ...searchHistory.filter(
-        item => !(item.departure === departure && item.arrival === arrival)
-      )].slice(0, 5)
-      setSearchHistory(newHistory)
-      localStorage.setItem('transport_search_history', JSON.stringify(newHistory))
-    } catch (error: any) {
-      console.error('検索エラー:', error)
-      setError('通信に失敗したニャ... もう一度お試しください')
-    } finally {
-      setLoading(false)
+    } catch (e) { 
+      console.error('通信エラー:', e)
+      setError('通信エラーが発生しました') 
+    } finally { 
+      setLoading(false) 
     }
   }
 
-  // 出発地と到着地を入れ替え
-  const handleSwap = () => {
-    const temp = departure
-    setDeparture(arrival)
-    setArrival(temp)
-    setError('')
-  }
-
-  // 広域エリアの駅を選択
-  // ステップ5: UIへの反映 - クイックセレクト時に「駅」を付加
-  const handleRegionalStationSelect = (station: string) => {
-    // 「駅」が含まれていない場合は「駅」を追加
-    const stationWithEki = station.includes('駅') ? station : `${station}駅`
-    setArrival(stationWithEki)
-    setIsRegionalModalOpen(false)
-    setError('')
-  }
-
   return (
-    <div className="max-w-md mx-auto p-4 pb-24 bg-slate-50 min-h-screen">
-      <header className="mb-4">
-        <h1 className="text-2xl font-black text-blue-900 flex items-center gap-2 mb-2">
-          <Train className="w-6 h-6" /> 移動
-        </h1>
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-gray-500 font-bold">
-            出発地から到着地まで経路を検索
-          </p>
-          <span className="text-xs font-mono bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-bold">
-            {currentTime}
-          </span>
+    <div className="max-w-md mx-auto bg-[#F8F9FB] min-h-screen pb-24 font-sans text-slate-800">
+      <div className="bg-white p-6 pt-10 rounded-b-[40px] shadow-sm border-b border-gray-100">
+        <div className="flex items-center gap-4 mb-8">
+          <ArrowLeft className="text-blue-500 cursor-pointer" />
+          <Train className="text-blue-600" size={32} />
+          <h1 className="text-2xl font-black tracking-tight">彦根おでかけナビ</h1>
         </div>
-      </header>
 
-      {/* 1. 検索欄（最上部、コンパクト） */}
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-blue-50 mb-3">
-        <div className="space-y-3">
-          {/* 出発地 */}
-          <div>
-            <label className="text-[10px] font-black text-blue-400 mb-1 block uppercase">
-              出発
-            </label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={16} />
-              <input
-                type="text"
-                value={departure}
-                onChange={(e) => {
-                  setDeparture(e.target.value)
-                  setError('')
-                }}
-                placeholder="出発地（駅名・施設名など）"
-                className="w-full bg-gray-50 border-2 border-transparent rounded-lg py-2 pl-10 pr-8 font-bold text-sm text-gray-700 focus:border-blue-400 focus:bg-white focus:outline-none transition-all"
+        <div className="flex items-center gap-2 mb-6 relative">
+          <div className="flex-1 space-y-3">
+            <div className={`relative transition-all ${focusedField === 'dep' ? 'scale-[1.02]' : ''}`}>
+              <input 
+                value={departure} 
+                onFocus={() => setFocusedField('dep')} 
+                onChange={e => setDeparture(e.target.value)}
+                className="w-full bg-[#EDF1F7] rounded-full py-3.5 px-12 font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 text-black placeholder:text-slate-400" 
+                placeholder="出発駅" 
               />
+              <MapPin className="absolute left-4 top-4 text-blue-500" size={20} />
+            </div>
+            <div className={`relative transition-all ${focusedField === 'arr' ? 'scale-[1.02]' : ''}`}>
+              <input 
+                value={arrival} 
+                onFocus={() => setFocusedField('arr')} 
+                onChange={e => setArrival(e.target.value)}
+                className="w-full bg-[#EDF1F7] rounded-full py-3.5 px-12 font-bold focus:outline-none focus:ring-2 focus:ring-green-400 text-black placeholder:text-slate-400" 
+                placeholder="到着駅" 
+              />
+              <MapPin className="absolute left-4 top-4 text-green-500" size={20} />
             </div>
           </div>
+          <button 
+            onClick={() => {setDeparture(arrival); setArrival(departure)}} 
+            className="bg-white p-2.5 rounded-full shadow-lg absolute left-[45%] z-10 border border-gray-100 active:scale-95 transition-transform"
+          >
+            <ArrowUpDown size={18} className="text-blue-600" />
+          </button>
+        </div>
 
-          {/* 入れ替えボタン */}
-          <div className="flex justify-center -my-1">
-            <button
-              onClick={handleSwap}
-              className="p-1.5 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+        <button 
+          onClick={() => handleSearch(false)} 
+          disabled={loading} 
+          className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 text-white py-4 rounded-full font-black text-lg shadow-xl flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-70"
+        >
+          {loading ? "時刻表を照会中..." : <><Search size={20}/> 時刻表・経路を検索</>}
+        </button>
+      </div>
+
+      <div className="p-6">
+        <h2 className="text-xs font-black text-slate-400 mb-3 ml-2 uppercase tracking-widest">主な周辺駅</h2>
+        <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+          {[...QUICK_STATIONS.hikone, ...QUICK_STATIONS.major].map(s => (
+            <button 
+              key={s} 
+              onClick={() => {
+                const name = s.endsWith('駅') ? s : `${s}駅`;
+                if (focusedField === 'dep') { 
+                  setDeparture(name); 
+                  setFocusedField('arr'); 
+                } else { 
+                  setArrival(name); 
+                }
+              }} 
+              className="px-5 py-2 rounded-full border-2 border-gray-100 bg-white text-xs font-black whitespace-nowrap shadow-sm active:bg-blue-50 transition-all hover:border-blue-200"
             >
-              <ArrowUpDown size={14} className="text-gray-600" />
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="px-6 space-y-6">
+        {/* キャッシュから取得した場合の表示 */}
+        {isCached && routes.length > 0 && (
+          <div className="p-3 bg-green-50 text-green-700 rounded-xl text-center text-xs font-bold flex items-center justify-center gap-2 border border-green-200">
+            <Clock size={14} />
+            キャッシュから取得しました（高速表示）
+          </div>
+        )}
+
+        {/* 始発表示の場合のメッセージ */}
+        {isFirstTrain && routes.length > 0 && (
+          <div className="p-4 bg-amber-50 text-amber-700 rounded-2xl text-center font-bold flex flex-col items-center gap-2 border border-amber-200">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={18} />
+              本日の運行は終了しました
+            </div>
+            <div className="text-xs font-medium opacity-80">
+              始発（5:00以降）の情報を表示しています
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-center font-bold flex items-center justify-center gap-2 border border-red-100">
+            <AlertCircle size={18} />
+            {error}
+          </div>
+        )}
+
+        {routes.map((route, idx) => (
+          <div key={idx} className="bg-white rounded-[35px] overflow-hidden shadow-xl border border-gray-50">
+            <div className="bg-slate-800 p-6 text-white">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2">
+                  <Clock size={14} className="text-blue-400" />
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded bg-blue-500/20 text-blue-400">最速</span>
+                </div>
+                <div className="text-xl font-black text-green-400">¥{route.summary?.fare?.total || '---'}</div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="text-3xl font-black tracking-tighter flex items-center">
+                  {formatTime(route.summary.start_time)}
+                  <div className="flex flex-col items-center mx-3">
+                    <ArrowRight size={16} className="text-blue-500" />
+                  </div>
+                  {formatTime(route.summary.arrival_time)}
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] font-bold opacity-50">所要時間</div>
+                  <div className="text-lg font-black text-blue-400">{route.summary.move.time}分</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 relative">
+              <div className="space-y-8">
+                {route.sections.map((section: any, sIdx: number) => (
+                  <div key={sIdx} className="flex gap-6">
+                    <div className="w-12 h-12 bg-white border-4 border-blue-600 rounded-2xl flex items-center justify-center text-blue-600 shrink-0">
+                      <Train size={24} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-black text-slate-800 bg-blue-50 px-3 py-1 rounded-lg inline-block mb-2">
+                        {section.transit?.line?.name || "JR 琵琶湖線"}
+                      </div>
+                      <div className="text-xs font-black text-slate-600">
+                        {section.transit?.from?.name} <span className="mx-1 opacity-30">→</span> {section.transit?.to?.name}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* 最新の情報に更新ボタン */}
+        {routes.length > 0 && (
+          <div className="pt-4 pb-2">
+            <button
+              onClick={() => handleSearch(true)}
+              disabled={loading}
+              className="w-full py-3 text-xs font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              最新の情報に更新（キャッシュを無視してAPIを叩く）
             </button>
           </div>
-
-          {/* 到着地 */}
-          <div>
-            <label className="text-[10px] font-black text-blue-400 mb-1 block uppercase">
-              到着
-            </label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={16} />
-              <input
-                type="text"
-                value={arrival}
-                onChange={(e) => {
-                  setArrival(e.target.value)
-                  setError('')
-                }}
-                placeholder="到着地（駅名・施設名など）"
-                className="w-full bg-gray-50 border-2 border-transparent rounded-lg py-2 pl-10 pr-8 font-bold text-sm text-gray-700 focus:border-blue-400 focus:bg-white focus:outline-none transition-all"
-              />
-            </div>
-          </div>
-
-          {/* 検索ボタン */}
-          <button
-            onClick={handleSearch}
-            disabled={loading || !departure.trim()}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-3 rounded-lg font-black shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
-          >
-            {loading ? (
-              <>
-                <div className="animate-spin">🐱</div>
-                <span>ひこにゃんが地図を広げて調べてるニャ...</span>
-              </>
-            ) : (
-              <>
-                <Search size={16} />
-                <span>経路を検索</span>
-              </>
-            )}
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* 2. 履歴セクション（検索欄の直下） */}
-      {searchHistory.length > 0 && (
-        <div className="mb-3">
-          <label className="text-[10px] font-black text-blue-400 mb-2 block uppercase flex items-center gap-1">
-            <History size={12} />
-            最近の検索
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {searchHistory.map((item, index) => (
-              <button
-                key={index}
-                onClick={() => handleHistorySelect(item)}
-                className="px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200 transition-all"
-              >
-                {item.departure} → {item.arrival}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 3. 3段構成のクイックセレクト */}
-      <div className="mb-4 space-y-3">
-        {/* 1段目: 彦根エリア */}
-        <div>
-          <label className="text-[10px] font-black text-blue-400 mb-2 block uppercase">彦根エリア</label>
-          <div className="space-y-2">
-            <div>
-              <span className="text-[9px] font-bold text-gray-400 mb-1 block">JR</span>
-              <div className="flex flex-wrap gap-2">
-                {HIKONE_STATIONS.jr.map(station => (
-                  <button
-                    key={station}
-                    onClick={() => handleDepartureSelect(station)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                      departure === station
-                        ? 'bg-blue-600 text-white shadow-md scale-105'
-                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-blue-50'
-                    }`}
-                  >
-                    {station}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <span className="text-[9px] font-bold text-gray-400 mb-1 block">近江鉄道</span>
-              <div className="flex flex-wrap gap-2">
-                {HIKONE_STATIONS.omi.map(station => (
-                  <button
-                    key={station}
-                    onClick={() => handleDepartureSelect(station)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                      departure === station
-                        ? 'bg-blue-600 text-white shadow-md scale-105'
-                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-blue-50'
-                    }`}
-                  >
-                    {station}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 2段目: 周辺主要駅 */}
-        <div>
-          <label className="text-[10px] font-black text-blue-400 mb-2 block uppercase">周辺主要駅</label>
-          <div className="flex flex-wrap gap-2">
-            {NEARBY_STATIONS.map(station => (
-              <button
-                key={station}
-                onClick={() => handleArrivalSelect(station)}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  arrival === station
-                    ? 'bg-orange-500 text-white shadow-md scale-105'
-                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-orange-50'
-                }`}
-              >
-                {station}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 3段目: 広域選択ボタン */}
-        <div>
-          <button
-            onClick={() => setIsRegionalModalOpen(true)}
-            className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white py-3 rounded-lg font-black shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
-          >
-            <MapPin size={16} />
-            <span>他のエリアの駅を選ぶ</span>
-          </button>
-        </div>
-      </div>
-
-      {/* エラーメッセージ */}
-      {error && (
-        <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-4 flex items-start gap-3">
-          <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={20} />
-          <div className="flex-1">
-            <div className="text-sm font-black text-red-800 mb-1">エラー</div>
-            <div className="text-xs font-bold text-red-600 whitespace-pre-line">{error}</div>
-            {/* APIの生のエラーメッセージがある場合は小さく表示 */}
-            {error.includes('[API詳細]') && (
-              <div className="text-[10px] text-red-500 mt-2 p-2 bg-red-100 rounded border border-red-200 font-mono">
-                {error.split('[API詳細]')[1]}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 経路検索結果 */}
-      {routes.length > 0 && (
-        <div className="space-y-3">
-          <div className="bg-gradient-to-r from-blue-100 to-purple-100 border-2 border-blue-300 rounded-2xl p-4 shadow-lg relative overflow-hidden mb-4">
-            <div className="absolute -top-2 -right-2 w-16 h-16 bg-blue-200/30 rounded-full blur-xl" />
-            <div className="relative z-10 flex items-start gap-3">
-              <img 
-                src={HIKONYAN_IMAGE} 
-                alt="ひこにゃん" 
-                className="w-12 h-12 flex-shrink-0 object-contain"
-              />
-              <div className="flex-1">
-                <div className="text-sm font-black text-gray-800 mb-1">
-                  {routes.length}件の経路が見つかったニャ！
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {routes.map((route, routeIndex) => {
-            const durationMinutes = Math.floor(route.duration / 60)
-            const durationHours = Math.floor(durationMinutes / 60)
-            const durationText = durationHours > 0 
-              ? `${durationHours}時間${durationMinutes % 60}分`
-              : `${durationMinutes}分`
-
-            return (
-              <div
-                key={routeIndex}
-                className={`bg-white rounded-2xl p-5 shadow-lg border-2 transition-all hover:scale-[1.02] ${
-                  routeIndex === 0
-                    ? 'border-orange-400 bg-gradient-to-br from-orange-50 to-white'
-                    : 'border-blue-200 hover:border-blue-300'
-                }`}
-              >
-                {/* 経路概要 */}
-                <div className="flex items-center justify-between mb-4 pb-4 border-b">
-                  <div>
-                    <div className="text-xs font-black text-gray-400 uppercase mb-1">総所要時間</div>
-                    <div className="text-2xl font-black text-gray-800">{durationText}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs font-black text-gray-400 uppercase mb-1">運賃</div>
-                    <div className="text-xl font-black text-blue-600">{route.fare}円</div>
-                  </div>
-                  {route.transfers > 0 && (
-                    <div className="text-right">
-                      <div className="text-xs font-black text-gray-400 uppercase mb-1">乗換</div>
-                      <div className="text-lg font-black text-orange-600">{route.transfers}回</div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 経路ステップ */}
-                <div className="space-y-2">
-                  {route.sections.map((section, sectionIndex) => (
-                    <div key={sectionIndex} className="flex items-start gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        section.type === 'walk' 
-                          ? 'bg-gray-300 text-gray-700'
-                          : 'bg-blue-500 text-white'
-                      }`}>
-                        {section.type === 'walk' ? '🚶' : section.type === 'bus' ? '🚌' : '🚃'}
-                      </div>
-                      <div className="flex-1">
-                        {section.type === 'walk' ? (
-                          <div className="text-sm font-bold text-gray-700">
-                            徒歩{Math.floor((section.duration || 0) / 60)}分
-                            {section.distance ? ` (${Math.floor((section.distance || 0) / 1000)}km)` : ''}
-                          </div>
-                        ) : (
-                          <>
-                            <div className="text-xs font-black text-gray-400 uppercase mb-1">
-                              {section.lineName || '電車'}
-                            </div>
-                            <div className="text-sm font-black text-gray-800 mb-1">
-                              {section.from} → {section.to}
-                            </div>
-                            {section.departureTime && section.arrivalTime && (
-                              <div className="text-xs font-bold text-gray-600">
-                                {section.departureTime}発 → {section.arrivalTime}着
-                              </div>
-                            )}
-                            {section.trainType && (
-                              <div className="mt-1">
-                                <span className={`text-[10px] px-2 py-1 rounded-full font-black ${
-                                  section.trainType.includes('快速') || section.trainType.includes('新快速')
-                                    ? 'bg-orange-500 text-white'
-                                    : 'bg-blue-100 text-blue-700'
-                                }`}>
-                                  {section.trainType}
-                                </span>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* 4. 「他のエリア」ポップアップ */}
-      {isRegionalModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col">
-            {/* ヘッダー */}
-            <div className="flex items-center justify-between p-4 border-b">
-              <h2 className="text-lg font-black text-gray-800">他のエリアの駅を選ぶ</h2>
-              <button
-                onClick={() => setIsRegionalModalOpen(false)}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <X size={20} className="text-gray-600" />
-              </button>
-            </div>
-
-            {/* タブ */}
-            <div className="flex border-b overflow-x-auto">
-              {Object.keys(REGIONAL_STATIONS).map(region => (
-                <button
-                  key={region}
-                  onClick={() => setSelectedRegion(region)}
-                  className={`px-4 py-3 text-sm font-bold whitespace-nowrap transition-colors ${
-                    selectedRegion === region
-                      ? 'bg-blue-600 text-white border-b-2 border-blue-600'
-                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  {region}
-                </button>
-              ))}
-            </div>
-
-            {/* 駅リスト */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="grid grid-cols-2 gap-2">
-                {REGIONAL_STATIONS[selectedRegion].map(station => (
-                  <button
-                    key={station}
-                    onClick={() => handleRegionalStationSelect(station)}
-                    className="px-4 py-3 rounded-lg text-sm font-bold bg-white border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-left"
-                  >
-                    {station}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 下部ナビゲーション */}
       <BottomNavigation />
     </div>
   )
