@@ -101,19 +101,14 @@ export default function IdoPage() {
       }
 
       // ===== 2. API取得: キャッシュがない場合のみ =====
-      const startTime = `${searchDate}T${searchTime}:00`
-      const departureTime = Math.floor(new Date(startTime).getTime() / 1000)
-      
-      console.log('[API] 経路検索パラメータ:', { cleanDep, cleanArr, departureTime })
+      // シンプルに座標だけを送る（Place ID は使用しない）
+      console.log('[API] 経路検索パラメータ:', { cleanDep, cleanArr, start, goal })
       
       const params = new URLSearchParams({
-        start_id: start.id,
-        goal_id: goal.id,
         startLat: start.lat.toString(),
         startLon: start.lon.toString(),
         goalLat: goal.lat.toString(),
         goalLon: goal.lon.toString(),
-        departure_time: departureTime.toString(),
       })
       
       const res = await fetch(`/api/transport/route?${params.toString()}`)
