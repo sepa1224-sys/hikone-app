@@ -6,7 +6,9 @@ import { usePathname, useRouter } from 'next/navigation'
 import { 
   Sun, Send, X, UserCircle, Sparkles, Building2, Map as MapIcon, 
   ChevronRight, LogOut, Edit, Mail, MapPin, User, Search,
-  Cloud, CloudRain, CloudSun, Droplets, Wind, Ticket, Gift, CalendarDays, PartyPopper, ShoppingBag
+  Cloud, CloudRain, CloudSun, Droplets, Wind, Ticket, Gift, CalendarDays, PartyPopper, ShoppingBag,
+  Camera, Trophy, Target, CheckCircle, Star, Coffee, Utensils, Castle, Mountain, 
+  Heart, ShoppingCart, Bike, Upload, Award
 } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
@@ -52,6 +54,20 @@ const EVENTS = [
   { id: 2, title: '湖東地域フリーマーケット', date: '1/28(日)', location: '彦根市民会館', category: 'イベント', icon: ShoppingBag },
   { id: 3, title: '確定申告相談会', date: '2/16〜3/15', location: '市役所1F', category: '行政', icon: CalendarDays },
   { id: 4, title: 'ひこにゃん誕生祭', date: '4/13', location: '彦根城 天守前', category: 'お祭り', icon: Gift },
+]
+
+// マンスリーチャレンジのミッション（モック）
+const MONTHLY_MISSIONS = [
+  { id: 1, title: '彦根城で記念撮影', description: '彦根城の天守閣をバックに写真を撮影しよう！', icon: Castle, location: '彦根城', points: 100 },
+  { id: 2, title: '近江牛ランチ', description: '対象店舗で近江牛ランチを食べよう', icon: Utensils, location: 'せんなり亭', points: 150 },
+  { id: 3, title: 'カフェでひとやすみ', description: '四番町のカフェでドリンクを注文', icon: Coffee, location: '四番町スクエア', points: 80 },
+  { id: 4, title: 'ひこにゃんに会う', description: 'ひこにゃんと一緒に写真を撮ろう', icon: Heart, location: '彦根城周辺', points: 200 },
+  { id: 5, title: '琵琶湖サイクリング', description: '彦根港〜長浜の湖岸をサイクリング', icon: Bike, location: '琵琶湖岸', points: 120 },
+  { id: 6, title: '地元スーパーでお買い物', description: '平和堂で1,000円以上お買い物', icon: ShoppingCart, location: '平和堂彦根店', points: 50 },
+  { id: 7, title: '佐和山登山', description: '佐和山（232m）の山頂で写真撮影', icon: Mountain, location: '佐和山', points: 180 },
+  { id: 8, title: 'スタンプラリー完走', description: '彦根駅〜彦根城のスタンプを全て集める', icon: Star, location: '彦根市内', points: 100 },
+  { id: 9, title: '地元グルメ投稿', description: '彦根グルメの写真をSNSに投稿', icon: Camera, location: '彦根市内', points: 60 },
+  { id: 10, title: '観光案内所訪問', description: '彦根観光案内所でパンフレットをゲット', icon: MapPin, location: '彦根駅前', points: 30 },
 ]
 
 // 日本全国の都道府県リスト
@@ -169,6 +185,23 @@ export default function AppHome() {
   const [userSelectedArea, setUserSelectedArea] = useState<string | null>(null)
   // ユーザーのゴミ収集スケジュール（hikone_waste_master テーブルから取得）
   const [userWasteSchedule, setUserWasteSchedule] = useState<HikoneWasteMaster | null>(null)
+  
+  // フォトコンテストイベント（events テーブルから取得）
+  const [activeEvent, setActiveEvent] = useState<{
+    id: string
+    title: string
+    prize_amount: number
+    end_date: string
+  } | null>(null)
+  
+  // マンスリーチャレンジ用のステート
+  const [completedMissions, setCompletedMissions] = useState<number[]>([1, 3, 6]) // デモ用：いくつかクリア済み
+  const [selectedMission, setSelectedMission] = useState<typeof MONTHLY_MISSIONS[0] | null>(null)
+  const [missionModalOpen, setMissionModalOpen] = useState(false)
+  const [missionPhoto, setMissionPhoto] = useState<File | null>(null)
+  const [missionPhotoPreview, setMissionPhotoPreview] = useState<string | null>(null)
+  const [uploadingMission, setUploadingMission] = useState(false)
+  const missionFileInputRef = useRef<HTMLInputElement>(null)
   
   // 編集フォーム用のステート
   const [username, setUsername] = useState<string>('')
@@ -345,6 +378,43 @@ export default function AppHome() {
       setProfileLoading(false)
     }
   }, [currentUser])
+
+  // フォトコンテストイベントを取得
+  useEffect(() => {
+    const fetchActiveEvent = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('events')
+          .select('id, title, prize_amount, end_date')
+          .eq('status', 'active')
+          .order('prize_amount', { ascending: false })
+          .limit(1)
+          .single()
+        
+        if (data && !error) {
+          setActiveEvent(data)
+        } else {
+          // DBにイベントがない場合、デモ用のモックデータ
+          setActiveEvent({
+            id: 'demo-1',
+            title: '彦根城 冬の絶景フォトコンテスト',
+            prize_amount: 5000,
+            end_date: '2026-02-28'
+          })
+        }
+      } catch (err) {
+        console.error('イベント取得エラー:', err)
+        // エラー時もモックデータを表示
+        setActiveEvent({
+          id: 'demo-1',
+          title: '彦根の冬景色フォトコンテスト',
+          prize_amount: 5000,
+          end_date: '2026-02-28'
+        })
+      }
+    }
+    fetchActiveEvent()
+  }, [])
 
   // プロフィールページが表示されたときにデータを取得
   useEffect(() => {
@@ -825,6 +895,49 @@ export default function AppHome() {
     }
   }
 
+  // ミッション写真選択
+  const handleMissionPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert('ファイルサイズは10MB以下にしてください')
+        return
+      }
+      if (!file.type.startsWith('image/')) {
+        alert('画像ファイルを選択してください')
+        return
+      }
+      setMissionPhoto(file)
+      setMissionPhotoPreview(URL.createObjectURL(file))
+    }
+  }
+
+  // ミッション完了
+  const handleCompleteMission = async () => {
+    if (!selectedMission || !missionPhoto || !currentUser) {
+      alert('写真をアップロードしてください')
+      return
+    }
+    
+    setUploadingMission(true)
+    
+    // 実際のアップロード処理（デモでは省略してタイマーで完了させる）
+    setTimeout(() => {
+      setCompletedMissions(prev => [...prev, selectedMission.id])
+      setMissionModalOpen(false)
+      setSelectedMission(null)
+      setMissionPhoto(null)
+      setMissionPhotoPreview(null)
+      setUploadingMission(false)
+      alert('ミッションクリア！おめでとうございます！')
+    }, 1500)
+  }
+
+  // ミッション達成数の計算
+  const completedCount = completedMissions.length
+  const remainingFor500Yen = Math.max(0, 5 - completedCount) // 5つで500円商品券
+  const remainingForGrandPrize = Math.max(0, 10 - completedCount) // 10個で豪華景品応募
+
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
   return (
@@ -876,7 +989,161 @@ export default function AppHome() {
               onSetupClick={() => setView('profile')}
             />
 
-            {/* 2. 天気予報セクション */}
+            {/* 2. フォトコンテストバナー */}
+            {activeEvent && (
+              <div 
+                onClick={() => {
+                  if (currentUser) {
+                    router.push('/event')
+                  } else {
+                    router.push('/login')
+                  }
+                }}
+                className="relative bg-gradient-to-r from-purple-600 via-pink-500 to-orange-400 rounded-[2rem] p-5 text-white shadow-xl overflow-hidden cursor-pointer active:scale-[0.98] transition-all group"
+              >
+                {/* 背景装飾 */}
+                <div className="absolute inset-0 overflow-hidden">
+                  <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-2xl" />
+                  <div className="absolute -left-10 -bottom-10 w-32 h-32 bg-white/10 rounded-full blur-xl" />
+                  <Camera size={100} className="absolute -right-4 -bottom-4 text-white/10 rotate-12" />
+                </div>
+                
+                {/* コンテンツ */}
+                <div className="relative z-10">
+                  {/* 賞金バッジ */}
+                  <div className="inline-flex items-center gap-1.5 bg-yellow-400 text-yellow-900 px-3 py-1.5 rounded-full font-black text-sm mb-3 shadow-lg animate-pulse">
+                    <Trophy size={14} />
+                    賞金 ¥{activeEvent.prize_amount.toLocaleString()}
+                    <Sparkles size={12} />
+                  </div>
+                  
+                  <h3 className="text-lg font-black mb-1 drop-shadow-sm">
+                    今週のフォトコンテスト
+                  </h3>
+                  <p className="text-sm font-bold opacity-90 mb-3">
+                    お題：{activeEvent.title.replace('フォトコンテスト', '').replace('ベストショット', '').trim() || '彦根の魅力'}
+                  </p>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold opacity-70">
+                      〆切：{new Date(activeEvent.end_date).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' })}まで
+                    </span>
+                    <div className="flex items-center gap-1 bg-white/20 px-3 py-1.5 rounded-full text-xs font-black group-hover:bg-white/30 transition-colors">
+                      <Camera size={14} />
+                      参加する
+                      <ChevronRight size={14} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 3. マンスリー・チャレンジセクション */}
+            <div className="bg-white rounded-[2rem] p-5 shadow-lg border border-gray-100 overflow-hidden">
+              {/* ヘッダー：豪華景品 */}
+              <div className="bg-gradient-to-r from-amber-500 via-yellow-400 to-orange-500 -mx-5 -mt-5 px-5 py-4 mb-5 relative overflow-hidden">
+                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIxIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMikiLz48L3N2Zz4=')] opacity-50" />
+                <div className="relative z-10">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Award size={20} className="text-white" />
+                    <span className="text-xs font-black text-white/80 uppercase tracking-wider">1月のマンスリー・チャレンジ</span>
+                  </div>
+                  <h3 className="text-lg font-black text-white drop-shadow-sm leading-tight">
+                    豪華景品：近江牛食べ比べセット
+                  </h3>
+                  <p className="text-sm font-bold text-white/90 mt-1">（抽選で1名様）</p>
+                </div>
+                <Star size={60} className="absolute -right-2 -top-2 text-white/20 rotate-12" />
+              </div>
+
+              {/* 達成ステータス */}
+              <div className="mb-5">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-black text-gray-500">達成数</span>
+                  <span className="text-sm font-black text-orange-500">{completedCount} / 10</span>
+                </div>
+                <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-orange-400 to-amber-400 rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${(completedCount / 10) * 100}%` }}
+                  />
+                </div>
+                {remainingFor500Yen > 0 ? (
+                  <p className="text-xs font-black text-orange-600 mt-2 flex items-center gap-1">
+                    <Gift size={14} />
+                    あと{remainingFor500Yen}つクリアで500円商品券ゲット！
+                  </p>
+                ) : remainingForGrandPrize > 0 ? (
+                  <p className="text-xs font-black text-amber-600 mt-2 flex items-center gap-1">
+                    <Trophy size={14} />
+                    あと{remainingForGrandPrize}つで豪華景品の抽選に応募できます！
+                  </p>
+                ) : (
+                  <p className="text-xs font-black text-green-600 mt-2 flex items-center gap-1">
+                    <CheckCircle size={14} />
+                    全ミッションクリア！豪華景品の抽選に参加中！
+                  </p>
+                )}
+              </div>
+
+              {/* ミッショングリッド（2x5） */}
+              <div className="grid grid-cols-5 gap-2">
+                {MONTHLY_MISSIONS.map((mission) => {
+                  const MissionIcon = mission.icon
+                  const isCompleted = completedMissions.includes(mission.id)
+                  
+                  return (
+                    <button
+                      key={mission.id}
+                      onClick={() => {
+                        setSelectedMission(mission)
+                        setMissionModalOpen(true)
+                      }}
+                      className={`relative aspect-square rounded-xl flex flex-col items-center justify-center p-1 transition-all active:scale-95 ${
+                        isCompleted 
+                          ? 'bg-green-100 border-2 border-green-400' 
+                          : 'bg-gray-50 border-2 border-gray-200 hover:border-orange-300 hover:bg-orange-50'
+                      }`}
+                    >
+                      <MissionIcon 
+                        size={20} 
+                        className={isCompleted ? 'text-green-500' : 'text-gray-400'} 
+                      />
+                      <span className={`text-[8px] font-bold mt-0.5 text-center leading-tight ${
+                        isCompleted ? 'text-green-600' : 'text-gray-500'
+                      }`}>
+                        {mission.title.substring(0, 4)}...
+                      </span>
+                      
+                      {/* 完了スタンプ */}
+                      {isCompleted && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="bg-green-500 rounded-full p-1 animate-bounce shadow-lg">
+                            <CheckCircle size={16} className="text-white" />
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* フッターリンク */}
+              <button 
+                onClick={() => {
+                  if (!currentUser) {
+                    router.push('/login')
+                  }
+                }}
+                className="w-full mt-4 py-2 text-xs font-black text-orange-500 hover:text-orange-600 flex items-center justify-center gap-1"
+              >
+                <Target size={14} />
+                {currentUser ? 'すべてのミッションを見る' : 'ログインしてチャレンジに参加'}
+                <ChevronRight size={14} />
+              </button>
+            </div>
+
+            {/* 4. 天気予報セクション */}
             <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-[2rem] p-5 text-white shadow-xl relative overflow-hidden">
               <div className="flex items-start justify-between mb-4">
                 <div>
@@ -914,7 +1181,7 @@ export default function AppHome() {
               </div>
             </div>
 
-            {/* 3. クーポン・バナーセクション */}
+            {/* 5. クーポン・バナーセクション */}
             <div className="space-y-3">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
@@ -948,7 +1215,7 @@ export default function AppHome() {
               </div>
             </div>
 
-            {/* 4. イベント情報リスト */}
+            {/* 6. イベント情報リスト */}
             <div className="bg-white rounded-[2rem] p-5 shadow-sm border border-gray-100">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
@@ -1568,6 +1835,167 @@ export default function AppHome() {
             }
           }}
         />
+      )}
+
+      {/* ミッション詳細モーダル */}
+      {missionModalOpen && selectedMission && (
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm"
+            onClick={() => {
+              setMissionModalOpen(false)
+              setSelectedMission(null)
+              setMissionPhoto(null)
+              setMissionPhotoPreview(null)
+            }}
+          />
+          
+          {/* モーダル本体 */}
+          <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[2001] bg-white rounded-[2rem] max-w-md mx-auto shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* ヘッダー */}
+            <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-5 text-white relative overflow-hidden">
+              <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full" />
+              <div className="absolute -right-2 -bottom-2">
+                {(() => {
+                  const MissionIcon = selectedMission.icon
+                  return <MissionIcon size={60} className="text-white/20" />
+                })()}
+              </div>
+              
+              <div className="relative z-10">
+                <div className="flex items-center gap-2 mb-2">
+                  <Target size={16} />
+                  <span className="text-xs font-bold opacity-80">ミッション #{selectedMission.id}</span>
+                </div>
+                <h3 className="text-xl font-black">{selectedMission.title}</h3>
+              </div>
+            </div>
+
+            {/* コンテンツ */}
+            <div className="p-5 space-y-5">
+              {/* ミッション説明 */}
+              <div className="space-y-3">
+                <p className="text-sm text-gray-600 font-bold">{selectedMission.description}</p>
+                <div className="flex items-center gap-4 text-xs text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <MapPin size={12} />
+                    {selectedMission.location}
+                  </span>
+                  <span className="flex items-center gap-1 text-amber-500 font-black">
+                    <Star size={12} />
+                    {selectedMission.points}pt
+                  </span>
+                </div>
+              </div>
+
+              {/* 完了済みの場合 */}
+              {completedMissions.includes(selectedMission.id) ? (
+                <div className="bg-green-50 rounded-2xl p-6 text-center">
+                  <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-3 animate-bounce">
+                    <CheckCircle size={32} className="text-white" />
+                  </div>
+                  <p className="font-black text-green-600 text-lg">クリア済み！</p>
+                  <p className="text-sm text-green-500 font-bold mt-1">おめでとうございます</p>
+                </div>
+              ) : (
+                /* 未完了の場合：写真アップロード */
+                <>
+                  {!currentUser ? (
+                    /* 未ログイン */
+                    <div className="bg-amber-50 rounded-2xl p-5 text-center">
+                      <p className="text-sm font-bold text-amber-800 mb-3">
+                        ミッションに参加するにはログインが必要です
+                      </p>
+                      <button
+                        onClick={() => {
+                          setMissionModalOpen(false)
+                          router.push('/login')
+                        }}
+                        className="bg-amber-500 text-white px-6 py-2 rounded-full font-black text-sm"
+                      >
+                        ログインする
+                      </button>
+                    </div>
+                  ) : (
+                    /* ログイン済み：写真アップロード */
+                    <div className="space-y-4">
+                      <input
+                        ref={missionFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleMissionPhotoSelect}
+                        className="hidden"
+                      />
+
+                      {missionPhotoPreview ? (
+                        <div className="relative">
+                          <img 
+                            src={missionPhotoPreview} 
+                            alt="プレビュー" 
+                            className="w-full h-40 object-cover rounded-2xl"
+                          />
+                          <button
+                            onClick={() => {
+                              setMissionPhoto(null)
+                              setMissionPhotoPreview(null)
+                            }}
+                            className="absolute top-2 right-2 p-2 bg-black/50 rounded-full text-white"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => missionFileInputRef.current?.click()}
+                          className="w-full h-32 border-2 border-dashed border-orange-300 rounded-2xl flex flex-col items-center justify-center gap-2 text-orange-500 hover:bg-orange-50 transition-colors"
+                        >
+                          <Camera size={32} />
+                          <span className="text-sm font-bold">写真をアップロード</span>
+                          <span className="text-xs opacity-60">タップして選択または撮影</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={handleCompleteMission}
+                        disabled={!missionPhoto || uploadingMission}
+                        className="w-full py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-all shadow-lg"
+                      >
+                        {uploadingMission ? (
+                          <>
+                            <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+                            確認中...
+                          </>
+                        ) : (
+                          <>
+                            <Upload size={18} />
+                            ミッション完了を申請
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* 閉じるボタン */}
+            <div className="px-5 pb-5">
+              <button
+                onClick={() => {
+                  setMissionModalOpen(false)
+                  setSelectedMission(null)
+                  setMissionPhoto(null)
+                  setMissionPhotoPreview(null)
+                }}
+                className="w-full py-3 bg-gray-100 text-gray-600 font-bold rounded-xl text-sm"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* --- 下部ナビゲーション --- */}
