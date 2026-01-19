@@ -14,6 +14,7 @@ import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
 import WasteScheduleCard, { HikoneWasteMaster } from '@/components/home/WasteScheduleCard'
 import { useWasteSchedule, prefetchWasteSchedule } from '@/lib/hooks/useWasteSchedule'
+import { usePoints } from '@/lib/hooks/usePoints'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -187,6 +188,9 @@ export default function AppHome() {
   
   // SWRでゴミ収集スケジュールをキャッシュ付きで取得
   const { wasteSchedule: swrWasteSchedule, isLoading: wasteLoading, refetch: refetchWaste } = useWasteSchedule(userSelectedArea)
+  
+  // SWRでポイント情報をキャッシュ付きで取得
+  const { points: userPoints, referralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(currentUser?.id)
   
   // フォトコンテストイベント（events テーブルから取得）
   const [activeEvent, setActiveEvent] = useState<{
@@ -933,6 +937,20 @@ export default function AppHome() {
             <img src={HIKONYAN_IMAGE} className="w-5 h-5" />
             <span className="text-[11px] font-bold text-gray-400">ひこにゃんAIに質問...</span>
           </div>
+          
+          {/* ポイントバッジ */}
+          {currentUser && (
+            <div 
+              onClick={() => router.push('/profile')}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-yellow-500 px-3 py-1.5 rounded-full cursor-pointer hover:from-amber-500 hover:to-yellow-600 transition-all shadow-sm active:scale-95"
+            >
+              <span className="text-sm">💰</span>
+              <span className="text-xs font-black text-white">
+                {pointsLoading ? '...' : userPoints.toLocaleString()}
+              </span>
+              <span className="text-[10px] font-bold text-white/80">pt</span>
+            </div>
+          )}
 
           {/* スライドスイッチ（コンパクト版） */}
           <div 
