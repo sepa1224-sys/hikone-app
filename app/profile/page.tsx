@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake } from 'lucide-react'
+import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
 
@@ -247,6 +247,26 @@ export default function ProfilePage() {
           >
             <Edit size={20} />
             <span>プロフィールを編集</span>
+          </button>
+        </div>
+
+        {/* メニューリンク */}
+        <div className="bg-white rounded-[2.5rem] p-6 shadow-lg border border-gray-100">
+          <h3 className="text-lg font-black text-gray-800 mb-4">メニュー</h3>
+          
+          {/* お問い合わせ・目安箱 */}
+          <button
+            onClick={() => router.push('/contact')}
+            className="w-full flex items-center gap-4 p-4 bg-gray-50 hover:bg-blue-50 rounded-2xl transition-colors group"
+          >
+            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+              <MessageSquare size={20} className="text-blue-500" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="font-black text-gray-800">お問い合わせ・目安箱</p>
+              <p className="text-xs text-gray-500 font-bold">アプリや街へのご意見・ご提案</p>
+            </div>
+            <ChevronRight size={20} className="text-gray-400 group-hover:text-blue-500 transition-colors" />
           </button>
         </div>
 

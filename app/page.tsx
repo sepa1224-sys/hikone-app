@@ -8,11 +8,12 @@ import {
   ChevronRight, LogOut, Edit, Mail, MapPin, User, Search,
   Cloud, CloudRain, CloudSun, Droplets, Wind, Ticket, Gift, CalendarDays, PartyPopper, ShoppingBag,
   Camera, Trophy, Target, CheckCircle, Star, Coffee, Utensils, Castle, Mountain, 
-  Heart, ShoppingCart, Bike, Upload, Award
+  Heart, ShoppingCart, Bike, Upload, Award, MessageSquare
 } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
 import WasteScheduleCard, { HikoneWasteMaster } from '@/components/home/WasteScheduleCard'
+import { useWasteSchedule, prefetchWasteSchedule } from '@/lib/hooks/useWasteSchedule'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -183,8 +184,9 @@ export default function AppHome() {
   const [userCity, setUserCity] = useState<string | null>(null)
   // ユーザーの選択エリア（profiles.selected_area）
   const [userSelectedArea, setUserSelectedArea] = useState<string | null>(null)
-  // ユーザーのゴミ収集スケジュール（hikone_waste_master テーブルから取得）
-  const [userWasteSchedule, setUserWasteSchedule] = useState<HikoneWasteMaster | null>(null)
+  
+  // SWRでゴミ収集スケジュールをキャッシュ付きで取得
+  const { wasteSchedule: swrWasteSchedule, isLoading: wasteLoading, refetch: refetchWaste } = useWasteSchedule(userSelectedArea)
   
   // フォトコンテストイベント（events テーブルから取得）
   const [activeEvent, setActiveEvent] = useState<{
@@ -267,24 +269,7 @@ export default function AppHome() {
           if (profile?.selected_area) {
             setUserSelectedArea(profile.selected_area)
             console.log(`🗑️ ユーザーのエリア: ${profile.selected_area}`)
-            
-            // selected_area がある場合は hikone_waste_master からスケジュールを取得
-            const { data: wasteData, error: wasteError } = await supabase
-              .from('hikone_waste_master')
-              .select('*')
-              .eq('area_name', profile.selected_area)
-              .single()
-            
-            if (wasteError) {
-              console.error('🗑️ hikone_waste_master 取得エラー:', wasteError)
-            }
-            
-            if (wasteData) {
-              console.log(`🗑️ ゴミ収集スケジュール取得成功:`, wasteData)
-              setUserWasteSchedule(wasteData)
-            } else {
-              console.log(`🗑️ ゴミ収集スケジュールが見つかりません（area_name: ${profile.selected_area}）`)
-            }
+            // ゴミ収集スケジュールは SWR が userSelectedArea の変更を検知して自動取得
           } else {
             console.log(`🗑️ ユーザーのエリアが未設定です`)
           }
@@ -297,7 +282,7 @@ export default function AppHome() {
           setProfileChecked(true)
           setUserCity(null)
           setUserSelectedArea(null)
-          setUserWasteSchedule(null)
+          // SWR は userSelectedArea が null になると自動的にフェッチを停止
         }
       } catch (error) {
         console.error('Session check error:', error)
@@ -856,19 +841,14 @@ export default function AppHome() {
         }))
         // ホーム画面のパーソナライズ用に更新
         setUserCity(city.trim() || null)
-        setUserSelectedArea(city === '彦根市' ? selectedArea : null)
-        // エリアが設定された場合はゴミ収集スケジュールを更新
-        if (city === '彦根市' && selectedArea) {
-          const { data: wasteData } = await supabase
-            .from('hikone_waste_master')
-            .select('*')
-            .eq('area_name', selectedArea)
-            .single()
-          if (wasteData) {
-            setUserWasteSchedule(wasteData)
-          }
-        } else {
-          setUserWasteSchedule(null)
+        const newSelectedArea = city === '彦根市' ? selectedArea : null
+        setUserSelectedArea(newSelectedArea)
+        
+        // SWR キャッシュを更新（userSelectedArea の変更で自動的に再取得される）
+        // 即座に表示を更新したい場合は refetchWaste() を呼び出す
+        if (newSelectedArea) {
+          // プリフェッチして SWR キャッシュを即座に更新
+          refetchWaste()
         }
         // プロフィール情報を再取得
         await fetchProfileDataForEdit()
@@ -985,7 +965,7 @@ export default function AppHome() {
             <WasteScheduleCard
               userCity={userCity}
               userSelectedArea={userSelectedArea}
-              userWasteSchedule={userWasteSchedule}
+              userWasteSchedule={swrWasteSchedule}
               onSetupClick={() => setView('profile')}
             />
 
@@ -1270,6 +1250,23 @@ export default function AppHome() {
                 </div>
               </div>
               <Sparkles size={40} className="absolute right-4 top-1/2 -translate-y-1/2 opacity-20" />
+            </div>
+
+            {/* 街を良くする目安箱（お問い合わせ）ボタン */}
+            <div 
+              onClick={() => router.push('/contact')}
+              className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-[2rem] p-5 text-white shadow-xl relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center">
+                  <MessageSquare size={28} className="text-white" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-black text-lg">街を良くする目安箱</p>
+                  <p className="text-sm font-bold opacity-90">アプリや街への提案・ご意見をお寄せください</p>
+                </div>
+                <ChevronRight size={24} className="text-white/60" />
+              </div>
             </div>
           </div>
         )}
