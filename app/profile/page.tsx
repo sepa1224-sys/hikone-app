@@ -11,6 +11,7 @@ import { applyReferralCode } from '@/lib/actions/referral'
 import { useFriends, addFriend, removeFriend, searchUserByCode, Friend } from '@/lib/hooks/useFriends'
 import { sendHikopo } from '@/lib/actions/transfer'
 import QRCode from 'react-qr-code'
+import { formatFullLocation, formatShortLocation } from '@/lib/constants/shigaRegions'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -27,11 +28,25 @@ export default function ProfilePage() {
   const [applyResult, setApplyResult] = useState<{ success: boolean; message: string } | null>(null)
   
   // SWRでポイント情報を取得
-  const { points, referralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(currentUser?.id)
+  const { points, referralCode: swrReferralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(currentUser?.id)
   const { history: pointHistory, isLoading: historyLoading, refetch: refetchHistory } = usePointHistory(currentUser?.id)
   
+  // referralCode は SWR または profile から取得（どちらかが取得できれば表示）
+  const referralCode = swrReferralCode || profile?.referral_code || null
+  
+  // デバッグログ
+  useEffect(() => {
+    console.log('🎫 [Profile] referralCode 状態:', {
+      swrReferralCode,
+      profileReferralCode: profile?.referral_code,
+      finalReferralCode: referralCode,
+      pointsLoading,
+      currentUserId: currentUser?.id
+    })
+  }, [swrReferralCode, profile?.referral_code, referralCode, pointsLoading, currentUser?.id])
+  
   // フレンドリスト
-  const { friends, isLoading: friendsLoading, refetch: refetchFriends } = useFriends(currentUser?.id)
+  const { friends, isLoading: friendsLoading, addFriendToList, removeFriendFromList } = useFriends(currentUser?.id)
   
   // フレンド追加用のステート
   const [showAddFriendModal, setShowAddFriendModal] = useState(false)
@@ -85,13 +100,28 @@ export default function ProfilePage() {
     }
   }
 
-  // 居住地を組み合わせて表示する関数
-  const formatLocation = (location: string | null | undefined, city: string | null | undefined): string => {
-    if (!location && !city) return ''
-    if (location && city) {
-      return `${location} ${city}`
-    }
-    return location || city || ''
+  // 居住地を組み合わせて表示する関数（新フォーマット対応）
+  const formatLocationDisplay = (
+    location: string | null | undefined, 
+    region: string | null | undefined,
+    city: string | null | undefined,
+    detailArea: string | null | undefined
+  ): string => {
+    // 新しいフォーマット関数を使用
+    return formatFullLocation(
+      location || null,
+      region || null,
+      city || null,
+      detailArea || null
+    )
+  }
+  
+  // 短縮版（市区町村 + 詳細エリア）
+  const formatShortLocationDisplay = (
+    city: string | null | undefined,
+    detailArea: string | null | undefined
+  ): string => {
+    return formatShortLocation(city || null, detailArea || null)
   }
 
   // プロフィールデータの取得
@@ -115,8 +145,15 @@ export default function ProfilePage() {
         .single()
 
       if (data) {
+        console.log('🎫 [Profile] プロフィール取得成功:', {
+          id: data.id,
+          referral_code: data.referral_code,
+          points: data.points,
+          has_used_referral: data.has_used_referral
+        })
         setProfile(data)
       } else {
+        console.log('🎫 [Profile] プロフィールなし、デフォルト値を設定')
         // プロフィールがない場合でも、セッション情報を表示
         setProfile({
           id: session.user.id,
@@ -124,6 +161,10 @@ export default function ProfilePage() {
           email: session.user.email,
           avatar_url: session.user.user_metadata?.avatar_url || null
         })
+      }
+      
+      if (error) {
+        console.error('🎫 [Profile] プロフィール取得エラー:', error)
       }
     } catch (error) {
       console.error('Profile fetch error:', error)
@@ -172,24 +213,47 @@ export default function ProfilePage() {
     window.open(xUrl, '_blank')
   }
   
+  // ランダムな招待コードを生成（8桁英数字大文字）
+  const generateRandomCode = (): string => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    let code = ''
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return code
+  }
+  
   // 招待コードを発行する
   const handleGenerateCode = async () => {
     if (!currentUser?.id) return
     
     setGeneratingCode(true)
     try {
-      // プロフィールを更新してトリガーでコードを生成させる
-      // referral_code が null の場合、DB のトリガーが自動生成する
+      // ランダムなコードを生成
+      const newCode = generateRandomCode()
+      console.log('🎫 新しい招待コードを生成:', newCode)
+      
+      // profiles テーブルに直接保存
       const { error } = await supabase
         .from('profiles')
-        .update({ updated_at: new Date().toISOString() })
+        .update({ 
+          referral_code: newCode,
+          updated_at: new Date().toISOString() 
+        })
         .eq('id', currentUser.id)
       
       if (error) {
         console.error('コード発行エラー:', error)
-        alert('コードの発行に失敗しました')
+        // 重複エラーの場合は再試行
+        if (error.code === '23505') {
+          alert('コードが重複しました。もう一度お試しください。')
+        } else {
+          alert('コードの発行に失敗しました')
+        }
         return
       }
+      
+      console.log('✅ 招待コード発行成功:', newCode)
       
       // プロフィールとポイント情報を再取得
       await fetchProfileData()
@@ -268,7 +332,8 @@ export default function ProfilePage() {
     try {
       const result = await removeFriend(currentUser.id, friendId)
       if (result.success) {
-        refetchFriends()
+        // 即座にローカルステートを更新
+        removeFriendFromList(friendId)
       } else {
         alert(result.message)
       }
@@ -292,12 +357,12 @@ export default function ProfilePage() {
     
     const amount = parseInt(quickSendAmount)
     if (isNaN(amount) || amount <= 0) {
-      setQuickSendResult({ success: false, message: '送金額を正しく入力してください' })
+      setQuickSendResult({ success: false, message: '💰 送金額を1ポイント以上で入力してください' })
       return
     }
     
     if (amount > points) {
-      setQuickSendResult({ success: false, message: '残高が不足しています' })
+      setQuickSendResult({ success: false, message: `😢 ヒコポが足りません！残高: ${points.toLocaleString()} pt` })
       return
     }
     
@@ -385,6 +450,13 @@ export default function ProfilePage() {
                 <h2 className="text-2xl font-black mb-1">
                   {profile?.full_name || 'ユーザー'}
                 </h2>
+                {/* 会員番号 */}
+                {profile?.join_order && (
+                  <p className="text-xs text-yellow-300 font-black mb-1 flex items-center gap-1">
+                    <Ticket size={12} />
+                    Member No. {String(profile.join_order).padStart(5, '0')}
+                  </p>
+                )}
                 {profile?.email && (
                   <p className="text-sm text-white/80 font-bold flex items-center gap-1">
                     <Mail size={14} />
@@ -430,7 +502,8 @@ export default function ProfilePage() {
             <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-4 mb-4">
               <p className="text-xs text-white/70 font-bold mb-2 text-center">あなたの招待コード</p>
               
-              {pointsLoading ? (
+              {/* ローディング中でも referralCode があれば表示 */}
+              {(pointsLoading && !referralCode) ? (
                 <div className="flex items-center justify-center py-2">
                   <Loader2 size={24} className="animate-spin text-white/70" />
                 </div>
@@ -567,8 +640,8 @@ export default function ProfilePage() {
                     value={inputReferralCode}
                     onChange={(e) => setInputReferralCode(e.target.value.toUpperCase())}
                     placeholder="招待コードを入力..."
-                    maxLength={8}
-                    className="flex-1 bg-white/20 backdrop-blur-sm border-2 border-white/30 rounded-xl px-4 py-3 text-white placeholder-white/50 font-black text-center tracking-widest text-lg focus:outline-none focus:border-white/60 transition-colors"
+                    maxLength={12}
+                    className="flex-1 bg-white border-2 border-white/50 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 font-black text-center tracking-widest text-lg focus:outline-none focus:border-white focus:ring-2 focus:ring-white/30 transition-all"
                   />
                   <button
                     onClick={handleApplyReferralCode}
@@ -646,28 +719,20 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              {/* 居住地 */}
-              {formatLocation(profile?.location, profile?.city) && (
+              {/* 居住地（統合表示）- prefecture または location を使用 */}
+              {(profile?.prefecture || profile?.location || profile?.city) && (
                 <div className="flex items-center justify-between py-3 border-b border-gray-100">
                   <span className="text-sm font-bold text-gray-500 flex items-center gap-2">
                     <MapPin size={16} className="text-orange-500" />
                     居住地
                   </span>
-                  <span className="text-sm font-black text-gray-800">
-                    {formatLocation(profile?.location, profile?.city)}
-                  </span>
-                </div>
-              )}
-
-              {/* お住まいのエリア */}
-              {profile?.selected_area && (
-                <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                  <span className="text-sm font-bold text-gray-500 flex items-center gap-2">
-                    <MapPin size={16} className="text-blue-500" />
-                    お住まいのエリア
-                  </span>
-                  <span className="text-sm font-black text-blue-600">
-                    {profile.selected_area.split('・')[0]}...
+                  <span className="text-sm font-black text-black text-right max-w-[200px]">
+                    {formatLocationDisplay(
+                      profile?.prefecture || profile?.location,
+                      profile?.region,
+                      profile?.city,
+                      profile?.selected_area || profile?.detail_area
+                    )}
                   </span>
                 </div>
               )}
@@ -755,7 +820,7 @@ export default function ProfilePage() {
           )}
         </div>
         
-        {/* フレンドリスト */}
+        {/* フレンドリスト（簡易表示 + リンク） */}
         <div className="bg-white rounded-[2.5rem] p-6 shadow-lg border border-gray-100">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-black text-gray-800 flex items-center gap-2">
@@ -763,82 +828,85 @@ export default function ProfilePage() {
               フレンド
             </h3>
             <button
-              onClick={() => {
-                setShowAddFriendModal(true)
-                setFriendSearchCode('')
-                setFriendSearchResult(null)
-                setAddFriendResult(null)
-              }}
+              onClick={() => router.push('/friends')}
               className="flex items-center gap-1 px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded-lg font-bold text-xs transition-colors"
             >
               <UserPlus size={14} />
-              追加
+              管理
             </button>
           </div>
           
           {friendsLoading ? (
-            <div className="py-8 text-center">
+            <div className="py-4 text-center">
               <Loader2 size={24} className="animate-spin text-gray-400 mx-auto mb-2" />
               <p className="text-sm text-gray-400 font-bold">読み込み中...</p>
             </div>
           ) : friends.length === 0 ? (
-            <div className="py-8 text-center">
+            <div className="py-4 text-center">
               <span className="text-4xl opacity-30">👥</span>
               <p className="text-sm text-gray-400 font-bold mt-2">まだフレンドがいません</p>
-              <p className="text-xs text-gray-300 mt-1">招待コードでフレンドを追加しよう！</p>
+              <button
+                onClick={() => router.push('/friends')}
+                className="mt-3 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-bold text-sm transition-colors"
+              >
+                フレンドを追加する
+              </button>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[300px] overflow-y-auto">
-              {friends.map((friend) => (
-                <div 
-                  key={friend.id}
-                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl"
-                >
-                  {/* アバター */}
-                  {friend.avatar_url ? (
-                    <img 
-                      src={friend.avatar_url} 
-                      alt="" 
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                      <UserCircle size={24} className="text-indigo-500" />
-                    </div>
-                  )}
-                  
-                  {/* 名前 */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black text-gray-800 truncate">
-                      {friend.full_name || friend.referral_code || 'ユーザー'}
-                    </p>
-                    {friend.full_name && friend.referral_code && (
-                      <p className="text-[10px] text-gray-400 font-bold">{friend.referral_code}</p>
+            <>
+              {/* フレンドプレビュー（最大3人） */}
+              <div className="space-y-2 mb-4">
+                {friends.slice(0, 3).map((friend) => (
+                  <div 
+                    key={friend.id}
+                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl"
+                  >
+                    {/* アバター */}
+                    {friend.avatar_url ? (
+                      <img 
+                        src={friend.avatar_url} 
+                        alt="" 
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                        <UserCircle size={24} className="text-indigo-500" />
+                      </div>
                     )}
-                  </div>
-                  
-                  {/* アクションボタン */}
-                  <div className="flex items-center gap-1">
+                    
+                    {/* 名前 */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-black text-gray-800 truncate">
+                        {friend.full_name || friend.referral_code || 'ユーザー'}
+                      </p>
+                      {friend.full_name && friend.referral_code && (
+                        <p className="text-[10px] text-gray-400 font-bold">{friend.referral_code}</p>
+                      )}
+                    </div>
+                    
                     {/* 送金ボタン */}
                     <button
                       onClick={() => handleOpenQuickSend(friend)}
-                      className="p-2 bg-amber-100 hover:bg-amber-200 text-amber-600 rounded-lg transition-colors"
+                      className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-600 rounded-lg transition-colors flex items-center gap-1 font-bold text-xs"
                       title="ひこポを送る"
                     >
-                      <Send size={16} />
-                    </button>
-                    {/* 削除ボタン */}
-                    <button
-                      onClick={() => handleRemoveFriend(friend.friend_id)}
-                      className="p-2 bg-gray-100 hover:bg-red-100 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
-                      title="フレンドを削除"
-                    >
-                      <Trash2 size={16} />
+                      <Send size={14} />
+                      送る
                     </button>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              
+              {/* すべて見るリンク */}
+              <button
+                onClick={() => router.push('/friends')}
+                className="w-full py-3 bg-gray-50 hover:bg-indigo-50 text-indigo-600 rounded-xl font-black text-sm transition-colors flex items-center justify-center gap-2"
+              >
+                <Users size={16} />
+                フレンド一覧を見る（{friends.length}人）
+                <ChevronRight size={16} />
+              </button>
+            </>
           )}
         </div>
         
@@ -847,6 +915,21 @@ export default function ProfilePage() {
           <h3 className="text-lg font-black text-gray-800 mb-4">メニュー</h3>
           
           <div className="space-y-3">
+            {/* フレンド一覧 */}
+            <button
+              onClick={() => router.push('/friends')}
+              className="w-full flex items-center gap-4 p-4 bg-gray-50 hover:bg-purple-50 rounded-2xl transition-colors group"
+            >
+              <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center group-hover:bg-purple-200 transition-colors">
+                <Users size={20} className="text-purple-600" />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="font-black text-gray-800">フレンド一覧</p>
+                <p className="text-xs text-gray-500 font-bold">フレンドの追加・管理・送金</p>
+              </div>
+              <ChevronRight size={20} className="text-gray-400 group-hover:text-purple-500 transition-colors" />
+            </button>
+            
             {/* ひこポを送る */}
             <button
               onClick={() => router.push('/transfer')}
@@ -897,9 +980,13 @@ export default function ProfilePage() {
           userId={currentUser.id}
           userEmail={currentUser.email}
           userFullName={currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || profile?.full_name}
-          onComplete={() => {
+          onComplete={async () => {
             setShowProfileModal(false)
-            fetchProfileData() // プロフィールページのデータを更新
+            // 最新のプロフィールデータを再取得（キャッシュクリア）
+            console.log('📋 [Profile] モーダル閉じ後、最新データを再取得')
+            await fetchProfileData()
+            // ポイント情報も再取得
+            refetchPoints()
           }}
         />
       )}
@@ -938,9 +1025,9 @@ export default function ProfilePage() {
                     type="text"
                     value={friendSearchCode}
                     onChange={(e) => setFriendSearchCode(e.target.value.toUpperCase())}
-                    placeholder="8桁のコード"
-                    maxLength={8}
-                    className="flex-1 bg-gray-50 border-2 border-transparent rounded-xl px-4 py-3 font-black text-center tracking-widest focus:border-indigo-400 focus:bg-white focus:outline-none transition-all"
+                    placeholder="招待コードを入力"
+                    maxLength={12}
+                    className="flex-1 bg-white border-2 border-gray-200 rounded-xl px-4 py-3 font-black text-center tracking-widest text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none transition-all"
                   />
                   <button
                     onClick={handleSearchFriend}
@@ -1083,7 +1170,7 @@ export default function ProfilePage() {
                   placeholder="0"
                   min="1"
                   max={points}
-                  className="w-full bg-gray-50 border-2 border-transparent rounded-xl px-4 py-3 pr-12 font-black text-2xl text-center focus:border-amber-400 focus:bg-white focus:outline-none transition-all"
+                  className="w-full bg-white border-2 border-gray-200 rounded-xl px-4 py-3 pr-12 font-black text-2xl text-center text-gray-900 placeholder:text-gray-400 focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-200 focus:outline-none transition-all"
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">pt</span>
               </div>

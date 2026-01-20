@@ -84,22 +84,43 @@ export async function sendHikopo(
  * エラーメッセージを日本語に変換
  */
 function translateError(message: string): string {
+  // 残高不足
   if (message.includes('Insufficient balance')) {
-    return '残高が不足しています'
+    return '😢 ヒコポが足りません！送金額を減らすか、ヒコポを貯めてから再度お試しください。'
   }
+  
+  // 送り先が見つからない
   if (message.includes('Receiver not found')) {
-    return '送り先のコードが見つかりません'
+    return '🔍 送り先のコードが見つかりません。8桁の招待コードを確認してください。'
   }
+  
+  // 自分自身への送金
   if (message.includes('Cannot send to yourself')) {
-    return '自分自身には送金できません'
+    return '🙅 自分自身にはヒコポを送れません！友達のコードを入力してね。'
   }
+  
+  // 送金額が不正
   if (message.includes('Amount must be positive')) {
-    return '送金額は1以上で入力してください'
+    return '⚠️ 送金額は1ポイント以上で入力してください。'
   }
+  
+  // 送金者が見つからない
   if (message.includes('Sender not found')) {
-    return 'ユーザー情報が見つかりません'
+    return '❌ ユーザー情報が見つかりません。ログインし直してください。'
   }
-  return message || '送金に失敗しました'
+  
+  // ネットワークエラー
+  if (message.includes('network') || message.includes('fetch')) {
+    return '📶 通信エラーが発生しました。インターネット接続を確認してください。'
+  }
+  
+  // タイムアウト
+  if (message.includes('timeout')) {
+    return '⏱️ 処理がタイムアウトしました。しばらく待ってから再度お試しください。'
+  }
+  
+  // その他のエラー
+  return message ? `⚠️ ${message}` : '❌ 送金に失敗しました。しばらく待ってから再度お試しください。'
 }
 
 /**

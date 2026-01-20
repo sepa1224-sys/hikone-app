@@ -56,19 +56,20 @@ export default function QRScanner({ onScanSuccess, onClose }: QRScannerProps) {
     }
   }, [])
 
-  // QRコードから招待コードを抽出
+  // QRコードから招待コードを抽出（8〜12桁対応）
   const extractReferralCode = useCallback((qrData: string): string | null => {
     // hikopo:XXXXXXXX 形式
     if (qrData.startsWith('hikopo:')) {
       const code = qrData.replace('hikopo:', '').trim().toUpperCase()
-      if (code.length === 8) {
+      // 8〜12桁の英数字をチェック
+      if (/^[A-Z0-9]{8,12}$/.test(code)) {
         return code
       }
     }
     
-    // 8桁のコードのみの場合
+    // 8〜12桁のコードのみの場合
     const trimmed = qrData.trim().toUpperCase()
-    if (/^[A-Z0-9]{8}$/.test(trimmed)) {
+    if (/^[A-Z0-9]{8,12}$/.test(trimmed)) {
       return trimmed
     }
     

@@ -78,7 +78,7 @@ export default function ChatRegistration({ onComplete }: { onComplete: () => voi
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          className="flex-1 border rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-400"
+          className="flex-1 bg-white border-2 border-gray-200 rounded-full px-4 py-2 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-red-400"
           placeholder="ここに入力ニャ..."
         />
         <button onClick={handleSend} className="bg-red-600 text-white px-4 py-2 rounded-full font-bold">送信</button>

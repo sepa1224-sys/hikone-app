@@ -3,6 +3,13 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { X, User, MapPin, Save, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react'
+import { 
+  SHIGA_REGIONS, 
+  SHIGA_REGION_CITIES, 
+  CITY_DETAIL_AREAS,
+  getRegionByCity,
+  formatFullLocation 
+} from '@/lib/constants/shigaRegions'
 
 interface ProfileRegistrationModalProps {
   userId: string
@@ -12,12 +19,13 @@ interface ProfileRegistrationModalProps {
 }
 
 const GENDERS = ['男性', '女性', 'その他', '回答しない']
-// 都道府県リスト（47都道府県+海外）
+// 都道府県リスト（滋賀県を最優先に表示）
 const PREFECTURES = [
+  '滋賀県', // 最優先
   '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
   '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
   '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県', '岐阜県',
-  '静岡県', '愛知県', '三重県', '滋賀県', '京都府', '大阪府', '兵庫県',
+  '静岡県', '愛知県', '三重県', '京都府', '大阪府', '兵庫県',
   '奈良県', '和歌山県', '鳥取県', '島根県', '岡山県', '広島県', '山口県',
   '徳島県', '香川県', '愛媛県', '高知県', '福岡県', '佐賀県', '長崎県',
   '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県', '海外'
@@ -37,7 +45,7 @@ const HIKONE_AREAS = [
   '城東・城北'
 ]
 
-// 都道府県ごとの市区町村リスト
+// 都道府県ごとの市区町村リスト（滋賀県以外）
 const PREFECTURE_CITIES: Record<string, string[]> = {
   '北海道': ['札幌市', '函館市', '旭川市', '釧路市', '帯広市', '北見市', '小樽市', '苫小牧市', '千歳市', '江別市'],
   '青森県': ['青森市', '弘前市', '八戸市', '黒石市', '五所川原市', '十和田市', 'むつ市'],
@@ -63,7 +71,6 @@ const PREFECTURE_CITIES: Record<string, string[]> = {
   '静岡県': ['静岡市', '浜松市', '沼津市', '熱海市', '三島市', '富士宮市', '伊東市', '島田市', '富士市', '磐田市'],
   '愛知県': ['名古屋市', '豊橋市', '岡崎市', '一宮市', '瀬戸市', '半田市', '春日井市', '豊川市', '津島市', '碧南市'],
   '三重県': ['津市', '四日市市', '伊勢市', '松阪市', '桑名市', '鈴鹿市', '名張市', '尾鷲市', '亀山市', '鳥羽市'],
-  '滋賀県': ['大津市', '彦根市', '長浜市', '近江八幡市', '草津市', '守山市', '栗東市', '甲賀市', '野洲市', '湖南市'],
   '京都府': ['京都市', '福知山市', '舞鶴市', '綾部市', '宇治市', '宮津市', '亀岡市', '城陽市', '向日市', '長岡京市'],
   '大阪府': ['大阪市', '堺市', '岸和田市', '豊中市', '池田市', '吹田市', '泉大津市', '高槻市', '貝塚市', '守口市'],
   '兵庫県': ['神戸市', '姫路市', '尼崎市', '明石市', '西宮市', '洲本市', '芦屋市', '伊丹市', '相生市', '豊岡市'],
@@ -103,9 +110,11 @@ export default function ProfileRegistrationModal({
     full_name: userFullName || '',
     gender: '',
     birthday: '',
-    location: '', // 居住地（都道府県）
-    city: '', // 居住地（市区町村）
-    selected_area: '', // 選択されたエリア名（hikone_waste_master.area_name）
+    prefecture: '', // 都道府県（location → prefecture に変更）
+    region: '', // 地方区分（湖東、湖南、湖北、湖西）- 滋賀県のみ
+    city: '', // 市区町村
+    selected_area: '', // ゴミ収集エリア名（hikone_waste_master.area_name）
+    detail_area: '', // 詳細エリア（自由入力または選択）
     interests: [] as string[]
   })
 
@@ -139,18 +148,35 @@ export default function ProfileRegistrationModal({
     }
   }, [birthYear, birthMonth, birthDay])
 
-  // 都道府県が変更された時に市区町村とエリアをリセット
+  // 都道府県が変更された時に地方区分・市区町村・エリアをリセット
   useEffect(() => {
-    if (!formData.location || formData.location === '海外') {
-      setFormData(prev => ({ ...prev, city: '', selected_area: '' }))
+    if (!formData.prefecture || formData.prefecture === '海外') {
+      setFormData(prev => ({ ...prev, region: '', city: '', selected_area: '', detail_area: '' }))
+    } else if (formData.prefecture !== '滋賀県') {
+      // 滋賀県以外は地方区分をリセット
+      setFormData(prev => ({ ...prev, region: '', city: '', selected_area: '', detail_area: '' }))
     }
-  }, [formData.location])
+  }, [formData.prefecture])
+  
+  // 地方区分が変更された時に市区町村とエリアをリセット
+  useEffect(() => {
+    if (formData.prefecture === '滋賀県' && formData.region) {
+      // 地方区分が変更されたら市区町村をリセット
+      setFormData(prev => ({ ...prev, city: '', selected_area: '', detail_area: '' }))
+    }
+  }, [formData.region])
   
   // 市区町村が変更された時にエリアをリセット
   useEffect(() => {
-    // 彦根市以外に変更された場合はエリアをリセット
-    if (formData.city !== '彦根市') {
-      setFormData(prev => ({ ...prev, selected_area: '' }))
+    // 市区町村が変更された場合はエリアをリセット
+    setFormData(prev => ({ ...prev, selected_area: '', detail_area: '' }))
+    
+    // 滋賀県の場合、市区町村から地方区分を自動設定（地方区分が未設定の場合）
+    if (formData.prefecture === '滋賀県' && formData.city && !formData.region) {
+      const detectedRegion = getRegionByCity(formData.city)
+      if (detectedRegion) {
+        setFormData(prev => ({ ...prev, region: detectedRegion }))
+      }
     }
   }, [formData.city])
 
@@ -166,11 +192,36 @@ export default function ProfileRegistrationModal({
 
   const checkProfileStatus = async () => {
     try {
-      const { data, error } = await supabase
+      // DBから既存プロフィールを取得
+      // まず基本カラムのみで取得を試みる（detail_area がない場合のエラーを回避）
+      let data: any = null
+      let fetchError: any = null
+      
+      // detail_area を含めて取得を試みる
+      const fullResult = await supabase
         .from('profiles')
-        .select('full_name, gender, birthday, location, city, selected_area, interests')
+        .select('full_name, gender, birthday, prefecture, location, region, city, selected_area, detail_area, interests')
         .eq('id', userId)
         .single()
+      
+      if (fullResult.error && fullResult.error.message.includes('detail_area')) {
+        // detail_area カラムがない場合は除外して再取得
+        console.warn('📋 [Profile] detail_area カラムが存在しないため、除外して取得')
+        const basicResult = await supabase
+          .from('profiles')
+          .select('full_name, gender, birthday, prefecture, location, region, city, selected_area, interests')
+          .eq('id', userId)
+          .single()
+        data = basicResult.data
+        fetchError = basicResult.error
+      } else {
+        data = fullResult.data
+        fetchError = fullResult.error
+      }
+
+      if (fetchError) {
+        console.error('Profile fetch error:', fetchError.message)
+      }
 
       if (data) {
         // 既存データをフォームに反映
@@ -187,13 +238,36 @@ export default function ProfileRegistrationModal({
           }
         }
         
+        // 都道府県：prefecture を優先、なければ location を使用（後方互換性）
+        const prefectureValue = data.prefecture || data.location || ''
+        
+        // 地方区分を自動検出（DBにない場合）
+        let region = data.region || ''
+        if (!region && data.city && prefectureValue === '滋賀県') {
+          region = getRegionByCity(data.city) || ''
+        }
+        
+        // 詳細エリア：detail_area を優先、なければ selected_area を使用
+        const detailAreaValue = data.detail_area || ''
+        const selectedAreaValue = data.selected_area || ''
+        
+        console.log('📋 [Profile] 取得データ:', {
+          prefecture: prefectureValue,
+          region: region,
+          city: data.city,
+          selected_area: selectedAreaValue,
+          detail_area: detailAreaValue
+        })
+        
         setFormData({
           full_name: data.full_name || userFullName || '',
           gender: data.gender || '',
           birthday: birthday,
-          location: data.location || '', // 居住地（都道府県）
-          city: data.city || '', // 居住地（市区町村）
-          selected_area: data.selected_area || '', // エリア名
+          prefecture: prefectureValue, // 都道府県
+          region: region, // 地方区分
+          city: data.city || '', // 市区町村
+          selected_area: selectedAreaValue, // ゴミ収集エリア
+          detail_area: detailAreaValue, // 詳細エリア
           interests: data.interests || []
         })
         
@@ -246,35 +320,69 @@ export default function ProfileRegistrationModal({
 
       console.log('保存開始 - User ID:', user.id, 'Form Data:', formData, 'Birthday:', birthdayString)
 
+      // 保存するデータを準備（すべてTEXT型で保存）
+      // 注意: selected_area はゴミ収集判定に使用、detail_area は詳細エリア表示用
+      // detail_area カラムがDBにない場合はエラーになるため、まず基本カラムのみで保存を試みる
+      
+      // ゴミ収集エリア（selected_area）の決定
+      // formData.selected_area がある場合はそれを使用、なければ detail_area を使用
+      const selectedAreaValue = formData.selected_area || formData.detail_area || null
+      
+      const profileData: Record<string, any> = {
+        id: user.id,
+        full_name: formData.full_name || null,
+        gender: formData.gender || null,
+        birthday: birthdayString || null, // YYYY-MM-DD形式の日付文字列
+        // 都道府県: prefecture と location の両方に保存（後方互換性）
+        prefecture: formData.prefecture || null,
+        location: formData.prefecture || null, // 旧カラム名にも同じ値を保存
+        region: formData.region || null, // 地方区分（湖東、湖南、湖北、湖西）
+        city: formData.city || null, // 市区町村
+        selected_area: selectedAreaValue, // ゴミ収集エリア（detail_area と統合）
+        interests: formData.interests.length > 0 ? formData.interests : null,
+        updated_at: new Date().toISOString()
+      }
+      
+      // detail_area カラムが存在する場合は追加（マイグレーション適用後）
+      // 存在しない場合はエラーを無視して selected_area に統合済み
+      if (formData.detail_area) {
+        profileData.detail_area = formData.detail_area
+      }
+      
+      console.log('📋 [Profile] 保存データ:', profileData)
+
       // profilesテーブルにupsert（更新または挿入）
-      // 各カラムにマッピング: full_name, gender, birthday, location, city, selected_area, interests
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('profiles')
-        .upsert({
-          id: user.id, // 確実にユーザーIDを設定
-          full_name: formData.full_name,
-          gender: formData.gender || null,
-          birthday: birthdayString || null, // YYYY-MM-DD形式の日付文字列
-          location: formData.location || null, // 居住地（都道府県）
-          city: formData.city || null, // 居住地（市区町村）
-          selected_area: formData.selected_area || null, // エリア名（hikone_waste_master.area_name）
-          interests: formData.interests.length > 0 ? formData.interests : null,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'id'
-        })
+        .upsert(profileData, { onConflict: 'id' })
         .select()
 
+      // detail_area カラムが存在しないエラーの場合、detail_area を除いて再試行
+      if (error && error.message.includes('detail_area')) {
+        console.warn('📋 [Profile] detail_area カラムが存在しないため、除外して再試行')
+        delete profileData.detail_area
+        const retryResult = await supabase
+          .from('profiles')
+          .upsert(profileData, { onConflict: 'id' })
+          .select()
+        data = retryResult.data
+        error = retryResult.error
+      }
+
       if (error) {
-        console.error('Profile upsert error:', error)
-        console.error('Error details:', JSON.stringify(error, null, 2))
+        console.error('📋 [Profile] 保存失敗の理由:', error.message)
+        console.error('📋 [Profile] エラー詳細:', JSON.stringify(error, null, 2))
+        console.error('📋 [Profile] エラーコード:', error.code)
+        console.error('📋 [Profile] ヒント:', error.hint)
         setErrorMsg(`保存に失敗しました: ${error.message}`)
         setTimeout(() => setErrorMsg(''), 5000)
       } else {
-        console.log('保存成功:', data)
+        console.log('📋 [Profile] 保存成功:', data)
         setShowSuccess(true)
         setErrorMsg('')
+        
         // 保存成功通知を表示してからモーダルを閉じる
+        // onComplete を呼び出して親コンポーネントに通知（状態の即時更新をトリガー）
         setTimeout(() => {
           onComplete()
         }, 1500)
@@ -310,10 +418,25 @@ export default function ProfileRegistrationModal({
     : 31
   const days = Array.from({ length: maxDays }, (_, i) => i + 1)
 
-  // 選択された都道府県に基づいて市区町村リストを取得
-  const availableCities = formData.location && formData.location !== '海外'
-    ? (PREFECTURE_CITIES[formData.location] || [])
-    : []
+  // 選択された都道府県・地方区分に基づいて市区町村リストを取得
+  const availableCities = (() => {
+    if (!formData.prefecture || formData.prefecture === '海外') return []
+    
+    // 滋賀県の場合は地方区分に基づいて市区町村を取得
+    if (formData.prefecture === '滋賀県') {
+      if (formData.region && SHIGA_REGION_CITIES[formData.region as keyof typeof SHIGA_REGION_CITIES]) {
+        return SHIGA_REGION_CITIES[formData.region as keyof typeof SHIGA_REGION_CITIES]
+      }
+      // 地方区分が選択されていない場合は全ての滋賀県市区町村を表示
+      return Object.values(SHIGA_REGION_CITIES).flat()
+    }
+    
+    // 他の都道府県
+    return PREFECTURE_CITIES[formData.prefecture] || []
+  })()
+  
+  // 詳細エリアの選択肢を取得
+  const availableDetailAreas = formData.city ? (CITY_DETAIL_AREAS[formData.city] || []) : []
 
   return (
     <>
@@ -373,7 +496,7 @@ export default function ProfileRegistrationModal({
                   type="text"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm"
+                  className="w-full bg-white border-2 border-gray-200 rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-900 placeholder:text-gray-400 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm"
                   placeholder="山田 太郎"
                 />
               </div>
@@ -445,7 +568,7 @@ export default function ProfileRegistrationModal({
               </div>
             </div>
 
-            {/* 居住地（都道府県・市区町村・エリア） */}
+            {/* 居住地（都道府県・地方区分・市区町村・詳細エリア） */}
             <div className="space-y-3">
               <label className="flex items-center gap-2 ml-2">
                 <div className="w-1.5 h-4 bg-orange-500 rounded-full" />
@@ -456,9 +579,9 @@ export default function ProfileRegistrationModal({
               <div className="relative">
                 <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
                 <select
-                  value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value, city: '', selected_area: '' })}
-                  className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
+                  value={formData.prefecture}
+                  onChange={(e) => setFormData({ ...formData, prefecture: e.target.value, region: '', city: '', selected_area: '', detail_area: '' })}
+                  className="w-full bg-white border-2 border-gray-200 rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-black focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                 >
                   <option value="">① 都道府県を選択</option>
                   {PREFECTURES.map((pref) => (
@@ -467,54 +590,90 @@ export default function ProfileRegistrationModal({
                 </select>
               </div>
               
-              {/* Step 2: 市区町村選択（都道府県が選択されている場合のみ表示） */}
-              {formData.location && formData.location !== '海外' && availableCities.length > 0 && (
+              {/* Step 2: 地方区分選択（滋賀県の場合のみ表示） */}
+              {formData.prefecture === '滋賀県' && (
                 <div className="relative">
-                  <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                  <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-emerald-500" size={20} />
                   <select
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value, selected_area: '' })}
-                    className="w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
+                    value={formData.region}
+                    onChange={(e) => setFormData({ ...formData, region: e.target.value, city: '', selected_area: '', detail_area: '' })}
+                    className="w-full bg-emerald-50 border-2 border-emerald-200 rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-black focus:border-emerald-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                   >
-                    <option value="">② 市区町村を選択</option>
-                    {availableCities.map((city) => (
-                      <option key={city} value={city}>{city}</option>
+                    <option value="">② 地方区分を選択</option>
+                    {SHIGA_REGIONS.map((region) => (
+                      <option key={region} value={region}>{region}</option>
                     ))}
                   </select>
                 </div>
               )}
               
-              {/* Step 3: エリア選択（彦根市の場合のみ表示） */}
-              {formData.city === '彦根市' && (
+              {/* Step 3: 市区町村選択（都道府県が選択されている場合のみ表示） */}
+              {formData.prefecture && formData.prefecture !== '海外' && (
+                // 滋賀県の場合は地方区分選択後に表示、それ以外は都道府県選択後に表示
+                (formData.prefecture !== '滋賀県' || formData.region) && availableCities.length > 0 && (
+                  <div className="relative">
+                    <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                    <select
+                      value={formData.city}
+                      onChange={(e) => setFormData({ ...formData, city: e.target.value, selected_area: '', detail_area: '' })}
+                      className="w-full bg-white border-2 border-gray-200 rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-black focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
+                    >
+                      <option value="">{formData.prefecture === '滋賀県' ? '③' : '②'} 市区町村を選択</option>
+                      {availableCities.map((city) => (
+                        <option key={city} value={city}>{city}</option>
+                      ))}
+                    </select>
+                  </div>
+                )
+              )}
+              
+              {/* Step 4: 詳細エリア選択（彦根市などの場合表示） */}
+              {formData.city && availableDetailAreas.length > 0 && (
                 <>
                   <div className="relative">
                     <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-400" size={20} />
                     <select
                       value={formData.selected_area}
                       onChange={(e) => setFormData({ ...formData, selected_area: e.target.value })}
-                      className="w-full bg-blue-50 border-2 border-transparent rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-gray-700 focus:border-blue-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
+                      className="w-full bg-blue-50 border-2 border-blue-200 rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-black focus:border-blue-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                     >
-                      <option value="">③ お住まいのエリアを選択</option>
-                      {HIKONE_AREAS.map((area) => (
+                      <option value="">{formData.prefecture === '滋賀県' ? '④' : '③'} お住まいのエリアを選択</option>
+                      {availableDetailAreas.map((area) => (
                         <option key={area} value={area}>{area}</option>
                       ))}
                     </select>
                   </div>
-                  <p className="text-[10px] text-gray-500 ml-2">
-                    ※ エリアに合わせた情報（ゴミ収集日、イベント等）をお届けします
-                  </p>
+                  {formData.city === '彦根市' && (
+                    <p className="text-[10px] text-gray-500 ml-2">
+                      ※ エリアに合わせた情報（ゴミ収集日、イベント等）をお届けします
+                    </p>
+                  )}
                 </>
+              )}
+              
+              {/* Step 5: 詳細エリア自由入力（選択肢がない市区町村の場合） */}
+              {formData.city && availableDetailAreas.length === 0 && (
+                <div className="relative">
+                  <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                  <input
+                    type="text"
+                    value={formData.detail_area}
+                    onChange={(e) => setFormData({ ...formData, detail_area: e.target.value })}
+                    placeholder={`${formData.prefecture === '滋賀県' ? '④' : '③'} 詳細エリア（任意）例：城南、高宮など`}
+                    className="w-full bg-white border-2 border-gray-200 rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-black placeholder:text-gray-400 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm"
+                  />
+                </div>
               )}
               
               {/* 選択状況の表示 */}
               {formData.city && (
-                <div className={`p-3 rounded-2xl border ${formData.selected_area ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
-                  <p className={`text-xs font-bold ${formData.selected_area ? 'text-blue-700' : 'text-gray-700'}`}>
-                    📍 {formData.location} {formData.city}
-                    {formData.selected_area && (
-                      <span className="text-blue-600">
-                        {' '}/ {formData.selected_area.split('・')[0]}...
-                      </span>
+                <div className={`p-3 rounded-2xl border ${formData.selected_area || formData.detail_area ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+                  <p className={`text-xs font-bold text-black`}>
+                    📍 {formatFullLocation(
+                      formData.prefecture,
+                      formData.prefecture === '滋賀県' ? formData.region : null,
+                      formData.city,
+                      formData.selected_area || formData.detail_area
                     )}
                   </p>
                   {formData.city === '彦根市' && !formData.selected_area && (

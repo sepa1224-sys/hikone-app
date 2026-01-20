@@ -107,21 +107,29 @@ export default function TransferPage() {
   const handleOpenConfirm = () => {
     setResult(null)
     
-    // バリデーション
+    // バリデーション（分かりやすい日本語エラーメッセージ）
     if (!receiverCode.trim()) {
-      setResult({ success: false, message: '送り先のコードを入力してください' })
+      setResult({ success: false, message: '📝 送り先の招待コードを入力してください' })
       return
     }
+    
+    if (receiverCode.trim().length < 8 || receiverCode.trim().length > 12) {
+      setResult({ success: false, message: '🔢 招待コードは8〜12桁で入力してください' })
+      return
+    }
+    
     if (!amount || parseInt(amount) <= 0) {
-      setResult({ success: false, message: '送金額を入力してください' })
+      setResult({ success: false, message: '💰 送金額を1ポイント以上で入力してください' })
       return
     }
+    
     if (parseInt(amount) > points) {
-      setResult({ success: false, message: '残高が不足しています' })
+      setResult({ success: false, message: `😢 ヒコポが足りません！現在の残高は ${points.toLocaleString()} ポイントです` })
       return
     }
+    
     if (!receiverPreview?.found) {
-      setResult({ success: false, message: '送り先のコードが見つかりません' })
+      setResult({ success: false, message: '🔍 送り先のコードが見つかりません。コードを確認してください' })
       return
     }
     
@@ -231,9 +239,9 @@ export default function TransferPage() {
                 type="text"
                 value={receiverCode}
                 onChange={(e) => setReceiverCode(e.target.value.toUpperCase())}
-                placeholder="8桁のコードを入力..."
-                maxLength={8}
-                className="flex-1 bg-gray-50 border-2 border-transparent rounded-xl px-4 py-3 font-black text-center tracking-widest text-lg focus:border-amber-400 focus:bg-white focus:outline-none transition-all"
+                placeholder="招待コードを入力..."
+                maxLength={12}
+                className="flex-1 bg-white border-2 border-gray-200 rounded-xl px-4 py-3 font-black text-center tracking-widest text-lg text-gray-900 placeholder:text-gray-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 focus:outline-none transition-all"
               />
               <button
                 onClick={() => setShowQRScanner(true)}
@@ -303,7 +311,7 @@ export default function TransferPage() {
                 placeholder="0"
                 min="1"
                 max={points}
-                className="w-full bg-gray-50 border-2 border-transparent rounded-xl px-4 py-3 pr-12 font-black text-2xl text-center focus:border-amber-400 focus:bg-white focus:outline-none transition-all"
+                className="w-full bg-white border-2 border-gray-200 rounded-xl px-4 py-3 pr-12 font-black text-2xl text-center text-gray-900 placeholder:text-gray-400 focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-200 focus:outline-none transition-all"
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">pt</span>
             </div>

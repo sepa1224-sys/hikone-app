@@ -32,6 +32,50 @@ body {
   html {
     -webkit-tap-highlight-color: transparent;
   }
+  
+  /* 全ての入力欄を黒文字に統一（ダークモード対策） */
+  input,
+  textarea,
+  select {
+    color: #111827 !important; /* text-gray-900 */
+    background-color: #ffffff !important;
+    caret-color: #111827; /* カーソル色 */
+  }
+  
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af !important; /* text-gray-400 */
+  }
+  
+  /* フォーカス時のスタイル */
+  input:focus,
+  textarea:focus,
+  select:focus {
+    color: #111827 !important;
+    background-color: #ffffff !important;
+  }
+  
+  /* 背景色が指定されている入力欄用（透明背景対策） */
+  input[class*="bg-"],
+  textarea[class*="bg-"],
+  select[class*="bg-"] {
+    color: #111827 !important;
+  }
+}
+
+/* ライトモード固定（ダークモード無効化） */
+@media (prefers-color-scheme: dark) {
+  input,
+  textarea,
+  select {
+    color: #111827 !important;
+    background-color: #ffffff !important;
+  }
+  
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af !important;
+  }
 }
 
 /* Leaflet マーカーのスタイル */

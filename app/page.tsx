@@ -15,6 +15,8 @@ import BottomNavigation from '@/components/BottomNavigation'
 import WasteScheduleCard, { HikoneWasteMaster } from '@/components/home/WasteScheduleCard'
 import { useWasteSchedule, prefetchWasteSchedule } from '@/lib/hooks/useWasteSchedule'
 import { usePoints } from '@/lib/hooks/usePoints'
+import { useMunicipalityStats } from '@/lib/hooks/useMunicipalityStats'
+import { formatFullLocation } from '@/lib/constants/shigaRegions'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -185,12 +187,17 @@ export default function AppHome() {
   const [userCity, setUserCity] = useState<string | null>(null)
   // ユーザーの選択エリア（profiles.selected_area）
   const [userSelectedArea, setUserSelectedArea] = useState<string | null>(null)
+  // ユーザーの会員番号（join_order）
+  const [userJoinOrder, setUserJoinOrder] = useState<number | null>(null)
   
   // SWRでゴミ収集スケジュールをキャッシュ付きで取得
   const { wasteSchedule: swrWasteSchedule, isLoading: wasteLoading, refetch: refetchWaste } = useWasteSchedule(userSelectedArea)
   
   // SWRでポイント情報をキャッシュ付きで取得
   const { points: userPoints, referralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(currentUser?.id)
+  
+  // SWRで自治体の人口・登録者数を取得（currentUser?.idを渡して自分がカウントに含まれているか確認）
+  const { stats: municipalityStats, isLoading: statsLoading } = useMunicipalityStats(userCity, currentUser?.id)
   
   // フォトコンテストイベント（events テーブルから取得）
   const [activeEvent, setActiveEvent] = useState<{
@@ -261,21 +268,26 @@ export default function AppHome() {
         if (session?.user) {
           setCurrentUser(session.user)
           
-          // ユーザーの登録都市とエリアを取得（ホーム画面のパーソナライズ用）
-          const { data: profile } = await supabase
+          // ユーザーの登録都市・エリア・会員番号を取得（ホーム画面のパーソナライズ用）
+          const { data: profileData } = await supabase
             .from('profiles')
-            .select('city, selected_area')
+            .select('city, selected_area, join_order')
             .eq('id', session.user.id)
             .single()
-          if (profile?.city) {
-            setUserCity(profile.city)
+          if (profileData?.city) {
+            setUserCity(profileData.city)
           }
-          if (profile?.selected_area) {
-            setUserSelectedArea(profile.selected_area)
-            console.log(`🗑️ ユーザーのエリア: ${profile.selected_area}`)
+          if (profileData?.selected_area) {
+            setUserSelectedArea(profileData.selected_area)
+            console.log(`🗑️ ユーザーのエリア: ${profileData.selected_area}`)
             // ゴミ収集スケジュールは SWR が userSelectedArea の変更を検知して自動取得
           } else {
             console.log(`🗑️ ユーザーのエリアが未設定です`)
+          }
+          // 会員番号を設定
+          if (profileData?.join_order) {
+            setUserJoinOrder(profileData.join_order)
+            console.log(`🎫 会員番号: ${profileData.join_order}`)
           }
           
           // ホーム画面にいる場合のみプロフィールチェックを実行（viewを変更しない）
@@ -979,6 +991,75 @@ export default function AppHome() {
           /* ホームコンテンツ - 新UI */
           <div className="max-w-xl mx-auto animate-in fade-in duration-500 space-y-4">
             
+            {/* 0. 市民カウンター（町ごとの登録者数 / その町の人口） + 会員番号 */}
+            <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-4 shadow-lg">
+              {/* 上段：町ごとの登録者数 / その町の人口 */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                    <UserCircle size={24} className="text-white" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">
+                      {/* 自治体名を表示 */}
+                      {municipalityStats.municipalityName}の仲間
+                    </p>
+                    <p className="text-lg font-black text-white">
+                      {statsLoading ? (
+                        <span className="opacity-70 animate-pulse">読み込み中...</span>
+                      ) : (
+                        <>
+                          {/* 町ごとの登録者数 / その町の人口 */}
+                          <span className="text-yellow-300">
+                            {municipalityStats.registeredUsers.toLocaleString()}
+                          </span>
+                          <span className="text-sm font-bold opacity-80">人</span>
+                          <span className="mx-1 opacity-50">/</span>
+                          {/* 人口が0の場合は「取得中」と表示、それ以外は人口を表示 */}
+                          {municipalityStats.population > 0 ? (
+                            <>
+                              <span>{municipalityStats.population.toLocaleString()}</span>
+                              <span className="text-sm font-bold opacity-80">人</span>
+                            </>
+                          ) : (
+                            <span className="text-sm opacity-70">取得中...</span>
+                          )}
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  {/* 自治体名を常に表示 */}
+                  <p className="text-xs font-black text-white/90">
+                    {municipalityStats.municipalityName}
+                  </p>
+                  {/* 普及率：その町の登録人数 ÷ その町の人口 */}
+                  {!statsLoading && municipalityStats.population > 0 && (
+                    <p className="text-[10px] font-bold text-yellow-300">
+                      {(() => {
+                        const rate = (municipalityStats.registeredUsers / municipalityStats.population) * 100
+                        return `普及率 ${rate.toFixed(3)}%`
+                      })()}
+                    </p>
+                  )}
+                </div>
+              </div>
+              
+              {/* 下段：会員番号（ログインユーザーのみ表示） */}
+              {currentUser && userJoinOrder && (
+                <div className="mt-2 pt-2 border-t border-white/20">
+                  <p className="text-center">
+                    <span className="text-white/70 text-xs font-bold">あなたは</span>
+                    <span className="text-yellow-300 text-xl font-black mx-2">
+                      {userJoinOrder.toLocaleString()}
+                    </span>
+                    <span className="text-white/70 text-xs font-bold">人目の仲間です！</span>
+                  </p>
+                </div>
+              )}
+            </div>
+            
             {/* 1. ゴミ収集情報カード（独立コンポーネント） */}
             <WasteScheduleCard
               userCity={userCity}
@@ -1556,27 +1637,21 @@ export default function AppHome() {
                           </div>
                         </div>
                         
-                        {/* 居住地情報 */}
-                        {(profile?.location || profile?.city) && (
+                        {/* 居住地情報（新フォーマット対応）- prefecture または location を使用 */}
+                        {(profile?.prefecture || profile?.location || profile?.city) && (
                           <div className="mt-4 pt-4 border-t border-white/20">
                             <p className="text-xs text-white/60 font-bold mb-2">居住地</p>
                             <div className="flex items-center gap-2">
                               <MapPin size={16} className="text-white/80" />
                               <p className="text-sm font-bold text-white">
-                                {profile?.location && profile?.city 
-                                  ? `${profile.location} ${profile.city}`
-                                  : profile?.location || profile?.city || ''
-                                }
+                                {formatFullLocation(
+                                  profile?.prefecture || profile?.location || null,
+                                  profile?.region || null,
+                                  profile?.city || null,
+                                  profile?.selected_area || profile?.detail_area || null
+                                )}
                               </p>
                             </div>
-                            {/* エリア表示 */}
-                            {profile?.selected_area && (
-                              <div className="mt-2 px-3 py-1.5 bg-white/20 rounded-xl inline-block">
-                                <p className="text-xs font-bold text-white">
-                                  📍 {profile.selected_area.split('・')[0]}... エリア
-                                </p>
-                              </div>
-                            )}
                           </div>
                         )}
                       </div>
@@ -1839,15 +1914,21 @@ export default function AppHome() {
           userId={currentUser.id}
           userEmail={currentUser.email}
           userFullName={currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || profile?.full_name}
-          onComplete={() => {
+          onComplete={async () => {
             // 保存成功後、モーダルを閉じてプロフィールを再チェック
             setShowProfileModal(false)
+            
+            // 最新のプロフィールデータを再取得（キャッシュクリア）
+            console.log('📋 [Profile] モーダル閉じ後、最新データを再取得')
+            await fetchProfileData()
+            
             // ホーム画面にいる場合のみ再チェック（これにより、次回はモーダルが表示されない）
             if (view === 'main') {
               checkProfileCompletion()
-            } else if (view === 'profile') {
-              fetchProfileData() // プロフィールページのデータも更新
             }
+            
+            // ゴミ収集スケジュールも再取得
+            refetchWaste()
           }}
         />
       )}

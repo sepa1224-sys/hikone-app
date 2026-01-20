@@ -207,7 +207,7 @@ export default function ContactPage() {
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="ご意見・ご提案の内容をご記入ください..."
                 rows={6}
-                className="w-full bg-gray-50 border-2 border-transparent rounded-2xl p-4 font-bold text-gray-700 focus:border-blue-400 focus:bg-white focus:outline-none transition-all resize-none text-sm"
+                className="w-full bg-white border-2 border-gray-200 rounded-2xl p-4 font-bold text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all resize-none text-sm"
               />
               <p className="text-[10px] text-gray-400 text-right">
                 {content.length}文字（10文字以上）
