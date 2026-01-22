@@ -8,13 +8,32 @@ export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
 
+  console.log('🔐 [Auth Callback] コールバック受信, code:', code ? '存在' : 'なし')
+
   if (code) {
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    // サーバーサイドでのセッション交換
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      }
+    })
     
     // 認証コードをセッションに交換
-    await supabase.auth.exchangeCodeForSession(code)
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    
+    if (error) {
+      console.error('🔐 [Auth Callback] セッション交換エラー:', error)
+      return NextResponse.redirect(new URL('/login?error=auth_failed', request.url))
+    }
+    
+    console.log('🔐 [Auth Callback] セッション交換成功:', {
+      userId: data.session?.user?.id,
+      email: data.session?.user?.email,
+    })
   }
 
   // 認証完了後、プロフィールページにリダイレクト
+  console.log('🔐 [Auth Callback] プロフィールページへリダイレクト')
   return NextResponse.redirect(new URL('/profile', request.url))
 }

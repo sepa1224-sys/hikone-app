@@ -12,9 +12,14 @@ import { useFriends, addFriend, removeFriend, searchUserByCode, Friend } from '@
 import { sendHikopo } from '@/lib/actions/transfer'
 import QRCode from 'react-qr-code'
 import { formatFullLocation, formatShortLocation } from '@/lib/constants/shigaRegions'
+import { useAuth } from '@/components/AuthProvider'
 
 export default function ProfilePage() {
   const router = useRouter()
+  
+  // AuthProvider から認証状態を取得
+  const { session, user: authUser, loading: authLoading, signOut } = useAuth()
+  
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<any>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
@@ -68,23 +73,32 @@ export default function ProfilePage() {
   const [quickSending, setQuickSending] = useState(false)
   const [quickSendResult, setQuickSendResult] = useState<{ success: boolean; message: string } | null>(null)
 
+  // AuthProvider の状態が確定したらプロフィールを取得
   useEffect(() => {
-    fetchProfileData()
-    
-    // 認証状態の変更を監視
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        router.push('/')
-      } else if (session?.user) {
-        setCurrentUser(session.user)
-        fetchProfileData()
-      }
+    console.log('📋 [Profile] AuthProvider状態:', { 
+      authLoading, 
+      hasSession: !!session,
+      userId: authUser?.id 
     })
     
-    return () => {
-      subscription.unsubscribe()
+    // AuthProvider がまだローディング中なら何もしない
+    if (authLoading) {
+      console.log('📋 [Profile] 認証状態確認中...')
+      return
     }
-  }, [])
+    
+    // セッションがない場合はログインページへ
+    if (!session || !authUser) {
+      console.log('📋 [Profile] セッションなし → ログインページへリダイレクト')
+      router.push('/login')
+      return
+    }
+    
+    // セッションがある場合はプロフィールを取得
+    console.log('📋 [Profile] セッション確認OK → プロフィール取得')
+    setCurrentUser(authUser)
+    fetchProfileData()
+  }, [authLoading, session, authUser])
 
   // 生年月日を読みやすい形式に整形する関数
   const formatBirthday = (birthday: string | null | undefined): string => {
@@ -128,10 +142,15 @@ export default function ProfilePage() {
   const fetchProfileData = async () => {
     try {
       setLoading(true)
-      const { data: { session } } = await supabase.auth.getSession()
+      
+      // AuthProvider から取得した session を使用
+      console.log('📋 [Profile] fetchProfileData: 現在のセッション:', session ? {
+        userId: session.user?.id,
+        email: session.user?.email,
+      } : 'なし')
       
       if (!session?.user) {
-        router.push('/')
+        console.log('📋 [Profile] セッションがないためスキップ')
         setLoading(false)
         return
       }
@@ -175,7 +194,8 @@ export default function ProfilePage() {
 
   const handleLogout = async () => {
     if (confirm('ログアウトしますか？')) {
-      await supabase.auth.signOut()
+      console.log('📋 [Profile] ログアウト実行')
+      await signOut() // AuthProvider の signOut を使用
       setProfile(null)
       setCurrentUser(null)
       router.push('/')
@@ -418,11 +438,24 @@ export default function ProfilePage() {
     }
   }
 
-  if (loading) {
+  // AuthProvider がローディング中、またはプロフィール取得中
+  if (authLoading || loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20">
+      <div className="flex flex-col items-center justify-center py-20 min-h-screen">
         <div className="animate-spin text-4xl mb-4">🐱</div>
-        <p className="font-black text-gray-400">読み込み中...</p>
+        <p className="font-black text-gray-400">
+          {authLoading ? '認証状態を確認中...' : '読み込み中...'}
+        </p>
+      </div>
+    )
+  }
+  
+  // セッションがない場合（リダイレクト前の表示）
+  if (!session) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 min-h-screen">
+        <div className="animate-spin text-4xl mb-4">🔐</div>
+        <p className="font-black text-gray-400">ログインページへ移動中...</p>
       </div>
     )
   }

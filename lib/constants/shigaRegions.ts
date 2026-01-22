@@ -3,6 +3,27 @@
  * 居住地設定で使用
  */
 
+// ===== サービス対応エリアの定義 =====
+// 現在は彦根市・犬上郡（多賀町、甲良町、豊郷町）・愛知郡（愛荘町）が対応エリア
+export const SUPPORTED_CITIES = [
+  '彦根市',
+  '多賀町',
+  '甲良町',
+  '豊郷町',
+  '愛荘町',
+] as const
+
+export type SupportedCity = typeof SUPPORTED_CITIES[number]
+
+// 対応エリアかどうかをチェックする関数
+export function isSupportedCity(city: string | null | undefined): boolean {
+  if (!city) return false
+  return SUPPORTED_CITIES.includes(city as SupportedCity)
+}
+
+// 未対応エリアのメッセージ
+export const UNSUPPORTED_AREA_MESSAGE = '現在は彦根市・犬上郡・愛知郡エリア限定のサービスです。順次拡大予定ですので、今しばらくお待ちください。'
+
 // 地方区分の定義
 export const SHIGA_REGIONS = ['湖東', '湖南', '湖北', '湖西'] as const
 export type ShigaRegion = typeof SHIGA_REGIONS[number]

@@ -13,9 +13,14 @@ import { useFriends, addFriend, removeFriend, Friend } from '@/lib/hooks/useFrie
 import { usePoints } from '@/lib/hooks/usePoints'
 import { sendHikopo } from '@/lib/actions/transfer'
 import QRScanner from '@/components/QRScanner'
+import { useAuth } from '@/components/AuthProvider'
 
 export default function FriendsPage() {
   const router = useRouter()
+  
+  // AuthProvider から認証状態を取得
+  const { session, user: authUser, loading: authLoading } = useAuth()
+  
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   
@@ -44,25 +49,25 @@ export default function FriendsPage() {
   // ポイント情報
   const { points, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(currentUser?.id)
   
-  // 認証チェック
+  // AuthProvider の状態が確定したら認証チェック
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.user) {
-          router.push('/login')
-          return
-        }
-        setCurrentUser(session.user)
-      } catch (error) {
-        console.error('認証エラー:', error)
-        router.push('/login')
-      } finally {
-        setLoading(false)
-      }
+    console.log('👥 [Friends] 認証状態:', { authLoading, hasSession: !!session })
+    
+    // AuthProvider がまだローディング中なら何もしない
+    if (authLoading) return
+    
+    // セッションがない場合はログインページへ
+    if (!session || !authUser) {
+      console.log('👥 [Friends] セッションなし → ログインページへ')
+      router.push('/login')
+      return
     }
-    checkAuth()
-  }, [router])
+    
+    // セッションがある場合
+    console.log('👥 [Friends] セッション確認OK')
+    setCurrentUser(authUser)
+    setLoading(false)
+  }, [authLoading, session, authUser, router])
   
   // フレンド追加
   const handleAddFriend = async () => {

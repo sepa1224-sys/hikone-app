@@ -43,60 +43,234 @@ const toSafeNumber = (value: any): number | null => {
   return num
 }
 
+// shop から座標を取得（shop.latitude, shop.longitude を使用 - DBカラム名）
+const getShopCoords = (shop: Shop): { latitude: number | null; longitude: number | null } => {
+  const latitude = toSafeNumber(shop.latitude)
+  const longitude = toSafeNumber(shop.longitude)
+  return { latitude, longitude }
+}
+
 // 座標が有効かどうかを判定（描画時のみのチェック用）
 // データ自体は null でも受け取れるように、このチェックは描画時のみ使用
-const isValidJapanCoord = (lat: number | null, lng: number | null): boolean => {
+const isValidCoord = (latitude: number | null, longitude: number | null, shopName?: string): boolean => {
   // null / undefined チェック
-  if (lat == null || lng == null) return false
+  if (latitude == null || longitude == null) {
+    if (shopName) {
+      console.log(`   ❌ [${shopName}] 無効: latitude=${latitude}, longitude=${longitude} (null/undefined)`)
+    }
+    return false
+  }
   
   // Number() で数値に変換
-  const numLat = Number(lat)
-  const numLng = Number(lng)
+  const numLat = Number(latitude)
+  const numLng = Number(longitude)
   
   // NaN チェック（変換失敗）
-  if (isNaN(numLat) || isNaN(numLng)) return false
+  if (isNaN(numLat) || isNaN(numLng)) {
+    if (shopName) {
+      console.log(`   ❌ [${shopName}] 無効: latitude=${latitude}, longitude=${longitude} (NaN)`)
+    }
+    return false
+  }
   
-  // 0 チェック（無効な座標）
-  if (numLat === 0 || numLng === 0) return false
+  // 0 チェック（一時的に許容し、ログで警告のみ出す）
+  if (numLat === 0 || numLng === 0) {
+    if (shopName) {
+      console.log(`   ⚠️ [${shopName}] 警告: latitude=${numLat}, longitude=${numLng} (0が含まれる - テストデータ?)`)
+    }
+    // 一時的に許容（テストデータ対応）
+    // return false
+  }
   
   return true
 }
 
-// 軽量版 MapRecenter
-const MapRecenter = memo(function MapRecenter({ shops, defaultCenter }: { shops: Shop[], defaultCenter: [number, number] }) {
+// 🆕 MapRecenter - 初回のみfitBounds実行、カテゴリ切り替え時は維持
+const MapRecenter = memo(function MapRecenter({ 
+  shops, 
+  defaultCenter, 
+  isInitialLoad,
+  onRecenter 
+}: { 
+  shops: Shop[], 
+  defaultCenter: [number, number],
+  isInitialLoad: boolean,
+  onRecenter?: () => void
+}) {
   const map = useMap()
+  const hasInitialized = useRef(false)
 
   useEffect(() => {
     if (!map || !map.getContainer) return
 
-    // 日本の座標範囲内の有効なショップのみ取得
+    // ★★★ 初回読み込み時のみ fitBounds を実行 ★★★
+    if (!isInitialLoad && hasInitialized.current) {
+      console.log(`📍 MapRecenter: カテゴリ切り替え → ズームレベル維持（fitBounds スキップ）`)
+      return
+    }
+
+    // ★★★ parseFloat を使って有効な座標を持つショップのみ取得 ★★★
     const validShops = shops.filter(shop => {
-      const lat = toSafeNumber(shop.latitude ?? (shop as any).lat)
-      const lng = toSafeNumber(shop.longitude ?? (shop as any).lng)
-      return isValidJapanCoord(lat, lng)
+      const lat = parseFloat(String(shop.latitude))
+      const lng = parseFloat(String(shop.longitude))
+      return !isNaN(lat) && !isNaN(lng) && isFinite(lat) && isFinite(lng) && !(lat === 0 && lng === 0)
     })
 
     console.log(`📍 MapRecenter: 全${shops.length}件中、有効座標${validShops.length}件`)
 
     try {
-      if (validShops.length > 0) {
+      if (validShops.length > 0 && isInitialLoad) {
         const bounds = L.latLngBounds(
           validShops.map(shop => {
-            const lat = toSafeNumber(shop.latitude ?? (shop as any).lat) as number
-            const lng = toSafeNumber(shop.longitude ?? (shop as any).lng) as number
+            const lat = parseFloat(String(shop.latitude))
+            const lng = parseFloat(String(shop.longitude))
             return [lat, lng] as [number, number]
           })
         )
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 })
-      } else {
+        console.log(`   ✅ 初回 fitBounds 完了: ${validShops.length}件の店舗を表示範囲に収めました`)
+        hasInitialized.current = true
+      } else if (validShops.length === 0 && !hasInitialized.current) {
+        console.log(`   ⚠️ 有効な座標がないため、デフォルト位置を使用`)
         map.setView(defaultCenter, 14)
+        hasInitialized.current = true
       }
-    } catch {
+    } catch (e) {
+      console.error(`   ❌ fitBounds エラー:`, e)
       map.setView(defaultCenter, 14)
     }
-  }, [shops.length, map, defaultCenter])
+  }, [isInitialLoad, shops.length, map, defaultCenter])
 
   return null
+})
+
+// 🆕 エリア選択時のジャンプコンポーネント
+const MapJump = memo(function MapJump({ 
+  jumpTo 
+}: { 
+  jumpTo: { center: [number, number], zoom: number } | null 
+}) {
+  const map = useMap()
+  const lastJumpRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!jumpTo || !map) return
+    
+    // 同じ場所へのジャンプを防止
+    const jumpKey = `${jumpTo.center[0]}-${jumpTo.center[1]}-${jumpTo.zoom}`
+    if (lastJumpRef.current === jumpKey) return
+    
+    console.log(`🚀 エリアジャンプ: [${jumpTo.center[0]}, ${jumpTo.center[1]}] zoom: ${jumpTo.zoom}`)
+    
+    // アニメーション付きで移動
+    map.flyTo(jumpTo.center, jumpTo.zoom, {
+      duration: 0.8, // アニメーション時間（秒）
+      easeLinearity: 0.5
+    })
+    
+    lastJumpRef.current = jumpKey
+  }, [jumpTo, map])
+
+  return null
+})
+
+// 🆕 現在地取得時のマップ移動コンポーネント
+const LocationMove = memo(function LocationMove({ 
+  currentLocation,
+  shouldMove,
+  onComplete
+}: { 
+  currentLocation: { lat: number; lng: number } | null
+  shouldMove: boolean
+  onComplete?: () => void
+}) {
+  const map = useMap()
+  const hasMovedRef = useRef(false)
+
+  useEffect(() => {
+    if (!shouldMove || !currentLocation || !map) return
+    if (hasMovedRef.current) return // 既に移動済みならスキップ
+    
+    console.log(`📍 現在地にマップを移動: [${currentLocation.lat}, ${currentLocation.lng}]`)
+    
+    // アニメーション付きで現在地に移動
+    map.flyTo([currentLocation.lat, currentLocation.lng], 16, {
+      duration: 1.0,
+      easeLinearity: 0.5
+    })
+    
+    hasMovedRef.current = true
+    
+    // 移動完了を通知
+    if (onComplete) {
+      setTimeout(() => {
+        onComplete()
+      }, 1000) // アニメーション完了後にコールバック
+    }
+  }, [shouldMove, currentLocation, map, onComplete])
+
+  // shouldMoveがfalseにリセットされたら、次回の移動を許可
+  useEffect(() => {
+    if (!shouldMove) {
+      hasMovedRef.current = false
+    }
+  }, [shouldMove])
+
+  return null
+})
+
+// 🆕 再調整ボタンコンポーネント
+const RecenterButton = memo(function RecenterButton({ 
+  shops, 
+  defaultCenter 
+}: { 
+  shops: Shop[], 
+  defaultCenter: [number, number] 
+}) {
+  const map = useMap()
+  
+  const handleRecenter = () => {
+    const validShops = shops.filter(shop => {
+      const lat = parseFloat(String(shop.latitude))
+      const lng = parseFloat(String(shop.longitude))
+      return !isNaN(lat) && !isNaN(lng) && isFinite(lat) && isFinite(lng) && !(lat === 0 && lng === 0)
+    })
+    
+    if (validShops.length > 0) {
+      const bounds = L.latLngBounds(
+        validShops.map(shop => {
+          const lat = parseFloat(String(shop.latitude))
+          const lng = parseFloat(String(shop.longitude))
+          return [lat, lng] as [number, number]
+        })
+      )
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 })
+      console.log(`📍 手動で fitBounds 実行: ${validShops.length}件`)
+    } else {
+      map.setView(defaultCenter, 14)
+    }
+  }
+  
+  return (
+    <div className="leaflet-bottom leaflet-right" style={{ marginBottom: '20px', marginRight: '10px' }}>
+      <div className="leaflet-control">
+        <button
+          onClick={handleRecenter}
+          className="bg-white hover:bg-gray-100 text-gray-700 px-3 py-2 rounded-lg shadow-lg border border-gray-200 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95"
+          title="検索結果を全て表示"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+            <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+            <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          全体表示
+        </button>
+      </div>
+    </div>
+  )
 })
 
 interface RouteData {
@@ -111,6 +285,34 @@ interface ShopMapProps {
   currentLocation?: { lat: number; lng: number } | null
   destinationShop?: Shop | null
   defaultCenter?: [number, number]
+  // 🆕 初回読み込みかどうか（fitBoundsの制御用）
+  isInitialLoad?: boolean
+  // 🆕 再調整ボタンのコールバック
+  onRecenterRequest?: () => void
+  // 🆕 エリア選択時のジャンプ先座標とズームレベル
+  jumpTo?: { center: [number, number], zoom: number } | null
+  // 🆕 現在地取得時のマップ移動フラグ
+  shouldMoveToLocation?: boolean
+  // 🆕 マップ移動完了時のコールバック
+  onLocationMoveComplete?: () => void
+}
+
+// ★★★ 座標を parseFloat() で確実に浮動小数点数に変換する関数 ★★★
+const parseCoordinate = (value: any): number | null => {
+  // null / undefined / 空文字チェック
+  if (value === null || value === undefined || value === '') return null
+  
+  // parseFloat() を使用して確実に浮動小数点数として扱う
+  // 文字列として入っていても確実にパースできる
+  const parsed = parseFloat(String(value))
+  
+  // isNaN チェック（パース失敗）
+  if (isNaN(parsed)) return null
+  
+  // isFinite チェック（Infinityを除外）
+  if (!isFinite(parsed)) return null
+  
+  return parsed
 }
 
 // メモ化されたマーカーコンポーネント（パフォーマンス向上）
@@ -121,18 +323,27 @@ const ShopMarker = memo(function ShopMarker({
   shop: Shop
   isDestination: boolean 
 }) {
-  // 座標を安全に数値変換（shop.latitude / shop.lat どちらにも対応）
-  const lat = toSafeNumber(shop.latitude ?? (shop as any).lat)
-  const lng = toSafeNumber(shop.longitude ?? (shop as any).lng)
+  // ★★★ parseFloat() で確実に浮動小数点数に変換 ★★★
+  const lat = parseCoordinate(shop.latitude)
+  const lng = parseCoordinate(shop.longitude)
   
-  // 有効な座標がない場合はマーカーを描画しない（日本の範囲内かチェック）
-  if (!isValidJapanCoord(lat, lng)) {
+  // 有効判定: parseCoordinate が null を返さず、かつ両方0でない場合のみ有効
+  const isValid = 
+    lat !== null && 
+    lng !== null &&
+    !isNaN(lat) && 
+    !isNaN(lng) &&
+    !(lat === 0 && lng === 0) // 両方0の場合のみ無効
+  
+  // 有効な座標がない場合はマーカーを描画しない
+  if (!isValid) {
+    // 最初の数件のみログ出力（大量のログを防ぐ）
     return null
   }
 
   return (
     <Marker 
-      position={[lat as number, lng as number]} 
+      position={{ lat: lat, lng: lng }}
       icon={isDestination ? destinationIcon : icon}
     >
       <Popup maxWidth={200}>
@@ -163,41 +374,95 @@ const ShopMarker = memo(function ShopMarker({
   )
 })
 
-function ShopMap({ shops, routeData, currentLocation, destinationShop, defaultCenter: propDefaultCenter }: ShopMapProps) {
+function ShopMap({ 
+  shops, 
+  routeData, 
+  currentLocation, 
+  destinationShop, 
+  defaultCenter: propDefaultCenter,
+  isInitialLoad = true,  // デフォルトは初回読み込み
+  onRecenterRequest,
+  jumpTo,  // 🆕 エリア選択時のジャンプ先
+  shouldMoveToLocation = false,  // 🆕 現在地取得時のマップ移動フラグ
+  onLocationMoveComplete  // 🆕 マップ移動完了時のコールバック
+}: ShopMapProps) {
   const defaultCenter: [number, number] = propDefaultCenter || [35.2743, 136.2597]
   const mapRef = useRef<L.Map | null>(null)
 
   // デバッグ: 受け取ったデータを確認（データ自体は null でも受け取る）
+  // shops の内容が変わった時に再実行されるよう、JSON.stringify で依存を追跡
+  const shopsKey = JSON.stringify(shops.map(s => ({ id: s.id, lat: s.latitude, lng: s.longitude })))
+  
   useEffect(() => {
+    console.log(`\n🗺️ ========== ShopMap デバッグログ ==========`)
+    console.log(`📦 Mapに渡された店舗数: ${shops.length}件`)
+    
     if (shops.length > 0) {
-      const validCount = shops.filter(s => {
-        const lat = toSafeNumber(s.latitude ?? (s as any).lat)
-        const lng = toSafeNumber(s.longitude ?? (s as any).lng)
-        return isValidJapanCoord(lat, lng)
-      }).length
+      // ★★★ parseFloat を使った座標パースでデバッグ出力 ★★★
+      const debugData = shops.slice(0, 10).map((shop, index) => {
+        const lat = parseCoordinate(shop.latitude)
+        const lng = parseCoordinate(shop.longitude)
+        const isValid = lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0)
+        
+        return {
+          '#': index + 1,
+          '店舗名': shop.name,
+          '元latitude': shop.latitude,
+          '元longitude': shop.longitude,
+          'parseFloat後lat': lat,
+          'parseFloat後lng': lng,
+          '有効': isValid ? '✅' : '❌'
+        }
+      })
       
-      console.log(`🗺️ ShopMap: 全${shops.length}件受信 → 有効座標${validCount}件（描画対象）`)
+      console.log(`\n📋 店舗座標一覧（最初の10件）:`)
+      console.table(debugData)
       
-      // null のデータ数も表示
-      const nullCount = shops.filter(s => s.latitude == null || s.longitude == null).length
-      if (nullCount > 0) {
-        console.log(`   ⚠️ 座標が null の店舗: ${nullCount}件（座標取得待ち）`)
+      // 有効/無効のサマリー（parseCoordinateを使用）
+      const validShopsList = shops.filter(s => {
+        const lat = parseCoordinate(s.latitude)
+        const lng = parseCoordinate(s.longitude)
+        return lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0)
+      })
+      
+      const invalidShopsList = shops.filter(s => {
+        const lat = parseCoordinate(s.latitude)
+        const lng = parseCoordinate(s.longitude)
+        return !(lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0))
+      })
+      
+      console.log(`\n✅ マーカー表示対象: ${validShopsList.length}件 / 全${shops.length}件`)
+      
+      if (validShopsList.length > 0 && validShopsList.length <= 20) {
+        console.log(`📍 表示される店舗:`, validShopsList.map(s => s.name).join(', '))
+      } else if (validShopsList.length > 20) {
+        console.log(`📍 表示される店舗（最初の20件）:`, validShopsList.slice(0, 20).map(s => s.name).join(', '), '...')
       }
+      
+      if (invalidShopsList.length > 0 && invalidShopsList.length <= 10) {
+        console.log(`⚠️ 座標が無効な店舗 (${invalidShopsList.length}件):`, invalidShopsList.map(s => s.name).join(', '))
+      } else if (invalidShopsList.length > 10) {
+        console.log(`⚠️ 座標が無効な店舗 (${invalidShopsList.length}件): 最初の10件 →`, invalidShopsList.slice(0, 10).map(s => s.name).join(', '))
+      }
+    } else {
+      console.log(`⚠️ Mapに渡された店舗が0件です！`)
     }
-  }, [shops])
+    
+    console.log(`🗺️ ============================================\n`)
+  }, [shopsKey]) // shops の内容が変わった時に再実行
 
   // 描画時のみフィルタリング：データ自体は全て受け取り、描画時に有効な座標のみ表示
   // ShopMarker 内で無効な座標は null を返すので、ここでは緩やかにフィルタリング
   const validShops = useMemo(() => {
-    // 描画対象: 座標が有効なもののみ（描画時のチェック）
+    // ★★★ parseCoordinate を使用して座標をパース ★★★
     const filtered = shops.filter(shop => {
-      const lat = toSafeNumber(shop.latitude ?? (shop as any).lat)
-      const lng = toSafeNumber(shop.longitude ?? (shop as any).lng)
-      return isValidJapanCoord(lat, lng)
+      const lat = parseCoordinate(shop.latitude)
+      const lng = parseCoordinate(shop.longitude)
+      return lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0)
     })
-    console.log(`📊 ShopMap: ${filtered.length}/${shops.length}件を描画`)
+    console.log(`📊 ShopMap validShops: ${filtered.length}/${shops.length}件を fitBounds 対象に`)
     return filtered
-  }, [shops])
+  }, [shopsKey]) // shops の内容が変わった時に再計算
 
   // ルート座標のメモ化
   const routeCoordinates = useMemo(() => {
@@ -229,7 +494,24 @@ function ShopMap({ shops, routeData, currentLocation, destinationShop, defaultCe
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
-        <MapRecenter shops={validShops} defaultCenter={defaultCenter} />
+        <MapRecenter 
+          shops={validShops} 
+          defaultCenter={defaultCenter} 
+          isInitialLoad={isInitialLoad}
+        />
+        
+        {/* 🆕 エリア選択時のジャンプ */}
+        <MapJump jumpTo={jumpTo || null} />
+        
+        {/* 🆕 現在地取得時のマップ移動 */}
+        <LocationMove 
+          currentLocation={currentLocation || null}
+          shouldMove={shouldMoveToLocation}
+          onComplete={onLocationMoveComplete}
+        />
+        
+        {/* 🆕 再調整ボタン */}
+        <RecenterButton shops={validShops} defaultCenter={defaultCenter} />
 
         {/* ルートポリライン */}
         {routeData && routeCoordinates.length > 0 && (

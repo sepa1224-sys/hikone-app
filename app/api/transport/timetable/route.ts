@@ -7,16 +7,17 @@ const ODPT_API_BASE = 'https://api.odpt.jp/api/v4'
 const FALLBACK_TOKEN = '6i7bm9sauna68506eqc3s0qv13uhnn70yx6qrqvn8aznjnqzydv365fa0smcc5fy'
 
 // 駅IDから駅名の逆引きマッピング（フォールバック検索用）
+// 注意: 駅IDは路線ごとに異なるため、正しいIDを使用（Tokaido=東海道線）
 const STATION_ID_TO_NAME: Record<string, string> = {
-  'odpt.Station:JR-West.TokaidoSanyo.Hikone': '彦根',
-  'odpt.Station:JR-West.TokaidoSanyo.MinamiHikone': '南彦根',
-  'odpt.Station:JR-West.TokaidoSanyo.Kawase': '河瀬',
-  'odpt.Station:JR-West.TokaidoSanyo.Inae': '稲枝',
-  'odpt.Station:JR-West.TokaidoSanyo.Maibara': '米原',
-  'odpt.Station:JR-West.Hokuriku.Nagahama': '長浜',
-  'odpt.Station:JR-West.TokaidoSanyo.Kusatsu': '草津',
-  'odpt.Station:JR-West.TokaidoSanyo.Kyoto': '京都',
-  'odpt.Station:JR-West.TokaidoSanyo.Osaka': '大阪'
+  'odpt.Station:JR-West.Tokaido.Hikone': '彦根',
+  'odpt.Station:JR-West.Tokaido.MinamiHikone': '南彦根',
+  'odpt.Station:JR-West.Tokaido.Kawase': '河瀬',
+  'odpt.Station:JR-West.Tokaido.Inae': '稲枝',
+  'odpt.Station:JR-West.Tokaido.Maibara': '米原',
+  'odpt.Station:JR-West.Tokaido.Nagahama': '長浜',
+  'odpt.Station:JR-West.Tokaido.Kusatsu': '草津',
+  'odpt.Station:JR-West.Tokaido.Kyoto': '京都',
+  'odpt.Station:JR-West.Tokaido.Osaka': '大阪'
 }
 
 export async function GET(request: NextRequest) {

@@ -1,14 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
 import { Mail, Lock, Eye, EyeOff, UserPlus, LogIn, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/components/AuthProvider'
 
 // Googleアイコン（SVG）
 const GoogleIcon = () => (
@@ -34,6 +31,10 @@ const GoogleIcon = () => (
 
 export default function LoginPage() {
   const router = useRouter()
+  
+  // AuthProvider から認証状態を取得
+  const { session, loading: authLoading } = useAuth()
+  
   const [isLogin, setIsLogin] = useState(true) // true: ログイン, false: 新規登録
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -42,6 +43,16 @@ export default function LoginPage() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  
+  // 既にログイン済みの場合はプロフィールページへリダイレクト
+  useEffect(() => {
+    console.log('🔑 [Login] 認証状態確認:', { authLoading, hasSession: !!session })
+    
+    if (!authLoading && session) {
+      console.log('🔑 [Login] 既にログイン済み → プロフィールへリダイレクト')
+      router.push('/profile')
+    }
+  }, [authLoading, session, router])
 
   // メール/パスワードでのログイン・登録
   const handleSubmit = async (e: React.FormEvent) => {
@@ -52,14 +63,18 @@ export default function LoginPage() {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
+        console.log('🔑 [Login] メールログイン実行中...')
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         })
         if (error) throw error
+        console.log('🔑 [Login] ログイン成功:', data.session?.user?.email)
         setSuccess('ログインしました！')
-        setTimeout(() => router.push('/profile'), 1000)
+        // AuthProvider が状態を検知してリダイレクトするので少し待つ
+        setTimeout(() => router.push('/profile'), 500)
       } else {
+        console.log('🔑 [Login] 新規登録実行中...')
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -68,6 +83,7 @@ export default function LoginPage() {
         setSuccess('確認メールを送信しました。メールをご確認ください。')
       }
     } catch (err: any) {
+      console.error('🔑 [Login] エラー:', err.message)
       setError(err.message || 'エラーが発生しました')
     } finally {
       setLoading(false)
@@ -80,6 +96,7 @@ export default function LoginPage() {
     setError('')
 
     try {
+      console.log('🔑 [Login] Googleログイン実行中...')
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -88,9 +105,22 @@ export default function LoginPage() {
       })
       if (error) throw error
     } catch (err: any) {
+      console.error('🔑 [Login] Googleログインエラー:', err.message)
       setError(err.message || 'Googleログインに失敗しました')
       setGoogleLoading(false)
     }
+  }
+  
+  // AuthProvider がまだローディング中の場合
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-orange-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin text-4xl mb-4">🔐</div>
+          <p className="font-black text-gray-400">認証状態を確認中...</p>
+        </div>
+      </div>
+    )
   }
 
   return (

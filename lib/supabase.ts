@@ -23,6 +23,45 @@ export type Shop = {
   price_range?: string     // 予算 (例: ¥1,000〜¥2,000)
   menu_items?: string[]    // メニュー名の配列 (Supabaseでは text[] 型)
   website_url?: string     // 公式サイトやInstagramのURL
+  view_count?: number      // 閲覧数（人気ランキング用）
+  // --- フロントエンド用の計算フィールド ---
+  distance?: number        // 現在地からの距離（km）
+  isFavorite?: boolean     // お気に入り登録済みか
+}
+
+// --- お気に入り関連の型定義 ---
+export type Favorite = {
+  id: string
+  user_id: string
+  shop_id: string
+  created_at: string
+}
+
+// 2点間の距離を計算（ハバーサインの公式）
+export const calculateDistance = (
+  lat1: number,
+  lon1: number,
+  lat2: number | null,
+  lon2: number | null
+): number | null => {
+  if (lat2 === null || lon2 === null) return null
+  
+  const R = 6371 // 地球の半径（km）
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
+// 距離をフォーマットして表示
+export const formatDistance = (distance: number | null | undefined): string => {
+  if (distance === null || distance === undefined) return '距離不明'
+  if (distance < 1) return `${Math.round(distance * 1000)}m`
+  return `${distance.toFixed(1)}km`
 }
 
 // 営業中かどうかを判定する関数

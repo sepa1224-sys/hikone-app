@@ -8,7 +8,9 @@ import {
   SHIGA_REGION_CITIES, 
   CITY_DETAIL_AREAS,
   getRegionByCity,
-  formatFullLocation 
+  formatFullLocation,
+  isSupportedCity,
+  UNSUPPORTED_AREA_MESSAGE
 } from '@/lib/constants/shigaRegions'
 
 interface ProfileRegistrationModalProps {
@@ -298,6 +300,17 @@ export default function ProfileRegistrationModal({
       setErrorMsg('お名前を入力してください')
       setTimeout(() => setErrorMsg(''), 3000)
       return
+    }
+
+    // ===== 対応エリアのバリデーション =====
+    // 滋賀県が選択されている場合、市区町村が対応エリアかチェック
+    if (formData.prefecture === '滋賀県' && formData.city) {
+      if (!isSupportedCity(formData.city)) {
+        setErrorMsg(UNSUPPORTED_AREA_MESSAGE)
+        // エラーメッセージは長いので5秒間表示
+        setTimeout(() => setErrorMsg(''), 5000)
+        return
+      }
     }
 
     setSaving(true)

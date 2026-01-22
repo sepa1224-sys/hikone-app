@@ -19,6 +19,7 @@ const WASTE_SCHEDULE_COLUMNS = [
 ].join(',')
 
 // SWR用のフェッチャー関数
+// ★★★ 4. city カラムも検索対象に追加（ilike で部分一致）★★★
 const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | null> => {
   if (!areaKey) return null
   
@@ -48,6 +49,43 @@ const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | 
   if (partialMatch) {
     console.log(`🗑️ [SWR] area_key 部分一致でヒット:`, partialMatch)
     return partialMatch as HikoneWasteMaster
+  }
+  
+  // ★★★ 3. city カラムでも検索（userCity と部分一致）★★★
+  // city カラムがある場合、そちらでも検索を試みる
+  try {
+    const { data: cityMatch, error: cityError } = await supabase
+      .from('hikone_waste_master')
+      .select(WASTE_SCHEDULE_COLUMNS)
+      .ilike('city', `%${firstPart}%`)
+      .limit(1)
+      .single()
+    
+    if (cityMatch && !cityError) {
+      console.log(`🗑️ [SWR] city 部分一致でヒット:`, cityMatch)
+      return cityMatch as HikoneWasteMaster
+    }
+  } catch (e) {
+    // city カラムが存在しない場合はスキップ
+    console.log(`🗑️ [SWR] city カラム検索スキップ（カラムが存在しない可能性）`)
+  }
+  
+  // ★★★ 4. 最終フォールバック: 彦根市のデフォルトエリアを返す ★★★
+  // 何もヒットしない場合、彦根市の最初のエリアを返す
+  try {
+    const { data: fallbackMatch, error: fallbackError } = await supabase
+      .from('hikone_waste_master')
+      .select(WASTE_SCHEDULE_COLUMNS)
+      .ilike('area_key', '%彦根%')
+      .limit(1)
+      .single()
+    
+    if (fallbackMatch && !fallbackError) {
+      console.log(`🗑️ [SWR] フォールバック（彦根市デフォルト）でヒット:`, fallbackMatch)
+      return fallbackMatch as HikoneWasteMaster
+    }
+  } catch (e) {
+    console.log(`🗑️ [SWR] フォールバック検索も失敗`)
   }
   
   console.log(`🗑️ [SWR] スケジュールが見つかりません（area_key: ${areaKey}）`)

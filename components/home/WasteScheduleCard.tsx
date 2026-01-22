@@ -362,8 +362,8 @@ export default function WasteScheduleCard({
           )}
         </div>
         
-        {/* エリア未設定の場合 */}
-        {!userSelectedArea ? (
+        {/* エリア未設定の場合: userSelectedArea が null, undefined, または空文字の場合のみ */}
+        {(!userSelectedArea || userSelectedArea.trim() === '') ? (
           <div 
             className="bg-blue-50 border border-blue-200 rounded-xl p-4 cursor-pointer hover:bg-blue-100 transition-colors"
             onClick={onSetupClick}
@@ -378,6 +378,12 @@ export default function WasteScheduleCard({
             <p className="text-[10px] text-blue-600 font-bold text-center mt-2">
               タップしてプロフィールを編集 →
             </p>
+            {/* デバッグ用: 現在の値を表示 */}
+            {process.env.NODE_ENV === 'development' && (
+              <p className="text-[8px] text-gray-400 text-center mt-2">
+                Debug: userSelectedArea = "{userSelectedArea || 'null/undefined'}"
+              </p>
+            )}
           </div>
         ) : (
           <>
