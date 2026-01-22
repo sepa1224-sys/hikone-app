@@ -100,7 +100,7 @@ const matchesCategory = (shopCategory: string | null | undefined, selectedCatego
 // 都市ごとの座標マッピング（滋賀県・福井県の主要都市）
 const CITY_COORDINATES: Record<string, [number, number]> = {
   // 滋賀県
-  '彦根市': [35.2743, 136.2597],
+  '彦根市': [35.2746, 136.2522],
   '長浜市': [35.3776, 136.2646],
   '大津市': [35.0045, 135.8686],
   '草津市': [35.0173, 135.9608],
@@ -118,7 +118,7 @@ const CITY_COORDINATES: Record<string, [number, number]> = {
   '小浜市': [35.4958, 135.7466],
   '福井市': [36.0652, 136.2219],
   // デフォルト
-  'default': [35.2743, 136.2597] // 彦根市役所
+  'default': [35.2746, 136.2522] // 彦根市役所
 }
 
 // ===== エリアマスターの型定義 =====
@@ -166,7 +166,8 @@ export default function Taberu() {
   
   // ユーザーの登録都市と地図の初期位置
   const [userCity, setUserCity] = useState<string | null>(null)
-  const [mapCenter, setMapCenter] = useState<[number, number]>(CITY_COORDINATES['default'])
+  // デフォルト座標を彦根市役所付近に固定（ログインしていない状態でも世界地図にならないように）
+  const [mapCenter, setMapCenter] = useState<[number, number]>([35.2746, 136.2522])
   const [isProfileLoaded, setIsProfileLoaded] = useState(false) // ③ プロフィール取得完了フラグ
   // 🆕 初回読み込みフラグ（fitBounds制御用）
   const [isInitialMapLoad, setIsInitialMapLoad] = useState(true)

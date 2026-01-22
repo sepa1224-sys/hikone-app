@@ -132,12 +132,12 @@ const MapRecenter = memo(function MapRecenter({
         hasInitialized.current = true
       } else if (validShops.length === 0 && !hasInitialized.current) {
         console.log(`   ⚠️ 有効な座標がないため、デフォルト位置を使用`)
-        map.setView(defaultCenter, 14)
+        map.setView(defaultCenter, 13)
         hasInitialized.current = true
       }
     } catch (e) {
       console.error(`   ❌ fitBounds エラー:`, e)
-      map.setView(defaultCenter, 14)
+      map.setView(defaultCenter, 13)
     }
   }, [isInitialLoad, shops.length, map, defaultCenter])
 
@@ -247,7 +247,7 @@ const RecenterButton = memo(function RecenterButton({
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 })
       console.log(`📍 手動で fitBounds 実行: ${validShops.length}件`)
     } else {
-      map.setView(defaultCenter, 14)
+      map.setView(defaultCenter, 13)
     }
   }
   
@@ -386,7 +386,8 @@ function ShopMap({
   shouldMoveToLocation = false,  // 🆕 現在地取得時のマップ移動フラグ
   onLocationMoveComplete  // 🆕 マップ移動完了時のコールバック
 }: ShopMapProps) {
-  const defaultCenter: [number, number] = propDefaultCenter || [35.2743, 136.2597]
+  // デフォルト座標を彦根市役所付近に固定（ログインしていない状態でも世界地図にならないように）
+  const defaultCenter: [number, number] = propDefaultCenter || [35.2746, 136.2522]
   const mapRef = useRef<L.Map | null>(null)
 
   // デバッグ: 受け取ったデータを確認（データ自体は null でも受け取る）
@@ -483,7 +484,7 @@ function ShopMap({
     <div style={{ height: '100%', width: '100%' }} id="shop-map-container">
       <MapContainer 
         center={defaultCenter} 
-        zoom={14} 
+        zoom={13} 
         style={{ height: '100%', width: '100%' }}
         zoomControl={true}
         scrollWheelZoom={true}
