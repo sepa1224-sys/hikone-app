@@ -810,20 +810,14 @@ export default function AppHome() {
     }
   }
 
-  // ルート検索関数
+  // ルート検索関数（駅名ベースに修正）
   const handleSearchRoute = async () => {
     setIsSearching(true)
     try {
-      // departureDateTime を UNIX タイムスタンプ（秒）に変換
-      const departureTime = Math.floor(new Date(departureDateTime).getTime() / 1000)
-      
-      // テスト用: 彦根駅と京都駅の緯度経度を固定値で送信
+      // 座標ではなく駅名で送信（彦根→京都）
       const params = new URLSearchParams({
-        startLat: '35.2746',
-        startLon: '136.2522',
-        goalLat: '34.9858',
-        goalLon: '135.7588',
-        departure_time: departureTime.toString(),
+        from: '彦根',
+        to: '京都',
       })
       
       const res = await fetch(`/api/transport/route?${params.toString()}`)

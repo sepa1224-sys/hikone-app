@@ -6,9 +6,11 @@ import { supabase } from '@/lib/supabase'
 import { 
   Send, ChevronLeft, UserCircle, Coins, AlertCircle, 
   Check, X, Loader2, Sparkles, ArrowRight, QrCode, Camera,
-  Train, Clock, MapPin, RefreshCw, Navigation, Calendar
+  Train, Clock, MapPin, RefreshCw, Navigation, Calendar, ArrowUpDown,
+  Settings, ChevronDown, ChevronUp
 } from 'lucide-react'
 import BottomNavigation from '@/components/BottomNavigation'
+import RouteSearchResults from '@/components/RouteSearchResults'
 import { usePoints } from '@/lib/hooks/usePoints'
 import { sendHikopo, getReceiverInfo } from '@/lib/actions/transfer'
 import QRScanner from '@/components/QRScanner'
@@ -57,13 +59,43 @@ export default function TransferPage() {
   const [timetableError, setTimetableError] = useState<string | null>(null)
   const [currentTime, setCurrentTime] = useState<string>('')
   
-  // 🆕 経路検索関連のState
+  // 🆕 経路検索関連のState（駅名入力ベース）
+  // 日時検索用のState（必須）
+  const [searchDate, setSearchDate] = useState<string>('')
+  const [searchTime, setSearchTime] = useState<string>('')
+  const [searchType, setSearchType] = useState<'departure' | 'arrival' | 'first' | 'last'>('departure')
+  
+  // 後方互換性のため、departureDate/departureTimeも維持（searchDate/searchTimeと同期）
   const [departureTime, setDepartureTime] = useState<string>('')
+  const [departureDate, setDepartureDate] = useState<string>('')
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
+  const [transitOptions, setTransitOptions] = useState({
+    shinkansen: true,
+    limitedExpress: true,
+    expressBus: true,
+    localBus: true,
+    ferry: true,
+  })
   const [routeLoading, setRouteLoading] = useState(false)
   const [routes, setRoutes] = useState<any[]>([])
   const [routeError, setRouteError] = useState<string | null>(null)
-  const [startLocation, setStartLocation] = useState<{ lat: number; lon: number } | null>(null)
-  const [goalLocation, setGoalLocation] = useState<{ lat: number; lon: number } | null>(null)
+  const [fromStation, setFromStation] = useState<string>('彦根') // デフォルト値: 彦根
+  const [toStation, setToStation] = useState<string>('京都') // デフォルト値: 京都
+  
+  // 🆕 駅名サジェスト関連のState
+  const [fromStationCode, setFromStationCode] = useState<string>('') // 出発駅の駅コード
+  const [toStationCode, setToStationCode] = useState<string>('') // 到着駅の駅コード
+  const [fromSuggestions, setFromSuggestions] = useState<Array<{ name: string; code: string }>>([])
+  const [toSuggestions, setToSuggestions] = useState<Array<{ name: string; code: string }>>([])
+  const [showFromSuggestions, setShowFromSuggestions] = useState(false)
+  const [showToSuggestions, setShowToSuggestions] = useState(false)
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  
+  // 主要駅のリスト（滋賀・京都・大阪・愛知・福井エリア）
+  const QUICK_STATIONS = [
+    '彦根', '南彦根', '河瀬', '稲枝', '米原', '長浜', '草津', '京都', '大阪', '新大阪',
+    '近江八幡', '野洲', '守山', '栗東', '名古屋', '豊橋', '福井', '敦賀'
+  ]
   
   // 🆕 現在時刻を更新
   useEffect(() => {
@@ -80,84 +112,215 @@ export default function TransferPage() {
     return () => clearInterval(interval)
   }, [])
   
-  // 🆕 出発時刻の初期化
+  // 🆕 出発日時の初期化（searchDate/searchTimeを初期化）
   useEffect(() => {
     const now = new Date()
-    // datetime-local形式に変換（YYYY-MM-DDTHH:mm）
+    // 日付（YYYY-MM-DD）
     const year = now.getFullYear()
     const month = String(now.getMonth() + 1).padStart(2, '0')
     const day = String(now.getDate()).padStart(2, '0')
+    const dateStr = `${year}-${month}-${day}`
+    setSearchDate(dateStr)
+    setDepartureDate(dateStr) // 後方互換性
+    
+    // 時刻（HH:mm）
     const hours = String(now.getHours()).padStart(2, '0')
     const minutes = String(now.getMinutes()).padStart(2, '0')
-    setDepartureTime(`${year}-${month}-${day}T${hours}:${minutes}`)
+    const timeStr = `${hours}:${minutes}`
+    setSearchTime(timeStr)
+    setDepartureTime(timeStr) // 後方互換性
   }, [])
-  
-  // 🆕 現在地を取得
-  const getCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      alert('位置情報が利用できません')
-      return
-    }
-    
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setStartLocation({
-          lat: position.coords.latitude,
-          lon: position.coords.longitude
-        })
-      },
-      (error) => {
-        console.error('位置情報取得エラー:', error)
-        alert('位置情報の取得に失敗しました')
-      }
-    )
-  }
   
   // 🆕 現在時刻に設定
   const setToCurrentTime = () => {
     const now = new Date()
-    const year = now.getFullYear()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    const day = String(now.getDate()).padStart(2, '0')
     const hours = String(now.getHours()).padStart(2, '0')
     const minutes = String(now.getMinutes()).padStart(2, '0')
-    setDepartureTime(`${year}-${month}-${day}T${hours}:${minutes}`)
+    setDepartureTime(`${hours}:${minutes}`)
   }
   
-  // 🆕 経路検索を実行
-  const searchRoute = async () => {
-    if (!startLocation || !goalLocation) {
-      setRouteError('出発地と到着地を設定してください')
+  // 🆕 駅名サジェストを取得
+  const fetchStationSuggestions = async (query: string, type: 'from' | 'to') => {
+    if (!query || query.trim().length < 2) {
+      if (type === 'from') {
+        setFromSuggestions([])
+        setShowFromSuggestions(false)
+      } else {
+        setToSuggestions([])
+        setShowToSuggestions(false)
+      }
       return
     }
     
-    setRouteLoading(true)
-    setRouteError(null)
+    setSuggestionsLoading(true)
     
     try {
-      // 出発時刻をUnix timestampに変換
-      const depTime = new Date(departureTime).getTime() / 1000
+      const response = await fetch(`/api/transport/stations?name=${encodeURIComponent(query.trim())}`)
+      const data = await response.json()
       
+      if (data.stations && data.stations.length > 0) {
+        if (type === 'from') {
+          setFromSuggestions(data.stations)
+          setShowFromSuggestions(true)
+        } else {
+          setToSuggestions(data.stations)
+          setShowToSuggestions(true)
+        }
+      } else {
+        if (type === 'from') {
+          setFromSuggestions([])
+          setShowFromSuggestions(false)
+        } else {
+          setToSuggestions([])
+          setShowToSuggestions(false)
+        }
+      }
+    } catch (error: any) {
+      console.error('駅名サジェスト取得エラー:', error)
+      if (type === 'from') {
+        setFromSuggestions([])
+        setShowFromSuggestions(false)
+      } else {
+        setToSuggestions([])
+        setShowToSuggestions(false)
+      }
+    } finally {
+      setSuggestionsLoading(false)
+    }
+  }
+  
+  // 🆕 出発駅の入力変更時にサジェストを取得
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchStationSuggestions(fromStation, 'from')
+    }, 300) // デバウンス: 300ms
+    
+    return () => clearTimeout(timer)
+  }, [fromStation])
+  
+  // 🆕 到着駅の入力変更時にサジェストを取得
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchStationSuggestions(toStation, 'to')
+    }, 300) // デバウンス: 300ms
+    
+    return () => clearTimeout(timer)
+  }, [toStation])
+  
+  // 🆕 サジェストから駅を選択
+  const selectStation = (station: { name: string; code: string }, type: 'from' | 'to') => {
+    if (type === 'from') {
+      setFromStation(station.name)
+      setFromStationCode(station.code)
+      setShowFromSuggestions(false)
+      setFromSuggestions([])
+    } else {
+      setToStation(station.name)
+      setToStationCode(station.code)
+      setShowToSuggestions(false)
+      setToSuggestions([])
+    }
+  }
+  
+  // 🆕 経路検索を実行（駅すぱあと API 使用）
+  const searchRoute = async () => {
+    // 入力欄のステート（fromStation や toStation）が空でないことを確認
+    if (!fromStation || !toStation || !fromStation.trim() || !toStation.trim()) {
+      setRouteError('出発駅と到着駅を入力してください')
+      return
+    }
+    
+    // 駅コードが設定されている場合は駅コードを優先、ない場合は駅名を使用
+    const fromParam = fromStationCode || fromStation
+    const toParam = toStationCode || toStation
+    
+    // 日時・時刻を駅すぱあとAPIの形式に変換
+    // searchDate/searchTimeを使用（必須）
+    // date: YYYYMMDD形式（例: 20260124）
+    let dateParam = ''
+    const dateToUse = searchDate || departureDate // searchDateを優先
+    if (dateToUse && dateToUse.trim()) {
+      const dateStr = dateToUse.replace(/-/g, '') // YYYY-MM-DD → YYYYMMDD
+      dateParam = dateStr
+    } else {
+      // フォールバック: 今日の日付
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const day = String(now.getDate()).padStart(2, '0')
+      dateParam = `${year}${month}${day}`
+    }
+    
+    // time: HHMM形式（例: 1230）
+    let timeParam = ''
+    const timeToUse = searchTime || departureTime // searchTimeを優先
+    if (timeToUse && timeToUse.trim()) {
+      const timeStr = timeToUse.replace(/:/g, '') // HH:mm → HHMM
+      timeParam = timeStr
+    } else {
+      // フォールバック: 現在の時刻
+      const now = new Date()
+      const hours = String(now.getHours()).padStart(2, '0')
+      const minutes = String(now.getMinutes()).padStart(2, '0')
+      timeParam = `${hours}${minutes}`
+    }
+    
+    // デバッグログ: 送信するパラメータを確認
+    console.log('🔍 [フロントエンド] 経路検索パラメータ:')
+    console.log('   - 出発駅:', fromParam)
+    console.log('   - 到着駅:', toParam)
+    console.log('   - 日付 (searchDate):', searchDate, '→ (変換後):', dateParam)
+    console.log('   - 時刻 (searchTime):', searchTime, '→ (変換後):', timeParam)
+    console.log('   - 検索タイプ (searchType):', searchType)
+    
+    setRouteLoading(true)
+    setRouteError(null)
+    setRoutes([])
+    
+    try {
+      // クエリパラメータを構築（date, time, typeを必ず含める）
       const params = new URLSearchParams({
-        startLat: startLocation.lat.toString(),
-        startLon: startLocation.lon.toString(),
-        goalLat: goalLocation.lat.toString(),
-        goalLon: goalLocation.lon.toString(),
-        departure_time: depTime.toString()
+        from: fromParam,
+        to: toParam,
+        date: dateParam, // 必ず含める
+        time: timeParam, // 必ず含める
+        type: searchType, // 検索タイプ（必須）
       })
       
+      // searchTypeも追加（後方互換性のため）
+      params.append('searchType', searchType)
+      
+      // 交通手段のオプションを追加（JSON形式で送信）
+      params.append('transitOptions', JSON.stringify(transitOptions))
+      
+      // 駅コードまたは駅名で送信（駅コードが優先）
       const response = await fetch(`/api/transport/route?${params.toString()}`)
       const data = await response.json()
       
-      if (data.routes && data.routes.length > 0) {
+      if (data.error) {
+        // エラーハンドリング: APIから返ってきたメッセージをそのまま表示
+        if (data.error === 'STATION_NOT_FOUND') {
+          // 駅名が見つからない場合: APIから返ってきたメッセージをそのまま表示
+          setRouteError(data.message || '駅名が見つかりませんでした')
+        } else if (data.error === 'API_KEY_MISSING') {
+          setRouteError(data.message || 'APIキーが設定されていません')
+        } else if (data.error === 'API_ERROR') {
+          setRouteError(data.message || '駅すぱあと API でエラーが発生しました')
+        } else {
+          // その他のエラーもAPIから返ってきたメッセージをそのまま表示
+          setRouteError(data.message || '経路検索に失敗しました')
+        }
+        setRoutes([])
+      } else if (data.routes && data.routes.length > 0) {
         setRoutes(data.routes)
+        setRouteError(null)
       } else {
-        setRouteError(data.msg || '経路が見つかりませんでした')
+        setRouteError(data.message || '経路が見つかりませんでした')
         setRoutes([])
       }
     } catch (error: any) {
       console.error('経路検索エラー:', error)
-      setRouteError('経路検索に失敗しました')
+      setRouteError('経路検索に失敗しました。しばらくしてから再度お試しください。')
       setRoutes([])
     } finally {
       setRouteLoading(false)
@@ -765,89 +928,312 @@ export default function TransferPage() {
             </div>
           </div>
         ) : (
-          /* 🆕 移動タブ */
+          /* 🆕 移動タブ（駅名入力ベース） */
           <div className="space-y-4">
-            {/* 時刻設定 */}
-            <div className="bg-white rounded-[2rem] p-6 shadow-lg border border-gray-100">
-              <div className="flex items-center gap-3 mb-4">
+            {/* 駅名入力 */}
+            <div className="bg-white rounded-[2rem] p-6 shadow-lg border border-gray-100 space-y-4">
+              <div className="flex items-center gap-3 mb-2">
                 <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                  <Calendar size={24} className="text-amber-600" />
+                  <Train size={24} className="text-amber-600" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-black text-gray-800">出発時刻</h2>
-                  <p className="text-xs text-gray-500 font-bold">経路検索の出発時刻を設定</p>
+                  <h2 className="text-lg font-black text-gray-800">駅名を入力</h2>
+                  <p className="text-xs text-gray-500 font-bold">出発駅と到着駅を入力してください</p>
                 </div>
               </div>
               
               <div className="space-y-3">
                 <div className="relative">
+                  <label className="text-sm font-black text-gray-700 mb-2 block flex items-center gap-2">
+                    <MapPin size={16} className="text-amber-500" />
+                    出発駅
+                  </label>
                   <input
-                    type="datetime-local"
-                    value={departureTime}
-                    onChange={(e) => setDepartureTime(e.target.value)}
-                    className="w-full bg-white border-2 border-gray-200 rounded-xl px-4 py-3 font-black text-gray-900 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 focus:outline-none transition-all"
+                    type="text"
+                    value={fromStation}
+                    onChange={(e) => {
+                      setFromStation(e.target.value)
+                      setFromStationCode('') // 入力変更時は駅コードをリセット
+                    }}
+                    onFocus={() => {
+                      if (fromStation.trim().length >= 2) {
+                        setShowFromSuggestions(true)
+                      }
+                    }}
+                    onBlur={() => {
+                      // 少し遅延させてクリックイベントを処理
+                      setTimeout(() => setShowFromSuggestions(false), 200)
+                    }}
+                    placeholder="例: 彦根"
+                    className="w-full bg-white border-2 border-gray-200 rounded-xl px-4 py-3 font-black text-gray-900 placeholder:text-gray-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 focus:outline-none transition-all"
                   />
+                  {/* サジェストリスト */}
+                  {showFromSuggestions && fromSuggestions.length > 0 && (
+                    <div className="absolute z-[100] w-full mt-1 bg-white border-2 border-amber-400 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
+                      {fromSuggestions.map((station, index) => (
+                        <button
+                          key={index}
+                          onClick={() => selectStation(station, 'from')}
+                          className="w-full px-4 py-3 text-left hover:bg-amber-50 active:bg-amber-100 transition-colors border-b border-amber-100 last:border-b-0"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-black text-gray-900">{station.name}</span>
+                            {station.code && (
+                              <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">コード: {station.code}</span>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* 🕒 日時指定セクション - クイック選択ボタンの直前 */}
+                  <div className="grid grid-cols-2 gap-3 mt-4 mb-4 p-4 bg-white/5 border border-white/10 rounded-2xl">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-amber-400 font-bold ml-1 uppercase">Date</label>
+                      <input 
+                        type="date" 
+                        value={searchDate}
+                        onChange={(e) => {
+                          setSearchDate(e.target.value)
+                          setDepartureDate(e.target.value) // 後方互換性
+                        }}
+                        className="bg-white/5 border border-white/10 p-3 rounded-xl text-white text-sm focus:border-amber-400/50 outline-none transition"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-amber-400 font-bold ml-1 uppercase">Time</label>
+                      <input 
+                        type="time" 
+                        value={searchTime}
+                        onChange={(e) => {
+                          setSearchTime(e.target.value)
+                          setDepartureTime(e.target.value) // 後方互換性
+                        }}
+                        className="bg-white/5 border border-white/10 p-3 rounded-xl text-white text-sm focus:border-amber-400/50 outline-none transition"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* クイック選択ボタン */}
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {QUICK_STATIONS.slice(0, 6).map((station) => (
+                      <button
+                        key={station}
+                        onClick={() => {
+                          setFromStation(station)
+                          setFromStationCode('') // クイック選択時は駅コードをリセット
+                        }}
+                        className="px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg font-black text-xs transition-colors"
+                      >
+                        {station}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 
-                <button
-                  onClick={setToCurrentTime}
-                  className="w-full py-2 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl font-black text-sm transition-colors flex items-center justify-center gap-2"
-                >
-                  <Clock size={16} />
-                  現在時刻に設定
-                </button>
+                <div className="flex justify-center">
+                  <ArrowUpDown size={20} className="text-gray-400" />
+                </div>
+                
+                <div className="relative">
+                  <label className="text-sm font-black text-gray-700 mb-2 block flex items-center gap-2">
+                    <MapPin size={16} className="text-amber-500" />
+                    到着駅
+                  </label>
+                  <input
+                    type="text"
+                    value={toStation}
+                    onChange={(e) => {
+                      setToStation(e.target.value)
+                      setToStationCode('') // 入力変更時は駅コードをリセット
+                    }}
+                    onFocus={() => {
+                      if (toStation.trim().length >= 2) {
+                        setShowToSuggestions(true)
+                      }
+                    }}
+                    onBlur={() => {
+                      // 少し遅延させてクリックイベントを処理
+                      setTimeout(() => setShowToSuggestions(false), 200)
+                    }}
+                    placeholder="例: 京都"
+                    className="w-full bg-white border-2 border-gray-200 rounded-xl px-4 py-3 font-black text-gray-900 placeholder:text-gray-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 focus:outline-none transition-all"
+                  />
+                  {/* サジェストリスト */}
+                  {showToSuggestions && toSuggestions.length > 0 && (
+                    <div className="absolute z-[100] w-full mt-1 bg-white border-2 border-amber-400 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
+                      {toSuggestions.map((station, index) => (
+                        <button
+                          key={index}
+                          onClick={() => selectStation(station, 'to')}
+                          className="w-full px-4 py-3 text-left hover:bg-amber-50 active:bg-amber-100 transition-colors border-b border-amber-100 last:border-b-0"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-black text-gray-900">{station.name}</span>
+                            {station.code && (
+                              <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">コード: {station.code}</span>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* クイック選択ボタン */}
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {QUICK_STATIONS.slice(6, 12).map((station) => (
+                      <button
+                        key={station}
+                        onClick={() => {
+                          setToStation(station)
+                          setToStationCode('') // クイック選択時は駅コードをリセット
+                        }}
+                        className="px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg font-black text-xs transition-colors"
+                      >
+                        {station}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
             
-            {/* 位置設定 */}
-            <div className="bg-white rounded-[2rem] p-6 shadow-lg border border-gray-100 space-y-4">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                  <MapPin size={24} className="text-amber-600" />
+            {/* 詳細設定（アコーディオン） */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-[2rem] shadow-lg border border-gray-100 overflow-hidden">
+              <button
+                onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                className="w-full p-6 flex items-center justify-between hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+                    <Settings size={24} className="text-amber-600" />
+                  </div>
+                  <div className="text-left">
+                    <h2 className="text-lg font-black text-gray-800">詳細設定</h2>
+                    <p className="text-xs text-gray-500 font-bold">利用する交通手段を選択</p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-lg font-black text-gray-800">位置設定</h2>
-                  <p className="text-xs text-gray-500 font-bold">出発地と到着地を設定</p>
-                </div>
-              </div>
+                {showAdvancedOptions ? (
+                  <ChevronUp size={20} className="text-gray-400" />
+                ) : (
+                  <ChevronDown size={20} className="text-gray-400" />
+                )}
+              </button>
               
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-black text-gray-700 mb-2 block">出発地</label>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={getCurrentLocation}
-                      className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-sm transition-colors flex items-center gap-2"
-                    >
-                      <Navigation size={16} />
-                      現在地
-                    </button>
-                    {startLocation && (
-                      <div className="flex-1 px-4 py-2 bg-gray-50 rounded-xl text-sm font-black text-gray-700">
-                        {startLocation.lat.toFixed(4)}, {startLocation.lon.toFixed(4)}
-                      </div>
-                    )}
+              {showAdvancedOptions && (
+                <div className="px-6 pb-6 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={transitOptions.shinkansen}
+                        onChange={(e) => setTransitOptions({ ...transitOptions, shinkansen: e.target.checked })}
+                        className="w-5 h-5 text-amber-500 rounded focus:ring-amber-200"
+                      />
+                      <span className="text-sm font-black text-gray-700">新幹線</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={transitOptions.limitedExpress}
+                        onChange={(e) => setTransitOptions({ ...transitOptions, limitedExpress: e.target.checked })}
+                        className="w-5 h-5 text-amber-500 rounded focus:ring-amber-200"
+                      />
+                      <span className="text-sm font-black text-gray-700">有料特急</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={transitOptions.expressBus}
+                        onChange={(e) => setTransitOptions({ ...transitOptions, expressBus: e.target.checked })}
+                        className="w-5 h-5 text-amber-500 rounded focus:ring-amber-200"
+                      />
+                      <span className="text-sm font-black text-gray-700">高速バス</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={transitOptions.localBus}
+                        onChange={(e) => setTransitOptions({ ...transitOptions, localBus: e.target.checked })}
+                        className="w-5 h-5 text-amber-500 rounded focus:ring-amber-200"
+                      />
+                      <span className="text-sm font-black text-gray-700">路線バス</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={transitOptions.ferry}
+                        onChange={(e) => setTransitOptions({ ...transitOptions, ferry: e.target.checked })}
+                        className="w-5 h-5 text-amber-500 rounded focus:ring-amber-200"
+                      />
+                      <span className="text-sm font-black text-gray-700">フェリー</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* 日時入力UI - 検索ボタンの直前（確実に表示されるように配置） */}
+            <div className="bg-white rounded-2xl p-6 shadow-lg border-2 border-gray-200 mb-6">
+              <div className="space-y-4">
+                {/* 日付と時刻の入力欄（横並び） */}
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="text-sm text-gray-700 mb-2 block font-black flex items-center gap-2">
+                      <Calendar size={16} className="text-amber-500" />
+                      出発日
+                    </label>
+                    <input 
+                      type="date" 
+                      className="w-full bg-white text-gray-900 p-3 rounded-xl border-2 border-gray-300 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/50 focus:outline-none transition-all font-black"
+                      value={searchDate}
+                      onChange={(e) => {
+                        setSearchDate(e.target.value)
+                        setDepartureDate(e.target.value) // 後方互換性
+                      }}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-sm text-gray-700 mb-2 block font-black flex items-center gap-2">
+                      <Clock size={16} className="text-amber-500" />
+                      出発時刻
+                    </label>
+                    <input 
+                      type="time" 
+                      className="w-full bg-white text-gray-900 p-3 rounded-xl border-2 border-gray-300 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/50 focus:outline-none transition-all font-black"
+                      value={searchTime}
+                      onChange={(e) => {
+                        setSearchTime(e.target.value)
+                        setDepartureTime(e.target.value) // 後方互換性
+                      }}
+                    />
                   </div>
                 </div>
                 
-                <div>
-                  <label className="text-sm font-black text-gray-700 mb-2 block">到着地</label>
-                  <div className="flex gap-2">
+                {/* 検索タイプ選択ボタン（出発・到着・始発・終電） */}
+                <div className="flex gap-2">
+                  {[
+                    { label: '出発', value: 'departure' },
+                    { label: '到着', value: 'arrival' },
+                    { label: '始発', value: 'first' },
+                    { label: '終電', value: 'last' }
+                  ].map(({ label, value }) => (
                     <button
-                      onClick={() => {
-                        // デフォルトで彦根駅を設定
-                        setGoalLocation({ lat: 35.2746, lon: 136.2522 })
-                      }}
-                      className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-sm transition-colors"
+                      key={value}
+                      onClick={() => setSearchType(value as 'departure' | 'arrival' | 'first' | 'last')}
+                      className={`flex-1 py-2.5 text-xs rounded-xl transition-all font-black ${
+                        searchType === value 
+                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' 
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
+                      }`}
                     >
-                      彦根駅
+                      {label}
                     </button>
-                    {goalLocation && (
-                      <div className="flex-1 px-4 py-2 bg-gray-50 rounded-xl text-sm font-black text-gray-700">
-                        {goalLocation.lat.toFixed(4)}, {goalLocation.lon.toFixed(4)}
-                      </div>
-                    )}
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -855,7 +1241,7 @@ export default function TransferPage() {
             {/* 経路検索ボタン */}
             <button
               onClick={searchRoute}
-              disabled={routeLoading || !startLocation || !goalLocation}
+              disabled={routeLoading || !fromStation.trim() || !toStation.trim()}
               className="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:from-gray-300 disabled:to-gray-400 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-amber-200 active:scale-95 disabled:active:scale-100 transition-all flex items-center justify-center gap-3"
             >
               {routeLoading ? (
@@ -866,7 +1252,7 @@ export default function TransferPage() {
               ) : (
                 <>
                   <Navigation size={24} />
-                  経路を検索
+                  乗り換え検索
                 </>
               )}
             </button>
@@ -882,59 +1268,7 @@ export default function TransferPage() {
             )}
             
             {/* 経路結果 */}
-            {routes.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-lg font-black text-gray-800">検索結果</h3>
-                {routes.map((route, index) => (
-                  <div
-                    key={index}
-                    className="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-2xl p-4 border border-amber-100"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <p className="text-sm font-black text-gray-600">出発</p>
-                        <p className="text-lg font-black text-gray-900">
-                          {new Date(route.summary.start_time).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                      <ArrowRight size={20} className="text-gray-400" />
-                      <div>
-                        <p className="text-sm font-black text-gray-600">到着</p>
-                        <p className="text-lg font-black text-gray-900">
-                          {new Date(route.summary.arrival_time).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-black text-gray-600">所要時間</p>
-                        <p className="text-lg font-black text-amber-600">
-                          {route.summary.move.time}分
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      {route.sections.map((section: any, secIndex: number) => (
-                        <div key={secIndex} className="flex items-center gap-2 text-sm">
-                          {section.type === 'transit' && section.transit ? (
-                            <>
-                              <Train size={16} className="text-amber-600" />
-                              <span className="font-black text-gray-700">
-                                {section.transit.line.name} {section.transit.from.name} → {section.transit.to.name}
-                              </span>
-                            </>
-                          ) : section.type === 'walk' && section.walk ? (
-                            <>
-                              <MapPin size={16} className="text-gray-400" />
-                              <span className="font-black text-gray-600">{section.walk.instruction}</span>
-                            </>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <RouteSearchResults routes={routes} getTrainTypeLabel={getTrainTypeLabel} />
           </div>
         )}
       </div>
