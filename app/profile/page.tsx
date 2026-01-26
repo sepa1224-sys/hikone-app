@@ -22,7 +22,6 @@ export default function ProfilePage() {
   
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<any>(null)
-  const [currentUser, setCurrentUser] = useState<any>(null)
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [copied, setCopied] = useState(false)
   const [generatingCode, setGeneratingCode] = useState(false)
@@ -32,9 +31,9 @@ export default function ProfilePage() {
   const [applyingCode, setApplyingCode] = useState(false)
   const [applyResult, setApplyResult] = useState<{ success: boolean; message: string } | null>(null)
   
-  // SWRでポイント情報を取得
-  const { points, referralCode: swrReferralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(currentUser?.id)
-  const { history: pointHistory, isLoading: historyLoading, refetch: refetchHistory } = usePointHistory(currentUser?.id)
+  // SWRでポイント情報を取得（authUserを使用）
+  const { points, referralCode: swrReferralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(authUser?.id ?? null)
+  const { history: pointHistory, isLoading: historyLoading, refetch: refetchHistory } = usePointHistory(authUser?.id ?? null)
   
   // referralCode は SWR または profile から取得（どちらかが取得できれば表示）
   const referralCode = swrReferralCode || profile?.referral_code || null
@@ -46,12 +45,27 @@ export default function ProfilePage() {
       profileReferralCode: profile?.referral_code,
       finalReferralCode: referralCode,
       pointsLoading,
-      currentUserId: currentUser?.id
+      authUserId: authUser?.id
     })
-  }, [swrReferralCode, profile?.referral_code, referralCode, pointsLoading, currentUser?.id])
+  }, [swrReferralCode, profile?.referral_code, referralCode, pointsLoading, authUser?.id])
+
+  // ポイント表示のデバッグログ
+  useEffect(() => {
+    console.log('💰 [Profile] ポイント表示状態:', {
+      pointsFromSWR: points,
+      pointsFromProfile: profile?.points,
+      pointsLoading,
+      authUserId: authUser?.id,
+      profileData: profile ? {
+        id: profile.id,
+        points: profile.points,
+        pointsType: typeof profile.points
+      } : null
+    })
+  }, [points, profile?.points, pointsLoading, authUser?.id, profile])
   
   // フレンドリスト
-  const { friends, isLoading: friendsLoading, addFriendToList, removeFriendFromList } = useFriends(currentUser?.id)
+  const { friends, isLoading: friendsLoading, addFriendToList, removeFriendFromList, refetch: refetchFriends } = useFriends(authUser?.id ?? null)
   
   // フレンド追加用のステート
   const [showAddFriendModal, setShowAddFriendModal] = useState(false)
@@ -95,9 +109,17 @@ export default function ProfilePage() {
     }
     
     // セッションがある場合はプロフィールを取得
+    // AbortControllerを使用して、コンポーネントのアンマウント時にリクエストをキャンセル
+    const abortController = new AbortController()
+    
     console.log('📋 [Profile] セッション確認OK → プロフィール取得')
-    setCurrentUser(authUser)
-    fetchProfileData()
+    fetchProfileData(abortController.signal)
+    
+    // クリーンアップ関数：コンポーネントのアンマウント時にリクエストをキャンセル
+    return () => {
+      console.log('📋 [Profile] クリーンアップ: リクエストをキャンセル')
+      abortController.abort()
+    }
   }, [authLoading, session, authUser])
 
   // 生年月日を読みやすい形式に整形する関数
@@ -139,35 +161,47 @@ export default function ProfilePage() {
   }
 
   // プロフィールデータの取得
-  const fetchProfileData = async () => {
+  const fetchProfileData = async (abortSignal?: AbortSignal) => {
     try {
       setLoading(true)
       
-      // AuthProvider から取得した session を使用
-      console.log('📋 [Profile] fetchProfileData: 現在のセッション:', session ? {
-        userId: session.user?.id,
-        email: session.user?.email,
+      // AuthProvider から取得した authUser を使用
+      console.log('📋 [Profile] fetchProfileData: 現在のユーザー:', authUser ? {
+        userId: authUser.id,
+        email: authUser.email,
       } : 'なし')
       
-      if (!session?.user) {
-        console.log('📋 [Profile] セッションがないためスキップ')
+      if (!authUser) {
+        console.log('📋 [Profile] ユーザーがないためスキップ')
         setLoading(false)
         return
       }
 
-      setCurrentUser(session.user)
+      // AbortSignalがキャンセルされている場合は処理を中断
+      if (abortSignal?.aborted) {
+        console.log('📋 [Profile] リクエストがキャンセルされました')
+        return
+      }
 
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', session.user.id)
+        .eq('id', authUser.id)
         .single()
+
+      // AbortSignalがキャンセルされている場合は処理を中断
+      if (abortSignal?.aborted) {
+        console.log('📋 [Profile] レスポンス取得後にキャンセルされました')
+        return
+      }
 
       if (data) {
         console.log('🎫 [Profile] プロフィール取得成功:', {
           id: data.id,
           referral_code: data.referral_code,
           points: data.points,
+          pointsType: typeof data.points,
+          pointsValue: data.points != null ? Number(data.points) : null,
           has_used_referral: data.has_used_referral
         })
         setProfile(data)
@@ -175,20 +209,37 @@ export default function ProfilePage() {
         console.log('🎫 [Profile] プロフィールなし、デフォルト値を設定')
         // プロフィールがない場合でも、セッション情報を表示
         setProfile({
-          id: session.user.id,
-          full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'ユーザー',
-          email: session.user.email,
-          avatar_url: session.user.user_metadata?.avatar_url || null
+          id: authUser.id,
+          full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'ユーザー',
+          email: authUser.email,
+          avatar_url: authUser.user_metadata?.avatar_url || null
         })
       }
       
       if (error) {
         console.error('🎫 [Profile] プロフィール取得エラー:', error)
+        console.error('🎫 [Profile] エラーコード:', error.code)
+        console.error('🎫 [Profile] エラーメッセージ:', error.message)
+        
+        // RLS権限エラーの場合の詳細ログ
+        if (error.code === '42501' || error.message.includes('permission') || error.message.includes('policy')) {
+          console.error('🎫 [Profile] ⚠️ RLS権限エラーの可能性があります')
+          console.error('🎫 [Profile] 現在のユーザーID:', authUser.id)
+          console.error('🎫 [Profile] RLSポリシーが正しく設定されているか確認してください')
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
+      // AbortErrorの場合は無視（コンポーネントのアンマウント時に発生する可能性がある）
+      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+        console.log('📋 [Profile] リクエストが中断されました（AbortError）')
+        return
+      }
       console.error('Profile fetch error:', error)
     } finally {
-      setLoading(false)
+      // AbortSignalがキャンセルされていない場合のみローディング状態を解除
+      if (!abortSignal?.aborted) {
+        setLoading(false)
+      }
     }
   }
 
@@ -197,7 +248,6 @@ export default function ProfilePage() {
       console.log('📋 [Profile] ログアウト実行')
       await signOut() // AuthProvider の signOut を使用
       setProfile(null)
-      setCurrentUser(null)
       router.push('/')
     }
   }
@@ -245,7 +295,7 @@ export default function ProfilePage() {
   
   // 招待コードを発行する
   const handleGenerateCode = async () => {
-    if (!currentUser?.id) return
+    if (!authUser?.id) return
     
     setGeneratingCode(true)
     try {
@@ -260,7 +310,7 @@ export default function ProfilePage() {
           referral_code: newCode,
           updated_at: new Date().toISOString() 
         })
-        .eq('id', currentUser.id)
+        .eq('id', authUser.id)
       
       if (error) {
         console.error('コード発行エラー:', error)
@@ -317,13 +367,13 @@ export default function ProfilePage() {
   
   // フレンド追加
   const handleAddFriend = async () => {
-    if (!currentUser?.id || !friendSearchCode.trim()) return
+    if (!authUser?.id || !friendSearchCode.trim()) return
     
     setAddingFriend(true)
     setAddFriendResult(null)
     
     try {
-      const result = await addFriend(currentUser.id, friendSearchCode.trim())
+      const result = await addFriend(authUser.id, friendSearchCode.trim())
       setAddFriendResult(result)
       
       if (result.success) {
@@ -346,11 +396,11 @@ export default function ProfilePage() {
   
   // フレンド削除
   const handleRemoveFriend = async (friendId: string) => {
-    if (!currentUser?.id) return
+    if (!authUser?.id) return
     if (!confirm('このフレンドを削除しますか？')) return
     
     try {
-      const result = await removeFriend(currentUser.id, friendId)
+      const result = await removeFriend(authUser.id, friendId)
       if (result.success) {
         // 即座にローカルステートを更新
         removeFriendFromList(friendId)
@@ -373,7 +423,7 @@ export default function ProfilePage() {
   
   // クイック送金実行
   const handleQuickSend = async () => {
-    if (!currentUser?.id || !quickSendTarget?.referral_code || !quickSendAmount) return
+    if (!authUser?.id || !quickSendTarget?.referral_code || !quickSendAmount) return
     
     const amount = parseInt(quickSendAmount)
     if (isNaN(amount) || amount <= 0) {
@@ -390,7 +440,7 @@ export default function ProfilePage() {
     setQuickSendResult(null)
     
     try {
-      const result = await sendHikopo(currentUser.id, quickSendTarget.referral_code, amount)
+      const result = await sendHikopo(authUser.id, quickSendTarget.referral_code, amount)
       setQuickSendResult(result)
       
       if (result.success) {
@@ -414,13 +464,13 @@ export default function ProfilePage() {
   
   // 招待コードを適用
   const handleApplyReferralCode = async () => {
-    if (!currentUser?.id || !inputReferralCode.trim()) return
+    if (!authUser?.id || !inputReferralCode.trim()) return
     
     setApplyingCode(true)
     setApplyResult(null)
     
     try {
-      const result = await applyReferralCode(currentUser.id, inputReferralCode.trim())
+      const result = await applyReferralCode(authUser.id, inputReferralCode.trim())
       setApplyResult(result)
       
       if (result.success) {
@@ -795,7 +845,7 @@ export default function ProfilePage() {
           {/* 編集ボタン */}
           <button
             onClick={() => {
-              if (currentUser) {
+              if (authUser) {
                 setShowProfileModal(true)
               }
             }}
@@ -1008,11 +1058,11 @@ export default function ProfilePage() {
       </div>
 
       {/* プロフィール編集モーダル */}
-      {showProfileModal && currentUser && (
+      {showProfileModal && authUser && (
         <ProfileRegistrationModal
-          userId={currentUser.id}
-          userEmail={currentUser.email}
-          userFullName={currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || profile?.full_name}
+          userId={authUser.id}
+          userEmail={authUser.email}
+          userFullName={authUser.user_metadata?.full_name || authUser.user_metadata?.name || profile?.full_name}
           onComplete={async () => {
             setShowProfileModal(false)
             // 最新のプロフィールデータを再取得（キャッシュクリア）

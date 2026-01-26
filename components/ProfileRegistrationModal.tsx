@@ -194,6 +194,19 @@ export default function ProfileRegistrationModal({
 
   const checkProfileStatus = async () => {
     try {
+      // 現在ログインしているユーザーのIDを確実に取得
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      
+      if (userError || !user) {
+        console.error('User fetch error:', userError)
+        setErrorMsg('ユーザー情報の取得に失敗しました')
+        setLoading(false)
+        return
+      }
+
+      const currentUserId = user.id
+      console.log('📋 [Profile] プロフィール取得開始 - User ID:', currentUserId)
+
       // DBから既存プロフィールを取得
       // まず基本カラムのみで取得を試みる（detail_area がない場合のエラーを回避）
       let data: any = null
@@ -203,7 +216,7 @@ export default function ProfileRegistrationModal({
       const fullResult = await supabase
         .from('profiles')
         .select('full_name, gender, birthday, prefecture, location, region, city, selected_area, detail_area, interests')
-        .eq('id', userId)
+        .eq('id', currentUserId)
         .single()
       
       if (fullResult.error && fullResult.error.message.includes('detail_area')) {
@@ -212,7 +225,7 @@ export default function ProfileRegistrationModal({
         const basicResult = await supabase
           .from('profiles')
           .select('full_name, gender, birthday, prefecture, location, region, city, selected_area, interests')
-          .eq('id', userId)
+          .eq('id', currentUserId)
           .single()
         data = basicResult.data
         fetchError = basicResult.error
@@ -363,20 +376,29 @@ export default function ProfileRegistrationModal({
       }
       
       console.log('📋 [Profile] 保存データ:', profileData)
+      console.log('📋 [Profile] ユーザーID:', user.id)
 
       // profilesテーブルにupsert（更新または挿入）
+      // onConflict: 'id' を明示的に指定して、既存レコードがある場合は確実に更新
       let { data, error } = await supabase
         .from('profiles')
-        .upsert(profileData, { onConflict: 'id' })
+        .upsert(profileData, { 
+          onConflict: 'id',
+          ignoreDuplicates: false // falseにすることで、既存レコードを更新
+        })
         .select()
 
       // detail_area カラムが存在しないエラーの場合、detail_area を除いて再試行
       if (error && error.message.includes('detail_area')) {
         console.warn('📋 [Profile] detail_area カラムが存在しないため、除外して再試行')
-        delete profileData.detail_area
+        const retryProfileData = { ...profileData }
+        delete retryProfileData.detail_area
         const retryResult = await supabase
           .from('profiles')
-          .upsert(profileData, { onConflict: 'id' })
+          .upsert(retryProfileData, { 
+            onConflict: 'id',
+            ignoreDuplicates: false
+          })
           .select()
         data = retryResult.data
         error = retryResult.error
@@ -387,6 +409,22 @@ export default function ProfileRegistrationModal({
         console.error('📋 [Profile] エラー詳細:', JSON.stringify(error, null, 2))
         console.error('📋 [Profile] エラーコード:', error.code)
         console.error('📋 [Profile] ヒント:', error.hint)
+        console.error('📋 [Profile] エラー詳細（オブジェクト）:', error)
+        
+        // RLS権限エラーの場合の詳細ログ
+        if (error.code === '42501' || error.message.includes('permission') || error.message.includes('policy')) {
+          console.error('📋 [Profile] ⚠️ RLS権限エラーの可能性があります')
+          console.error('📋 [Profile] 現在のユーザーID:', user.id)
+          console.error('📋 [Profile] 保存しようとしたデータのID:', profileData.id)
+          console.error('📋 [Profile] ユーザーIDの一致:', user.id === profileData.id)
+        }
+        
+        // 一意制約エラーの場合の詳細ログ
+        if (error.code === '23505' || error.message.includes('unique') || error.message.includes('duplicate')) {
+          console.error('📋 [Profile] ⚠️ 一意制約エラーの可能性があります')
+          console.error('📋 [Profile] 保存しようとしたデータのID:', profileData.id)
+        }
+        
         setErrorMsg(`保存に失敗しました: ${error.message}`)
         setTimeout(() => setErrorMsg(''), 5000)
       } else {

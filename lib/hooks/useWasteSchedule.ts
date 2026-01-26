@@ -1,12 +1,8 @@
 'use client'
 
 import useSWR from 'swr'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 import { HikoneWasteMaster } from '@/components/home/WasteScheduleCard'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // 必要なカラムのみを指定（パフォーマンス最適化）
 const WASTE_SCHEDULE_COLUMNS = [
@@ -18,77 +14,149 @@ const WASTE_SCHEDULE_COLUMNS = [
   'landfill_waste'
 ].join(',')
 
+// エリア名を正規化する関数（空白除去、全角・半角統一など）
+const normalizeAreaName = (areaName: string): string => {
+  return areaName
+    .trim()
+    .replace(/\s+/g, '') // 空白を除去
+    .replace(/[・･]/g, '・') // 全角・半角の中点を統一
+}
+
+// エリア名から検索キーワードを生成する関数
+const generateSearchKeywords = (areaName: string): string[] => {
+  const normalized = normalizeAreaName(areaName)
+  const keywords: string[] = [normalized] // 元の文字列
+  
+  // 「・」で分割して、各部分も検索キーワードに追加
+  const parts = normalized.split('・')
+  keywords.push(...parts) // 各部分を追加
+  
+  // 最初の部分（例：「城南」）を優先的に使用
+  if (parts.length > 0 && parts[0]) {
+    keywords.push(parts[0])
+  }
+  
+  return keywords.filter((k, i, arr) => arr.indexOf(k) === i) // 重複除去
+}
+
 // SWR用のフェッチャー関数
-// ★★★ 4. city カラムも検索対象に追加（ilike で部分一致）★★★
+// プロフィールの selected_area や detail_area から正しい area_key を導き出す
 const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | null> => {
-  if (!areaKey) return null
+  if (!areaKey) {
+    console.log(`🗑️ [SWR] エリアキーが空のためスキップ`)
+    return null
+  }
   
   console.log(`🗑️ [SWR] ゴミ収集スケジュール取得開始: ${areaKey}`)
   
-  // 1. area_key で完全一致検索（必要なカラムのみ取得）
+  // 検索キーワードを生成
+  const searchKeywords = generateSearchKeywords(areaKey)
+  console.log(`🗑️ [SWR] 生成された検索キーワード:`, searchKeywords)
+  
+  // 1. area_key で完全一致検索（正規化後の文字列で検索）
+  const normalizedAreaKey = normalizeAreaName(areaKey)
   const { data: exactMatch, error: exactError } = await supabase
     .from('hikone_waste_master')
     .select(WASTE_SCHEDULE_COLUMNS)
-    .eq('area_key', areaKey)
+    .eq('area_key', normalizedAreaKey)
     .single()
   
-  if (exactMatch) {
+  if (exactMatch && !exactError) {
     console.log(`🗑️ [SWR] area_key 完全一致でヒット:`, exactMatch)
     return exactMatch as HikoneWasteMaster
   }
   
-  // 2. area_key で部分一致検索（エリア名の一部でもヒットする）
-  const firstPart = areaKey.split('・')[0]
-  const { data: partialMatch, error: partialError } = await supabase
-    .from('hikone_waste_master')
-    .select(WASTE_SCHEDULE_COLUMNS)
-    .ilike('area_key', `%${firstPart}%`)
-    .limit(1)
-    .single()
-  
-  if (partialMatch) {
-    console.log(`🗑️ [SWR] area_key 部分一致でヒット:`, partialMatch)
-    return partialMatch as HikoneWasteMaster
-  }
-  
-  // ★★★ 3. city カラムでも検索（userCity と部分一致）★★★
-  // city カラムがある場合、そちらでも検索を試みる
-  try {
-    const { data: cityMatch, error: cityError } = await supabase
+  // 2. area_key で部分一致検索（各キーワードで検索）
+  for (const keyword of searchKeywords) {
+    if (!keyword || keyword.trim() === '') continue
+    
+    console.log(`🗑️ [SWR] 部分一致検索を試行: "${keyword}"`)
+    const { data: partialMatch, error: partialError } = await supabase
       .from('hikone_waste_master')
       .select(WASTE_SCHEDULE_COLUMNS)
-      .ilike('city', `%${firstPart}%`)
+      .ilike('area_key', `%${keyword}%`)
       .limit(1)
-      .single()
+      .maybeSingle()
     
-    if (cityMatch && !cityError) {
-      console.log(`🗑️ [SWR] city 部分一致でヒット:`, cityMatch)
-      return cityMatch as HikoneWasteMaster
+    if (partialMatch && !partialError) {
+      console.log(`🗑️ [SWR] area_key 部分一致でヒット（キーワード: "${keyword}"）:`, partialMatch)
+      return partialMatch as HikoneWasteMaster
     }
-  } catch (e) {
-    // city カラムが存在しない場合はスキップ
-    console.log(`🗑️ [SWR] city カラム検索スキップ（カラムが存在しない可能性）`)
   }
   
-  // ★★★ 4. 最終フォールバック: 彦根市のデフォルトエリアを返す ★★★
-  // 何もヒットしない場合、彦根市の最初のエリアを返す
+  // 3. area_key で逆方向の部分一致検索（DBのarea_keyがプロフィールのエリア名を含むかチェック）
+  // 例：プロフィールが「城南」で、DBが「城南・城陽・若葉・高宮」の場合
+  for (const keyword of searchKeywords) {
+    if (!keyword || keyword.trim() === '') continue
+    
+    console.log(`🗑️ [SWR] 逆方向部分一致検索を試行: "${keyword}"`)
+    // DBのarea_keyがプロフィールのキーワードを含むかチェック
+    const { data: reverseMatch, error: reverseError } = await supabase
+      .from('hikone_waste_master')
+      .select(WASTE_SCHEDULE_COLUMNS)
+      .ilike('area_key', `%${keyword}%`)
+      .limit(1)
+      .maybeSingle()
+    
+    if (reverseMatch && !reverseError) {
+      console.log(`🗑️ [SWR] 逆方向部分一致でヒット（キーワード: "${keyword}"）:`, reverseMatch)
+      return reverseMatch as HikoneWasteMaster
+    }
+  }
+  
+  // 4. 全件取得して、手動でマッチング（最後の手段）
+  console.log(`🗑️ [SWR] 全件取得して手動マッチングを試行`)
+  const { data: allAreas, error: allError } = await supabase
+    .from('hikone_waste_master')
+    .select(WASTE_SCHEDULE_COLUMNS)
+    .limit(20) // 彦根市のエリア数は限られているので20件で十分
+  
+  if (allAreas && !allError) {
+    // 各エリア名とプロフィールのエリア名を比較
+    for (const area of allAreas) {
+      const dbAreaKey = normalizeAreaName(area.area_key || '')
+      const profileAreaKey = normalizedAreaKey
+      
+      // 完全一致
+      if (dbAreaKey === profileAreaKey) {
+        console.log(`🗑️ [SWR] 手動マッチング（完全一致）でヒット:`, area)
+        return area as HikoneWasteMaster
+      }
+      
+      // 相互に含まれるかチェック
+      if (dbAreaKey.includes(profileAreaKey) || profileAreaKey.includes(dbAreaKey)) {
+        console.log(`🗑️ [SWR] 手動マッチング（相互包含）でヒット:`, area)
+        return area as HikoneWasteMaster
+      }
+      
+      // キーワードのいずれかが含まれるかチェック
+      for (const keyword of searchKeywords) {
+        if (dbAreaKey.includes(keyword) || keyword.includes(dbAreaKey)) {
+          console.log(`🗑️ [SWR] 手動マッチング（キーワード包含）でヒット:`, area)
+          return area as HikoneWasteMaster
+        }
+      }
+    }
+  }
+  
+  // 5. 最終フォールバック: 彦根市のデフォルトエリアを返す
+  console.log(`🗑️ [SWR] フォールバック検索を試行`)
   try {
     const { data: fallbackMatch, error: fallbackError } = await supabase
       .from('hikone_waste_master')
       .select(WASTE_SCHEDULE_COLUMNS)
-      .ilike('area_key', '%彦根%')
       .limit(1)
-      .single()
+      .maybeSingle()
     
     if (fallbackMatch && !fallbackError) {
-      console.log(`🗑️ [SWR] フォールバック（彦根市デフォルト）でヒット:`, fallbackMatch)
+      console.log(`🗑️ [SWR] フォールバック（最初のエリア）でヒット:`, fallbackMatch)
       return fallbackMatch as HikoneWasteMaster
     }
   } catch (e) {
-    console.log(`🗑️ [SWR] フォールバック検索も失敗`)
+    console.log(`🗑️ [SWR] フォールバック検索も失敗:`, e)
   }
   
-  console.log(`🗑️ [SWR] スケジュールが見つかりません（area_key: ${areaKey}）`)
+  console.error(`🗑️ [SWR] スケジュールが見つかりません（area_key: ${areaKey}）`)
   return null
 }
 

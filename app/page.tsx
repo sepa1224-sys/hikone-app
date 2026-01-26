@@ -1,14 +1,13 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { usePathname, useRouter } from 'next/navigation'
 import { 
   Sun, Send, X, UserCircle, Sparkles, Building2, Map as MapIcon, 
   ChevronRight, LogOut, Edit, Mail, MapPin, User, Search,
   Cloud, CloudRain, CloudSun, Droplets, Wind, Ticket, Gift, CalendarDays, PartyPopper, ShoppingBag,
   Camera, Trophy, Target, CheckCircle, Star, Coffee, Utensils, Castle, Mountain, 
-  Heart, ShoppingCart, Bike, Upload, Award, MessageSquare
+  Heart, ShoppingCart, Bike, Upload, Award, MessageSquare, Activity, Footprints, Pause, Square
 } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
@@ -17,10 +16,8 @@ import { useWasteSchedule, prefetchWasteSchedule } from '@/lib/hooks/useWasteSch
 import { usePoints } from '@/lib/hooks/usePoints'
 import { useMunicipalityStats } from '@/lib/hooks/useMunicipalityStats'
 import { formatFullLocation, isSupportedCity, UNSUPPORTED_AREA_MESSAGE } from '@/lib/constants/shigaRegions'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+import { useAuth } from '@/components/AuthProvider'
+import { supabase } from '@/lib/supabase'
 const HIKONYAN_IMAGE = "https://kawntunevmabyxqmhqnv.supabase.co/storage/v1/object/public/images/hikonyan.png"
 
 const cityData: Record<string, any> = {
@@ -139,7 +136,11 @@ const PREFECTURE_CITIES: Record<string, string[]> = {
 export default function AppHome() {
   const pathname = usePathname()
   const router = useRouter()
-  const [view, setView] = useState<'main' | 'profile'>('main')
+  
+  // AuthProviderから認証状態を取得（一本化）
+  const { session, user: authUser, loading: authLoading } = useAuth()
+  
+  const [view, setView] = useState<'main' | 'profile' | 'running_mode'>('main')
   
   // デバッグログ：viewステートの変更を追跡
   console.log("Current View State:", view)
@@ -176,7 +177,6 @@ export default function AppHome() {
   
   // プロフィール登録モーダル用のステート
   const [showProfileModal, setShowProfileModal] = useState(false)
-  const [currentUser, setCurrentUser] = useState<any>(null)
   const [profileChecked, setProfileChecked] = useState(false)
   
   // プロフィールページ用のステート
@@ -187,8 +187,6 @@ export default function AppHome() {
   const [userCity, setUserCity] = useState<string | null>(null)
   // ユーザーの選択エリア（profiles.selected_area）
   const [userSelectedArea, setUserSelectedArea] = useState<string | null>(null)
-  // ユーザーの会員番号（join_order）
-  const [userJoinOrder, setUserJoinOrder] = useState<number | null>(null)
   // エリア未対応ガード用のステート（ログイン済みかつ対応エリア外の場合に表示）
   const [showUnsupportedAreaModal, setShowUnsupportedAreaModal] = useState(false)
   
@@ -197,20 +195,20 @@ export default function AppHome() {
     console.log('🔄 [Home] State変更検知:', {
       userCity,
       userSelectedArea,
-      currentUserId: currentUser?.id
+      authUserId: authUser?.id
     })
-  }, [userCity, userSelectedArea, currentUser?.id])
+  }, [userCity, userSelectedArea, authUser?.id])
   
   // SWRでゴミ収集スケジュールをキャッシュ付きで取得
   // ※ userSelectedArea が変更されると、SWRのキーが変わり自動的に再フェッチされる
   const { wasteSchedule: swrWasteSchedule, isLoading: wasteLoading, refetch: refetchWaste } = useWasteSchedule(userSelectedArea)
   
   // SWRでポイント情報をキャッシュ付きで取得
-  const { points: userPoints, referralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(currentUser?.id)
+  const { points: userPoints, referralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(authUser?.id)
   
-  // SWRで自治体の人口・登録者数を取得（currentUser?.idを渡して自分がカウントに含まれているか確認）
+  // SWRで自治体の人口・登録者数を取得（authUser?.idを渡して自分がカウントに含まれているか確認）
   // ※ userCity が変更されると、SWRのキーが変わり自動的に再フェッチされる
-  const { stats: municipalityStats, isLoading: statsLoading, refetch: refetchStats } = useMunicipalityStats(userCity, currentUser?.id)
+  const { stats: municipalityStats, isLoading: statsLoading, refetch: refetchStats } = useMunicipalityStats(userCity, authUser?.id)
   
   // フォトコンテストイベント（events テーブルから取得）
   const [activeEvent, setActiveEvent] = useState<{
@@ -228,6 +226,208 @@ export default function AppHome() {
   const [missionPhotoPreview, setMissionPhotoPreview] = useState<string | null>(null)
   const [uploadingMission, setUploadingMission] = useState(false)
   const missionFileInputRef = useRef<HTMLInputElement>(null)
+
+  // ランニング・ウォーキング計測用のステート
+  const [isRunning, setIsRunning] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
+  const [elapsedTime, setElapsedTime] = useState(0) // 経過時間（秒）
+  const [distance, setDistance] = useState(0) // 走行距離（km）
+  const [currentPace, setCurrentPace] = useState<number | null>(null) // 現在のペース（min/km）
+  const [gpsWatchId, setGpsWatchId] = useState<number | null>(null)
+  const [gpsPositions, setGpsPositions] = useState<Array<{ lat: number; lng: number; timestamp: number }>>([])
+  const runningIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const startTimeRef = useRef<number | null>(null)
+  const pausedTimeRef = useRef<number>(0) // 一時停止していた時間の累計（秒）
+  const pauseStartTimeRef = useRef<number | null>(null) // 一時停止を開始した時刻
+
+  // 2点間の距離を計算（Haversine formula）
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371 // 地球の半径（km）
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLon = (lon2 - lon1) * Math.PI / 180
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return R * c
+  }
+
+  // タイマーをフォーマット（HH:MM:SS）
+  const formatTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const secs = seconds % 60
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+  }
+
+  // ペースをフォーマット（min/km）
+  const formatPace = (pace: number | null): string => {
+    if (pace === null || pace === Infinity || isNaN(pace)) return '--:--'
+    const minutes = Math.floor(pace)
+    const seconds = Math.floor((pace - minutes) * 60)
+    return `${minutes}:${String(seconds).padStart(2, '0')}`
+  }
+
+  // GPS計測の開始
+  useEffect(() => {
+    if (view === 'running_mode' && isRunning && !isPaused) {
+      // GPS位置情報の監視を開始
+      if (navigator.geolocation) {
+        const watchId = navigator.geolocation.watchPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords
+            const timestamp = Date.now()
+            
+            console.log('📍 [GPS] 位置情報取得:', { latitude, longitude, timestamp })
+            
+            setGpsPositions(prev => {
+              const newPositions = [...prev, { lat: latitude, lng: longitude, timestamp }]
+              
+              // 距離を計算（最後の2点間の距離を累積）
+              if (newPositions.length >= 2) {
+                const lastPos = newPositions[newPositions.length - 1]
+                const prevPos = newPositions[newPositions.length - 2]
+                const segmentDistance = calculateDistance(
+                  prevPos.lat, prevPos.lng,
+                  lastPos.lat, lastPos.lng
+                )
+                setDistance(prev => prev + segmentDistance)
+                
+                // ペースを計算（最後の1kmの平均ペース）
+                // 簡易版：現在の距離と経過時間から計算
+                if (elapsedTime > 0 && distance > 0) {
+                  const pace = (elapsedTime / 60) / distance // min/km
+                  setCurrentPace(pace)
+                }
+              }
+              
+              return newPositions
+            })
+          },
+          (error) => {
+            console.error('📍 [GPS] 位置情報取得エラー:', error)
+            // エラー時はシミュレーションデータを使用
+            const mockLat = 35.2746 + (Math.random() - 0.5) * 0.01
+            const mockLng = 136.2522 + (Math.random() - 0.5) * 0.01
+            setGpsPositions(prev => [...prev, { lat: mockLat, lng: mockLng, timestamp: Date.now() }])
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          }
+        )
+        
+        setGpsWatchId(watchId)
+        console.log('📍 [GPS] 位置情報監視開始:', watchId)
+      } else {
+        console.warn('📍 [GPS] 位置情報APIが利用できません')
+        // シミュレーションモード
+        const simulateInterval = setInterval(() => {
+          const mockLat = 35.2746 + (Math.random() - 0.5) * 0.01
+          const mockLng = 136.2522 + (Math.random() - 0.5) * 0.01
+          setGpsPositions(prev => {
+            const newPositions = [...prev, { lat: mockLat, lng: mockLng, timestamp: Date.now() }]
+            if (newPositions.length >= 2) {
+              const lastPos = newPositions[newPositions.length - 1]
+              const prevPos = newPositions[newPositions.length - 2]
+              const segmentDistance = calculateDistance(
+                prevPos.lat, prevPos.lng,
+                lastPos.lat, lastPos.lng
+              )
+              setDistance(prev => prev + segmentDistance)
+            }
+            return newPositions
+          })
+        }, 5000) // 5秒ごとにシミュレーション
+        
+        return () => clearInterval(simulateInterval)
+      }
+    }
+    
+    return () => {
+      if (gpsWatchId !== null) {
+        navigator.geolocation.clearWatch(gpsWatchId)
+        setGpsWatchId(null)
+        console.log('📍 [GPS] 位置情報監視停止')
+      }
+    }
+  }, [view, isRunning, isPaused])
+
+  // タイマーの更新
+  useEffect(() => {
+    if (view === 'running_mode' && isRunning && !isPaused && startTimeRef.current) {
+      runningIntervalRef.current = setInterval(() => {
+        const now = Date.now()
+        const elapsed = Math.floor((now - startTimeRef.current! - pausedTimeRef.current * 1000) / 1000)
+        setElapsedTime(elapsed)
+        
+        // ペースを計算（距離と時間から）
+        if (elapsed > 0 && distance > 0) {
+          const pace = (elapsed / 60) / distance // min/km
+          setCurrentPace(pace)
+        }
+      }, 100) // 100msごとに更新
+      
+      return () => {
+        if (runningIntervalRef.current) {
+          clearInterval(runningIntervalRef.current)
+          runningIntervalRef.current = null
+        }
+      }
+    } else if (isPaused && pauseStartTimeRef.current === null) {
+      // 一時停止を開始
+      pauseStartTimeRef.current = Date.now()
+    } else if (!isPaused && pauseStartTimeRef.current !== null) {
+      // 一時停止を解除
+      const pauseDuration = (Date.now() - pauseStartTimeRef.current) / 1000
+      pausedTimeRef.current += pauseDuration
+      pauseStartTimeRef.current = null
+    }
+  }, [view, isRunning, isPaused, distance])
+
+  // 一時停止ボタンのハンドラー
+  const handlePause = () => {
+    if (isPaused) {
+      // 再開
+      setIsPaused(false)
+      if (pauseStartTimeRef.current) {
+        const pauseDuration = (Date.now() - pauseStartTimeRef.current) / 1000
+        pausedTimeRef.current += pauseDuration
+        pauseStartTimeRef.current = null
+      }
+    } else {
+      // 一時停止
+      setIsPaused(true)
+      pauseStartTimeRef.current = Date.now()
+    }
+  }
+
+  // 終了ボタンのハンドラー
+  const handleStop = () => {
+    if (confirm('計測を終了しますか？')) {
+      setIsRunning(false)
+      setIsPaused(false)
+      if (gpsWatchId !== null) {
+        navigator.geolocation.clearWatch(gpsWatchId)
+        setGpsWatchId(null)
+      }
+      if (runningIntervalRef.current) {
+        clearInterval(runningIntervalRef.current)
+        runningIntervalRef.current = null
+      }
+      // データをリセット
+      setElapsedTime(0)
+      setDistance(0)
+      setCurrentPace(null)
+      setGpsPositions([])
+      pausedTimeRef.current = 0
+      pauseStartTimeRef.current = null
+      startTimeRef.current = null
+      setView('main')
+    }
+  }
   
   // 編集フォーム用のステート
   const [username, setUsername] = useState<string>('')
@@ -267,29 +467,43 @@ export default function AppHome() {
     'エジプト', 'トルコ', 'ロシア', 'その他'
   ]
 
+  // AuthProviderの状態が確定したらプロフィール情報を取得
   useEffect(() => {
-    const savedMode = localStorage.getItem('app_mode') as 'local' | 'tourist'
-    if (savedMode) setMode(savedMode)
-    const savedCity = localStorage.getItem('selected_city_id')
-    if (savedCity) setSelectedCityId(savedCity)
-    
-    // 即座にセッションチェックを行い、未ログインの場合はローディングを解除
-    // 注意: この関数内では view を変更しない（setView を一切呼ばない）
-    const checkInitialSession = async () => {
+    // AuthProviderがまだローディング中なら何もしない
+    if (authLoading) {
+      console.log('🔐 [Home] AuthProviderローディング中...')
+      return
+    }
+
+    // AbortControllerでリクエストをキャンセル可能にする
+    const abortController = new AbortController()
+    let isMounted = true
+
+    const fetchProfileData = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        console.log('🔐 [Home] セッション確認:', session ? `User: ${session.user.id}` : 'なし')
-        
-        if (session?.user) {
-          setCurrentUser(session.user)
+        // AbortSignalがキャンセルされている場合は処理を中断
+        if (abortController.signal.aborted || !isMounted) {
+          console.log('🔐 [Home] リクエストがキャンセルされました')
+          return
+        }
+
+        // AuthProviderから取得したuserを使用（supabase.auth.getSession()を直接呼ばない）
+        if (authUser) {
+          console.log('🔐 [Home] ユーザー確認:', `User: ${authUser.id}`)
           
-          // ユーザーの登録都市・エリア・会員番号を取得（ホーム画面のパーソナライズ用）
+          // ユーザーの登録都市・エリアを取得（ホーム画面のパーソナライズ用）
           // ※ selected_area と detail_area の両方を取得（互換性のため）
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
-            .select('city, selected_area, detail_area, join_order')
-            .eq('id', session.user.id)
+            .select('city, selected_area, detail_area')
+            .eq('id', authUser.id)
             .single()
+          
+          // AbortSignalがキャンセルされている場合は処理を中断
+          if (abortController.signal.aborted || !isMounted) {
+            console.log('🔐 [Home] レスポンス取得後にキャンセルされました')
+            return
+          }
           
           console.log('📋 [Home] プロフィール取得結果:', profileData)
           if (profileError) {
@@ -298,143 +512,76 @@ export default function AppHome() {
           
           // ===== 市区町村の設定（必ず実行） =====
           const cityValue = profileData?.city || null
-          setUserCity(cityValue)
-          console.log(`🏙️ [Home] ユーザーの市区町村を設定: ${cityValue || '(未設定)'}`)
-          
-          if (cityValue) {
-            // ===== 対応エリアチェック =====
-            // city が設定されている場合、対応エリアかどうかをチェック
-            if (!isSupportedCity(cityValue)) {
-              console.log(`⚠️ [Home] 未対応エリア: ${cityValue}`)
-              setShowUnsupportedAreaModal(true)
+          if (isMounted) {
+            setUserCity(cityValue)
+            console.log(`🏙️ [Home] ユーザーの市区町村を設定: ${cityValue || '(未設定)'}`)
+            console.log(`🏙️ [Home] city: ${profileData?.city || '(null)'}`)
+            
+            if (cityValue) {
+              // ===== 対応エリアチェック =====
+              if (!isSupportedCity(cityValue)) {
+                console.log(`⚠️ [Home] 未対応エリア: ${cityValue}`)
+                setShowUnsupportedAreaModal(true)
+              } else {
+                console.log(`✅ [Home] 対応エリア: ${cityValue}`)
+                setShowUnsupportedAreaModal(false)
+              }
             } else {
-              console.log(`✅ [Home] 対応エリア: ${cityValue}`)
               setShowUnsupportedAreaModal(false)
             }
-          } else {
-            // city が null の場合はモーダルを表示しない
-            setShowUnsupportedAreaModal(false)
-          }
-          
-          // ===== エリアの設定（必ず実行） =====
-          // エリアの判定: selected_area または detail_area を使用
-          const areaValue = profileData?.selected_area || profileData?.detail_area || null
-          setUserSelectedArea(areaValue)
-          console.log('🗑️ [Home] 判定に使用しているエリア名:', areaValue || '(未設定)')
-          console.log('🗑️ [Home] selected_area:', profileData?.selected_area)
-          console.log('🗑️ [Home] detail_area:', profileData?.detail_area)
-          
-          if (areaValue) {
-            console.log(`✅ [Home] ゴミ収集エリア設定完了: ${areaValue}`)
-          } else {
-            console.log(`⚠️ [Home] ユーザーのエリアが未設定です（selected_area も detail_area も null）`)
-          }
-          
-          // ===== 会員番号の設定 =====
-          const joinOrderValue = profileData?.join_order || null
-          setUserJoinOrder(joinOrderValue)
-          if (joinOrderValue) {
-            console.log(`🎫 [Home] 会員番号: ${joinOrderValue}`)
-          }
-          
-          // ホーム画面にいる場合のみプロフィールチェックを実行（viewを変更しない）
-          checkProfileCompletion()
-        } else {
-          // セッションがnull（未ログイン）の場合
-          console.log('🔐 [Home] 未ログイン状態')
-          setCurrentUser(null)
-          setProfileChecked(true)
-          setUserCity(null)
-          setUserSelectedArea(null)
-          // SWR は userSelectedArea が null になると自動的にフェッチを停止
-        }
-      } catch (error) {
-        console.error('Session check error:', error)
-        setCurrentUser(null)
-      } finally {
-        // 成否に関わらず、必ずローディングを解除（強制リセット）
-        setProfileLoading(false)
-      }
-    }
-    checkInitialSession()
-    
-    // 認証状態の変更を監視（シンプルに）
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.id || 'no user')
-      
-      // ユーザーを即座にセット（Loadingフラグに頼らない）
-      setCurrentUser(session?.user ?? null)
-      setProfileLoading(false)
-      
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
-        if (session?.user) {
-          // プロフィール作成処理（DBトリガーが動いていない場合の保険）
-          createProfileIfNotExists(session.user)
-          
-          // ===== ログイン後、プロフィール情報を取得してStateにセット =====
-          console.log('🔄 [Home] ログイン後、プロフィール情報を再取得...')
-          const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('city, selected_area, detail_area, join_order')
-            .eq('id', session.user.id)
-            .single()
-          
-          if (profileError) {
-            console.error('📋 [Home] onAuthStateChange: プロフィール取得エラー:', profileError)
-          } else {
-            console.log('📋 [Home] onAuthStateChange: プロフィール取得成功:', profileData)
             
-            // 市区町村を設定
-            const cityValue = profileData?.city || null
-            setUserCity(cityValue)
-            console.log(`🏙️ [Home] onAuthStateChange: 市区町村を設定: ${cityValue || '(未設定)'}`)
-            
-            // エリアを設定
+            // ===== エリアの設定（必ず実行） =====
             const areaValue = profileData?.selected_area || profileData?.detail_area || null
             setUserSelectedArea(areaValue)
-            console.log(`🗑️ [Home] onAuthStateChange: エリアを設定: ${areaValue || '(未設定)'}`)
+            console.log('🗑️ [Home] 判定に使用しているエリア名:', areaValue || '(未設定)')
+            console.log('🗑️ [Home] selected_area:', profileData?.selected_area)
+            console.log('🗑️ [Home] detail_area:', profileData?.detail_area)
             
-            // 会員番号を設定
-            if (profileData?.join_order) {
-              setUserJoinOrder(profileData.join_order)
-            }
-            
-            // 対応エリアチェック
-            if (cityValue && !isSupportedCity(cityValue)) {
-              setShowUnsupportedAreaModal(true)
+            if (areaValue) {
+              console.log(`✅ [Home] ゴミ収集エリア設定完了: ${areaValue}`)
             } else {
-              setShowUnsupportedAreaModal(false)
+              console.log(`⚠️ [Home] ユーザーのエリアが未設定です（selected_area も detail_area も null）`)
+            }
+            
+            // ホーム画面にいる場合のみプロフィールチェックを実行（viewを変更しない）
+            if (view === 'main') {
+              checkProfileCompletion(abortController.signal)
             }
           }
-          
-          // ログイン後、即座にプロフィール情報を取得してStateにセット
-          if (view === 'profile') {
-            fetchProfileDataForEdit()
-          }
-          // 注意: viewを変更する処理は一切行わない
-          // ホーム画面にいる場合のみプロフィールチェックを実行（viewを変更しない）
-          if (view === 'main') {
-            checkProfileCompletion()
+        } else {
+          // 未ログインの場合
+          console.log('🔐 [Home] 未ログイン状態')
+          if (isMounted) {
+            setProfileChecked(true)
+            setUserCity(null)
+            setUserSelectedArea(null)
+            // SWR は userSelectedArea が null になると自動的にフェッチを停止
           }
         }
-      } else if (event === 'SIGNED_OUT') {
-        // ログアウト時：Stateをリセット（ただし、viewは変更しない）
-        // viewの変更は、handleLogout関数内で明示的に実行する
-        setProfile(null)
-        setShowProfileModal(false)
-        setProfileChecked(true)
-        setUserCity(null)
-        setUserSelectedArea(null)
-        setUserJoinOrder(null)
-        setShowUnsupportedAreaModal(false)
-        // setView('main')を削除：ログアウトボタンを押した時だけhandleLogoutで実行
+      } catch (error: any) {
+        // AbortErrorの場合は無視（コンポーネントのアンマウント時に発生する可能性がある）
+        if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+          console.log('🔐 [Home] リクエストが中断されました（AbortError）')
+          return
+        }
+        console.error('Profile fetch error:', error)
+      } finally {
+        // AbortSignalがキャンセルされていない場合のみローディング状態を解除
+        if (!abortController.signal.aborted && isMounted) {
+          setProfileLoading(false)
+        }
       }
-    })
-    
-    return () => {
-      subscription.unsubscribe()
     }
-  }, [])
+
+    fetchProfileData()
+
+    // クリーンアップ関数：コンポーネントのアンマウント時にリクエストをキャンセル
+    return () => {
+      console.log('🔐 [Home] クリーンアップ: リクエストをキャンセル')
+      isMounted = false
+      abortController.abort()
+    }
+  }, [authLoading, authUser, view]) // authUserが変更された時のみ再実行
 
   useEffect(() => {
     localStorage.setItem('app_mode', mode)
@@ -462,12 +609,12 @@ export default function AppHome() {
     // 初期ロード時の'main'はuseStateの初期値で設定されている
   }, [pathname]) // routerを依存配列から削除、viewも削除（無限ループを防ぐ）
 
-  // currentUser がいない（ゲスト）の場合は、即座に profileLoading を false にする
+  // authUser がいない（ゲスト）の場合は、即座に profileLoading を false にする
   useEffect(() => {
-    if (!currentUser) {
+    if (!authUser && !authLoading) {
       setProfileLoading(false)
     }
-  }, [currentUser])
+  }, [authUser, authLoading])
 
   // フォトコンテストイベントを取得
   useEffect(() => {
@@ -509,56 +656,91 @@ export default function AppHome() {
   // プロフィールページが表示されたときにデータを取得
   useEffect(() => {
     if (view === 'profile') {
-      // ゲスト判定のログ（デバッグ用）
-      console.log("DEBUG: currentUser is", currentUser)
-      console.log("View:", view, "User:", !!currentUser, "ProfileLoading:", profileLoading)
-      
-      // ログイン状態を確認
-      const checkAuth = async () => {
+      // AuthProviderがまだローディング中なら何もしない
+      if (authLoading) {
+        console.log('🔐 [Home] AuthProviderローディング中、プロフィール取得をスキップ')
+        return
+      }
+
+      // AbortControllerでリクエストをキャンセル可能にする
+      const abortController = new AbortController()
+      let isMounted = true
+
+      const fetchData = async () => {
         try {
-          const { data: { session } } = await supabase.auth.getSession()
-          if (session?.user) {
-            setCurrentUser(session.user)
-            fetchProfileDataForEdit()
-          } else {
-            // セッションがない場合
-            setCurrentUser(null)
+          // AbortSignalがキャンセルされている場合は処理を中断
+          if (abortController.signal.aborted || !isMounted) {
+            return
           }
-        } catch (error) {
+
+          // AuthProviderから取得したuserを使用
+          if (authUser) {
+            console.log("DEBUG: authUser is", authUser.id)
+            console.log("View:", view, "User:", !!authUser, "ProfileLoading:", profileLoading)
+            
+            fetchProfileDataForEdit(abortController.signal)
+          } else {
+            // 未ログインの場合
+            console.log("DEBUG: 未ログイン状態")
+            if (isMounted) {
+              setProfileLoading(false)
+            }
+          }
+        } catch (error: any) {
+          // AbortErrorの場合は無視
+          if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+            console.log('🔐 [Home] リクエストが中断されました（AbortError）')
+            return
+          }
           console.error('Auth check error:', error)
-          setCurrentUser(null)
-        } finally {
-          // 成否に関わらず、必ずローディングを解除（強制リセット）
-          setProfileLoading(false)
+          if (isMounted) {
+            setProfileLoading(false)
+          }
         }
       }
-      checkAuth()
+
+      fetchData()
+
+      // クリーンアップ関数
+      return () => {
+        isMounted = false
+        abortController.abort()
+      }
     }
-  }, [view])
+  }, [view, authLoading, authUser])
 
   // プロフィールの完了状況をチェック（ページ読み込み完了時に1回だけ実行）
-  const checkProfileCompletion = async () => {
+  const checkProfileCompletion = async (abortSignal?: AbortSignal) => {
     try {
       // まず、チェック完了前はモーダルを表示しない
       setShowProfileModal(false)
       
-      const { data: { session } } = await supabase.auth.getSession()
-      
+      // AuthProviderから取得したuserを使用（supabase.auth.getSession()を直接呼ばない）
       // ゲスト（未ログイン）時: ポップアップは絶対に表示しない
-      if (!session?.user) {
+      if (!authUser) {
         setShowProfileModal(false)
         setProfileChecked(true)
         return
       }
-      
-      setCurrentUser(session.user)
+
+      // AbortSignalがキャンセルされている場合は処理を中断
+      if (abortSignal?.aborted) {
+        console.log('🔐 [Home] プロフィールチェックがキャンセルされました')
+        return
+      }
       
       // プロフィール情報を取得
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('full_name, gender, birthday, location, city, interests')
-        .eq('id', session.user.id)
+        .eq('id', authUser.id)
         .single()
+
+      // AbortSignalがキャンセルされている場合は処理を中断
+      if (abortSignal?.aborted) {
+        console.log('🔐 [Home] プロフィール取得後にキャンセルされました')
+        return
+      }
       
       // デバッグ用ログ
       console.log('=== プロフィールチェック開始 ===')
@@ -645,7 +827,12 @@ export default function AppHome() {
       }
       
       console.log('=== プロフィールチェック完了 ===')
-    } catch (error) {
+    } catch (error: any) {
+      // AbortErrorの場合は無視
+      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+        console.log('🔐 [Home] プロフィールチェックが中断されました（AbortError）')
+        return
+      }
       // try-catch でキャッチされる予期しないエラー
       console.error('Profile check error (catch):', error)
       setShowProfileModal(false)
@@ -656,57 +843,187 @@ export default function AppHome() {
     }
   }
 
+  // AuthProviderの状態変更を監視（onAuthStateChangeの代わり）
+  useEffect(() => {
+    // AuthProviderがまだローディング中なら何もしない
+    if (authLoading) {
+      return
+    }
+
+    // AbortControllerでリクエストをキャンセル可能にする
+    const abortController = new AbortController()
+    let isMounted = true
+
+    const handleAuthChange = async () => {
+      try {
+        // AbortSignalがキャンセルされている場合は処理を中断
+        if (abortController.signal.aborted || !isMounted) {
+          return
+        }
+
+        if (authUser) {
+          // ログイン済みの場合
+          console.log('🔄 [Home] AuthProvider状態変更: ログイン済み', authUser.id)
+          
+          // プロフィール作成処理（DBトリガーが動いていない場合の保険）
+          createProfileIfNotExists()
+          
+          // プロフィール情報を取得してStateにセット
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('city, selected_area, detail_area')
+            .eq('id', authUser.id)
+            .maybeSingle()
+
+          // AbortSignalがキャンセルされている場合は処理を中断
+          if (abortController.signal.aborted || !isMounted) {
+            return
+          }
+
+          if (profileError) {
+            console.error('📋 [Home] AuthProvider状態変更: プロフィール取得エラー:', profileError)
+          } else if (profileData) {
+            console.log('📋 [Home] AuthProvider状態変更: プロフィール取得成功:', profileData)
+            
+            // 市区町村を設定
+            const cityValue = profileData?.city || null
+            if (isMounted) {
+              setUserCity(cityValue)
+              console.log(`🏙️ [Home] AuthProvider状態変更: 市区町村を設定: ${cityValue || '(未設定)'}`)
+              console.log(`🏙️ [Home] city: ${profileData?.city || '(null)'}`)
+              
+              // エリアを設定
+              const areaValue = profileData?.selected_area || profileData?.detail_area || null
+              setUserSelectedArea(areaValue)
+              console.log(`🗑️ [Home] AuthProvider状態変更: エリアを設定: ${areaValue || '(未設定)'}`)
+              
+              // 対応エリアチェック
+              if (cityValue && !isSupportedCity(cityValue)) {
+                setShowUnsupportedAreaModal(true)
+              } else {
+                setShowUnsupportedAreaModal(false)
+              }
+              
+              // ホーム画面にいる場合のみプロフィールチェックを実行
+              if (view === 'main') {
+                checkProfileCompletion(abortController.signal)
+              }
+            }
+          }
+        } else {
+          // 未ログインの場合
+          console.log('🔄 [Home] AuthProvider状態変更: 未ログイン')
+          if (isMounted) {
+            setProfile(null)
+            setShowProfileModal(false)
+            setProfileChecked(true)
+            setUserCity(null)
+            setUserSelectedArea(null)
+            setShowUnsupportedAreaModal(false)
+          }
+        }
+      } catch (error: any) {
+        // AbortErrorの場合は無視
+        if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+          console.log('🔐 [Home] リクエストが中断されました（AbortError）')
+          return
+        }
+        console.error('Auth change handler error:', error)
+      }
+    }
+
+    handleAuthChange()
+
+    // クリーンアップ関数
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
+  }, [authLoading, authUser, view]) // authUserが変更された時のみ再実行
+
   // プロフィールデータの取得
-  const fetchProfileData = async () => {
+  const fetchProfileData = async (abortSignal?: AbortSignal) => {
     try {
       setProfileLoading(true)
-      const { data: { session } } = await supabase.auth.getSession()
       
-      if (!session?.user) {
+      // AuthProviderから取得したuserを使用
+      if (!authUser) {
         setProfileLoading(false)
+        return
+      }
+
+      // AbortSignalがキャンセルされている場合は処理を中断
+      if (abortSignal?.aborted) {
+        console.log('🔐 [Home] プロフィール取得がキャンセルされました')
         return
       }
 
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', session.user.id)
+        .eq('id', authUser.id)
         .single()
+
+      // AbortSignalがキャンセルされている場合は処理を中断
+      if (abortSignal?.aborted) {
+        console.log('🔐 [Home] プロフィール取得後にキャンセルされました')
+        return
+      }
 
       if (data) {
         setProfile(data)
       } else {
         // プロフィールがない場合でも、セッション情報を表示
         setProfile({
-          id: session.user.id,
-          full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'ユーザー',
-          email: session.user.email,
-          avatar_url: session.user.user_metadata?.avatar_url || null
+          id: authUser.id,
+          full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'ユーザー',
+          email: authUser.email,
+          avatar_url: authUser.user_metadata?.avatar_url || null
         })
       }
-    } catch (error) {
+    } catch (error: any) {
+      // AbortErrorの場合は無視
+      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+        console.log('🔐 [Home] リクエストが中断されました（AbortError）')
+        return
+      }
       console.error('Profile fetch error:', error)
     } finally {
-      setProfileLoading(false)
+      // AbortSignalがキャンセルされていない場合のみローディング状態を解除
+      if (!abortSignal?.aborted) {
+        setProfileLoading(false)
+      }
     }
   }
 
   // 編集用のプロフィールデータ取得（Stateに反映）
-  const fetchProfileDataForEdit = async () => {
+  const fetchProfileDataForEdit = async (abortSignal?: AbortSignal) => {
     try {
       setProfileLoading(true)
-      const { data: { session } } = await supabase.auth.getSession()
       
-      if (!session?.user) {
+      // AuthProviderから取得したuserを使用
+      if (!authUser) {
         setProfileLoading(false)
+        return
+      }
+
+      // AbortSignalがキャンセルされている場合は処理を中断
+      if (abortSignal?.aborted) {
+        console.log('🔐 [Home] プロフィール編集データ取得がキャンセルされました')
         return
       }
 
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', session.user.id)
+        .eq('id', authUser.id)
         .single()
+
+      // AbortSignalがキャンセルされている場合は処理を中断
+      if (abortSignal?.aborted) {
+        console.log('🔐 [Home] プロフィール編集データ取得後にキャンセルされました')
+        return
+      }
 
       if (data) {
         setProfile(data)
@@ -720,8 +1037,8 @@ export default function AppHome() {
           detail_area: data.detail_area,
           使用するエリア: areaValue
         })
-        setUsername(data.full_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'ユーザー')
-        setAvatarUrl(data.avatar_url || session.user.user_metadata?.avatar_url || '')
+        setUsername(data.full_name || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'ユーザー')
+        setAvatarUrl(data.avatar_url || authUser.user_metadata?.avatar_url || '')
         setPrefecture(data.location || data.prefecture || '')
         setCity(data.city || '')
         setSelectedArea(areaValue)
@@ -731,47 +1048,57 @@ export default function AppHome() {
         console.log('🗑️ [fetchProfileDataForEdit] 判定に使用しているエリア名:', areaValue || 'なし')
       } else {
         // プロフィールがない場合
-        const defaultName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'ユーザー'
+        const defaultName = authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'ユーザー'
         setProfile({
-          id: session.user.id,
+          id: authUser.id,
           full_name: defaultName,
-          email: session.user.email,
-          avatar_url: session.user.user_metadata?.avatar_url || null
+          email: authUser.email,
+          avatar_url: authUser.user_metadata?.avatar_url || null
         })
         setUsername(defaultName)
-        setAvatarUrl(session.user.user_metadata?.avatar_url || '')
+        setAvatarUrl(authUser.user_metadata?.avatar_url || '')
         setPrefecture('')
         setCity('')
         setSelectedArea('')
         setUserCity(null)
         setUserSelectedArea(null)
       }
-    } catch (error) {
+    } catch (error: any) {
+      // AbortErrorの場合は無視
+      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+        console.log('🔐 [Home] リクエストが中断されました（AbortError）')
+        return
+      }
       console.error('Profile fetch error:', error)
     } finally {
-      setProfileLoading(false)
+      // AbortSignalがキャンセルされていない場合のみローディング状態を解除
+      if (!abortSignal?.aborted) {
+        setProfileLoading(false)
+      }
     }
   }
 
   // プロフィールが存在しない場合に作成する（DBトリガーの保険）
-  const createProfileIfNotExists = async (user: any) => {
+  const createProfileIfNotExists = async () => {
+    if (!authUser) return
+    
     try {
       // 既存のプロフィールをチェック
       const { data: existingProfile } = await supabase
         .from('profiles')
         .select('id')
-        .eq('id', user.id)
-        .single()
+        .eq('id', authUser.id)
+        .maybeSingle()
 
       if (!existingProfile) {
         // プロフィールが存在しない場合、作成
-        console.log('プロフィールが存在しないため作成します:', user.id)
+        console.log('プロフィールが存在しないため作成します:', authUser.id)
         const { data, error } = await supabase
           .from('profiles')
           .insert({
-            id: user.id,
-            full_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー',
-            avatar_url: user.user_metadata?.avatar_url || null,
+            id: authUser.id,
+            full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'ユーザー',
+            avatar_url: authUser.user_metadata?.avatar_url || null,
             last_login: new Date().toISOString()
           })
           .select()
@@ -860,7 +1187,7 @@ export default function AppHome() {
 
   // プロフィール保存処理
   const handleSaveProfile = async () => {
-    if (!currentUser) {
+    if (!authUser) {
       alert('ログインが必要です')
       return
     }
@@ -887,7 +1214,7 @@ export default function AppHome() {
     try {
       // 保存用データの準備
       const updateData: any = {
-        id: currentUser.id,
+        id: authUser.id,
         full_name: username.trim(),
         updated_at: new Date().toISOString()
       }
@@ -973,7 +1300,6 @@ export default function AppHome() {
     if (confirm('ログアウトしますか？')) {
       await supabase.auth.signOut()
       setProfile(null)
-      setCurrentUser(null)
       setView('main')
       setUsername('')
       setAvatarUrl('')
@@ -1001,7 +1327,7 @@ export default function AppHome() {
 
   // ミッション完了
   const handleCompleteMission = async () => {
-    if (!selectedMission || !missionPhoto || !currentUser) {
+    if (!selectedMission || !missionPhoto || !authUser) {
       alert('写真をアップロードしてください')
       return
     }
@@ -1042,7 +1368,7 @@ export default function AppHome() {
           </div>
           
           {/* ポイントバッジ */}
-          {currentUser && (
+          {authUser && (
             <div 
               onClick={() => router.push('/profile')}
               className="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-yellow-500 px-3 py-1.5 rounded-full cursor-pointer hover:from-amber-500 hover:to-yellow-600 transition-all shadow-sm active:scale-95"
@@ -1141,21 +1467,6 @@ export default function AppHome() {
                       )}
                     </div>
                   </div>
-              )
-            })()}
-              
-                  {/* 下段：会員番号（ログインユーザーのみ表示） */}
-                  {currentUser && userJoinOrder && (
-                    <div className="mt-2 pt-2 border-t border-white/20">
-                      <p className="text-center">
-                        <span className="text-white/70 text-xs font-bold">あなたは</span>
-                        <span className="text-yellow-300 text-xl font-black mx-2">
-                          {userJoinOrder.toLocaleString()}
-                        </span>
-                        <span className="text-white/70 text-xs font-bold">人目の仲間です！</span>
-                      </p>
-                    </div>
-                  )}
                 </div>
               )
             })()}
@@ -1168,11 +1479,78 @@ export default function AppHome() {
               onSetupClick={() => setView('profile')}
             />
 
+            {/* 1.5. 暮らしセクション：ランニング・ウォーキングアクションカード */}
+            {mode === 'local' && (
+              <div className="bg-white rounded-[2rem] p-5 shadow-lg border border-gray-100">
+                <div className="flex items-center gap-2 mb-4">
+                  <Building2 size={18} className="text-blue-500" />
+                  <h2 className="text-sm font-black text-gray-800">暮らし</h2>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* ランニング開始ボタン */}
+                  <button
+                    onClick={() => {
+                      setView('running_mode')
+                      // 計測を開始
+                      setIsRunning(true)
+                      setIsPaused(false)
+                      setElapsedTime(0)
+                      setDistance(0)
+                      setCurrentPace(null)
+                      setGpsPositions([])
+                      pausedTimeRef.current = 0
+                      startTimeRef.current = Date.now()
+                    }}
+                    className="bg-gradient-to-br from-orange-500 to-red-500 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all group"
+                  >
+                    <div className="absolute -right-4 -bottom-4 opacity-20">
+                      <Activity size={60} className="text-white rotate-12" />
+                    </div>
+                    <div className="relative z-10">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Activity size={24} className="text-white" />
+                        <span className="text-lg font-black">ランニング開始</span>
+                      </div>
+                      <p className="text-xs font-bold opacity-90">運動を記録しよう</p>
+                    </div>
+                  </button>
+
+                  {/* ウォーキング開始ボタン */}
+                  <button
+                    onClick={() => {
+                      setView('running_mode')
+                      // 計測を開始
+                      setIsRunning(true)
+                      setIsPaused(false)
+                      setElapsedTime(0)
+                      setDistance(0)
+                      setCurrentPace(null)
+                      setGpsPositions([])
+                      pausedTimeRef.current = 0
+                      startTimeRef.current = Date.now()
+                    }}
+                    className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all group"
+                  >
+                    <div className="absolute -right-4 -bottom-4 opacity-20">
+                      <Footprints size={60} className="text-white rotate-12" />
+                    </div>
+                    <div className="relative z-10">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Footprints size={24} className="text-white" />
+                        <span className="text-lg font-black">ウォーキング開始</span>
+                      </div>
+                      <p className="text-xs font-bold opacity-90">歩数を記録しよう</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* 2. フォトコンテストバナー */}
             {activeEvent && (
               <div 
                 onClick={() => {
-                  if (currentUser) {
+                  if (authUser) {
                     router.push('/event')
                   } else {
                     router.push('/login')
@@ -1310,14 +1688,14 @@ export default function AppHome() {
               {/* フッターリンク */}
               <button 
                 onClick={() => {
-                  if (!currentUser) {
+                  if (!authUser) {
                     router.push('/login')
                   }
                 }}
                 className="w-full mt-4 py-2 text-xs font-black text-orange-500 hover:text-orange-600 flex items-center justify-center gap-1"
               >
                 <Target size={14} />
-                {currentUser ? 'すべてのミッションを見る' : 'ログインしてチャレンジに参加'}
+                {authUser ? 'すべてのミッションを見る' : 'ログインしてチャレンジに参加'}
                 <ChevronRight size={14} />
               </button>
             </div>
@@ -1471,7 +1849,7 @@ export default function AppHome() {
         )}
         
         {view === 'profile' && (
-          !currentUser ? (
+          !authUser ? (
             /* 未ログインなら、このログイン画面を強制表示 */
             <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center animate-in fade-in max-w-xl mx-auto">
               <div className="bg-orange-50 p-6 rounded-full mb-6">
@@ -1773,6 +2151,85 @@ export default function AppHome() {
             </div>
           )
         )}
+
+        {/* running_mode ビュー：黒背景のスポーティな計測画面 */}
+        {view === 'running_mode' && (
+          <div className="fixed inset-0 bg-black z-50 flex flex-col">
+            {/* ヘッダー：戻るボタン */}
+            <div className="absolute top-4 left-4 z-10">
+              <button
+                onClick={() => {
+                  if (isRunning && confirm('計測を終了して戻りますか？')) {
+                    handleStop()
+                  } else {
+                    setView('main')
+                  }
+                }}
+                className="p-3 bg-black/50 backdrop-blur-md rounded-full hover:bg-black/70 transition-colors"
+              >
+                <ChevronRight size={24} className="rotate-180 text-white" />
+              </button>
+            </div>
+
+            {/* メインコンテンツ */}
+            <div className="flex-1 flex flex-col items-center justify-center px-6 pb-32">
+              {/* 上部：デジタルタイマー */}
+              <div className="mb-12">
+                <p className="text-7xl font-black text-white tracking-tighter font-mono">
+                  {formatTime(elapsedTime)}
+                </p>
+              </div>
+
+              {/* 中央：走行距離とペース */}
+              <div className="flex flex-col items-center gap-8 mb-12">
+                {/* 走行距離 */}
+                <div className="text-center">
+                  <p className="text-xs font-bold text-white/60 mb-2 uppercase tracking-wider">走行距離</p>
+                  <p className="text-5xl font-black text-white tracking-tighter">
+                    {distance.toFixed(2)}
+                    <span className="text-2xl font-bold text-white/70 ml-1">km</span>
+                  </p>
+                </div>
+
+                {/* 現在のペース */}
+                <div className="text-center">
+                  <p className="text-xs font-bold text-white/60 mb-2 uppercase tracking-wider">現在のペース</p>
+                  <p className="text-5xl font-black text-white tracking-tighter">
+                    {formatPace(currentPace)}
+                    <span className="text-2xl font-bold text-white/70 ml-1">min/km</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* 下部：一時停止と終了ボタン */}
+              <div className="flex gap-4 w-full max-w-md">
+                {/* 一時停止ボタン */}
+                <button
+                  onClick={handlePause}
+                  disabled={!isRunning}
+                  className={`flex-1 py-6 rounded-2xl font-black text-lg flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                    isPaused
+                      ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                      : 'bg-white/10 hover:bg-white/20 text-white border-2 border-white/30'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <Pause size={24} />
+                  {isPaused ? '再開' : '一時停止'}
+                </button>
+
+                {/* 終了ボタン */}
+                <button
+                  onClick={handleStop}
+                  disabled={!isRunning}
+                  className="flex-1 py-6 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-black text-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Square size={24} />
+                  終了
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
 
@@ -2005,15 +2462,15 @@ export default function AppHome() {
         表示条件:
         1. ローディング完了後（profileChecked === true）
         2. モーダル表示フラグがtrue（showProfileModal === true）
-        3. ログイン済み（currentUser が存在）
+        3. ログイン済み（authUser が存在）
         4. ホーム画面にいる（view === 'main'）← 重要：ホーム画面でのみ表示
         z-index: z-[110] でナビバー（z-[100]）より前面に表示
       */}
-      {profileChecked && showProfileModal && currentUser && view === 'main' && (
+      {profileChecked && showProfileModal && authUser && view === 'main' && (
         <ProfileRegistrationModal
-          userId={currentUser.id}
-          userEmail={currentUser.email}
-          userFullName={currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || profile?.full_name}
+          userId={authUser.id}
+          userEmail={authUser.email}
+          userFullName={authUser.user_metadata?.full_name || authUser.user_metadata?.name || profile?.full_name}
           onComplete={async () => {
             // 保存成功後、モーダルを閉じてプロフィールを再チェック
             setShowProfileModal(false)
@@ -2022,11 +2479,11 @@ export default function AppHome() {
             console.log('📋 [Profile] モーダル閉じ後、最新データを再取得')
             
             // ===== プロフィールの最新データを取得してStateにセット =====
-            if (currentUser?.id) {
+            if (authUser?.id) {
               const { data: latestProfile, error: profileError } = await supabase
                 .from('profiles')
-                .select('city, selected_area, detail_area, join_order')
-                .eq('id', currentUser.id)
+                .select('city, selected_area, detail_area')
+                .eq('id', authUser.id)
                 .single()
               
               if (!profileError && latestProfile) {
@@ -2036,16 +2493,12 @@ export default function AppHome() {
                 const newCity = latestProfile.city || null
                 setUserCity(newCity)
                 console.log(`🏙️ [Profile] 市区町村を更新: ${newCity || '(未設定)'}`)
+                console.log(`🏙️ [Profile] city: ${latestProfile.city || '(null)'}`)
                 
                 // エリアを即座に更新
                 const newArea = latestProfile.selected_area || latestProfile.detail_area || null
                 setUserSelectedArea(newArea)
                 console.log(`🗑️ [Profile] エリアを更新: ${newArea || '(未設定)'}`)
-                
-                // 会員番号を更新
-                if (latestProfile.join_order) {
-                  setUserJoinOrder(latestProfile.join_order)
-                }
                 
                 // 対応エリアチェック
                 if (newCity && !isSupportedCity(newCity)) {
@@ -2135,7 +2588,7 @@ export default function AppHome() {
               ) : (
                 /* 未完了の場合：写真アップロード */
                 <>
-                  {!currentUser ? (
+                  {!authUser ? (
                     /* 未ログイン */
                     <div className="bg-amber-50 rounded-2xl p-5 text-center">
                       <p className="text-sm font-bold text-amber-800 mb-3">
@@ -2233,7 +2686,7 @@ export default function AppHome() {
       )}
 
       {/* エリア未対応モーダル（ログイン済みかつ対応エリア外の場合に表示） */}
-      {showUnsupportedAreaModal && currentUser && (
+      {showUnsupportedAreaModal && authUser && (
         <>
           {/* Backdrop（クリックしても閉じない） */}
           <div className="fixed inset-0 z-[3000] bg-black/70 backdrop-blur-md" />
@@ -2318,7 +2771,6 @@ export default function AppHome() {
                     // ログアウト
                     if (confirm('ログアウトしますか？')) {
                       await supabase.auth.signOut()
-                      setCurrentUser(null)
                       setProfile(null)
                       setShowUnsupportedAreaModal(false)
                       setView('main')

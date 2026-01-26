@@ -1,11 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
-import { createClient } from '@supabase/supabase-js'
-
-// Supabaseクライアント（キャッシュなしで毎回最新データを取得）
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+import { supabase } from '@/lib/supabase'
 
 // 自治体統計情報の型
 export interface MunicipalityStats {
@@ -80,11 +76,6 @@ function getCityBase(city: string): string {
  * @param currentUserId 現在のユーザーID（自分自身がカウントに含まれているか確認用）
  */
 const fetchMunicipalityStats = async (city: string | null, currentUserId?: string | null): Promise<MunicipalityStats> => {
-  // 毎回新しいSupabaseクライアントを作成してキャッシュを回避
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false }
-  })
-  
   const timestamp = new Date().toISOString()
   console.log(`\n========== 📊 [Stats] フェッチ開始 ${timestamp} ==========`)
   console.log(`📊 [Stats] ユーザーの自治体（入力値）: "${city}"`)
@@ -95,6 +86,7 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     console.log('📊 [Stats] 市が指定されていません。デフォルト（彦根市）のデータをDBから取得')
     try {
       // 彦根市の人口をDBから取得
+      // municipalitiesテーブルは city カラムを使用
       const { data: hikoneData, error: hikoneError } = await supabase
         .from('municipalities')
         .select('city, population, mascot_name, population_updated_at')
@@ -149,8 +141,8 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     
     let municipality = null
     
-    // 方法1: 完全一致（トリム済み）
-    console.log(`📊 [Stats] 検索1: eq('city', '${normalizedCity}')`)
+    // 方法1: city で完全一致（トリム済み）
+    console.log(`📊 [Stats] 検索1: city='${normalizedCity}'`)
     const { data: exactMatch, error: exactError } = await supabase
       .from('municipalities')
       .select('city, population, mascot_name, population_updated_at')
@@ -159,14 +151,14 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     
     if (exactMatch) {
       municipality = exactMatch
-      console.log(`📊 [Stats] ✅ 完全一致で発見!`)
+      console.log(`📊 [Stats] ✅ cityで完全一致で発見!`)
       console.log(`📊 [Stats]    DBから取得した自治体名: "${municipality.city}"`)
       console.log(`📊 [Stats]    DBから取得した人口: ${municipality.population}`)
       console.log(`📊 [Stats]    マスコット: ${municipality.mascot_name}`)
     } else {
       console.log(`📊 [Stats] ❌ 完全一致なし (${exactError?.message || 'データなし'})`)
       
-      // 方法2: ILIKE部分一致
+      // 方法2: ILIKE部分一致（city）
       console.log(`📊 [Stats] 検索2: ilike('city', '%${cityBase}%')`)
       const { data: likeMatches, error: likeError } = await supabase
         .from('municipalities')
@@ -176,7 +168,7 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
       
       if (likeMatches && likeMatches.length > 0) {
         municipality = likeMatches[0]
-        console.log(`📊 [Stats] ✅ 部分一致で発見! (${likeMatches.length}件ヒット)`)
+        console.log(`📊 [Stats] ✅ cityで部分一致で発見! (${likeMatches.length}件ヒット)`)
         console.log(`📊 [Stats]    DBから取得した自治体名: "${municipality.city}"`)
         console.log(`📊 [Stats]    DBから取得した人口: ${municipality.population}`)
         if (likeMatches.length > 1) {
@@ -341,8 +333,7 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     
     // エラー時でもアプリ全体の登録者数を取得
     try {
-      const supabaseFallback = createClient(supabaseUrl, supabaseAnonKey)
-      const { count: totalUsers } = await supabaseFallback
+      const { count: totalUsers } = await supabase
         .from('profiles')
         .select('id', { count: 'exact', head: true })
       

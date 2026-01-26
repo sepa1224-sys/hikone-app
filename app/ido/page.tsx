@@ -8,10 +8,12 @@ import {
 import BottomNavigation from '@/components/BottomNavigation'
 import { supabase } from '@/lib/supabase'
 
-const QUICK_STATIONS = {
-  hikone: ['彦根', '南彦根', '河瀬', '稲枝', 'ひこね芹川', '彦根口', '高宮', '鳥居本', 'フジテック前'],
-  major: ['米原', '長浜', '安土', '近江八幡', '野洲', '草津', '京都']
-}
+// クイック検索の駅順（指定された順番で固定）
+const QUICK_STATIONS = [
+  '彦根', '南彦根', '河瀬', '稲枝', '米原', '長浜', '能登川', '安土', 
+  '近江八幡', '野洲', '守山', '草津', '京都', 'ひこね芹川', '彦根口', 
+  '高宮', '鳥居本', 'フジテック前'
+]
 
 // 修正ポイント：Google Directions APIで確実にヒットする Place ID を定義
 const STATION_DATA: Record<string, { lat: number; lon: number; id: string }> = {
@@ -394,7 +396,7 @@ export default function IdoPage() {
               WebkitOverflowScrolling: 'touch'
             }}
           >
-            {[...QUICK_STATIONS.hikone, ...QUICK_STATIONS.major].map(s => (
+            {QUICK_STATIONS.map(s => (
               <button 
                 key={s} 
                 onClick={() => {

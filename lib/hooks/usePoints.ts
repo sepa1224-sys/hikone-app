@@ -1,11 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+import { supabase } from '@/lib/supabase'
 
 // ポイント関連のカラムのみを指定
 const POINTS_COLUMNS = 'points, referral_code'
@@ -45,12 +41,16 @@ const fetchPoints = async (userId: string): Promise<PointsData | null> => {
   
   if (data) {
     console.log(`💰 [SWR] ポイント取得成功:`, data)
+    // pointsがnullやundefinedの場合でも、数値として扱う（0ではなく実際の値を取得）
+    const pointsValue = data.points != null ? Number(data.points) : 0
+    console.log(`💰 [SWR] ポイント値（変換後）:`, pointsValue, '(元の値:', data.points, ')')
     return {
-      points: data.points || 0,
+      points: pointsValue,
       referral_code: data.referral_code || null
     }
   }
   
+  console.log(`💰 [SWR] データなし、デフォルト値を返す`)
   return { points: 0, referral_code: null }
 }
 
