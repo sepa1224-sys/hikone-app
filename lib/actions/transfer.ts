@@ -45,8 +45,22 @@ export async function sendHikopo(
     
     const code = receiverReferralCode.trim().toUpperCase()
     
-    console.log(`💸 [送金] 開始: ${senderId} → ${code} (${amount}pt)`)
+    console.log(`💸 [送金] 開始: senderId=${senderId}, receiverCode=${code}, amount=${amount}pt`)
     
+    // 送金相手の情報を事前にログ出力（デバッグ用）
+    const { data: receiverData, error: receiverError } = await supabase
+      .from('profiles')
+      .select('id, full_name, points')
+      .eq('referral_code', code)
+      .single()
+    
+    if (receiverError || !receiverData) {
+      console.error('💸 [送金] 送金先が見つかりません:', receiverError)
+      return { success: false, message: '送り先のコードが見つかりません', error: 'RECEIVER_NOT_FOUND' }
+    }
+    
+    console.log(`💸 [送金] 送金先特定: userId=${receiverData.id}, name=${receiverData.full_name}, currentPoints=${receiverData.points}`)
+
     // Supabase RPC 関数を呼び出し
     const { data, error } = await supabase.rpc('transfer_hikopo', {
       sender_id: senderId,

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { 
   Sun, Send, X, UserCircle, Sparkles, Building2, Map as MapIcon, 
   ChevronRight, LogOut, Edit, Mail, MapPin, User, Search,
@@ -1319,16 +1320,16 @@ export default function AppHome() {
 
             {/* 1.5. 暮らしセクション：ランニング・ウォーキングアクションカード */}
             {mode === 'local' && (
-              <div className="bg-white rounded-[2rem] p-5 shadow-lg border border-gray-100">
+              <div className="bg-white rounded-[2rem] p-5 shadow-lg border border-gray-100 relative z-10">
                 <div className="flex items-center gap-2 mb-4">
                   <Building2 size={18} className="text-blue-500" />
                   <h2 className="text-sm font-black text-gray-800">暮らし</h2>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {/* ランニング開始ボタン */}
-                  <button
-                    onClick={() => router.push('/running')}
-                    className="bg-gradient-to-br from-orange-500 to-red-500 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all group"
+                  <Link
+                    href="/running"
+                    className="bg-gradient-to-br from-orange-500 to-red-500 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all group no-underline block z-20"
                   >
                     <div className="absolute -right-4 -bottom-4 opacity-20">
                       <Activity size={60} className="text-white rotate-12" />
@@ -1340,12 +1341,12 @@ export default function AppHome() {
                       </div>
                       <p className="text-xs font-bold opacity-90">運動を記録しよう</p>
                     </div>
-                  </button>
+                  </Link>
 
                   {/* ウォーキング開始ボタン */}
-                  <button
-                    onClick={() => router.push('/running')}
-                    className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all group"
+                  <Link
+                    href="/running"
+                    className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all group no-underline block z-20"
                   >
                     <div className="absolute -right-4 -bottom-4 opacity-20">
                       <Footprints size={60} className="text-white rotate-12" />
@@ -1357,7 +1358,7 @@ export default function AppHome() {
                       </div>
                       <p className="text-xs font-bold opacity-90">歩数を記録しよう</p>
                     </div>
-                  </button>
+                  </Link>
                 </div>
               </div>
             )}
