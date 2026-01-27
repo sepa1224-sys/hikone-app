@@ -1,30 +1,11 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
-// シングルトンパターン: モジュールレベルで1回だけcreateClientを実行
-// これにより、アプリ全体で同じSupabaseクライアントインスタンスが共有される
-// 複数回createClientが呼ばれることを防ぎ、AbortErrorの原因となる重複リクエストを回避
-let supabaseInstance: SupabaseClient | null = null
-
-if (!supabaseInstance) {
-  supabaseInstance = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        persistSession: true,        // セッションをローカルストレージに永続化
-        autoRefreshToken: true,      // トークンの自動リフレッシュを有効化
-        detectSessionInUrl: true,    // URLからセッションを検出（OAuthコールバック用）
-        // ブラウザのLock競合によるAbortErrorを防ぐための設定
-        storageKey: 'app-auth-lock',  // ロック競合を防ぐためのストレージキー
-        flowType: 'pkce',            // PKCEフローを使用（セキュリティ向上）
-        // locksオプションを無効化または調整してAbortErrorを防ぐ
-        storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-      }
-    }
-  )
-}
-
-export const supabase = supabaseInstance
+// 最新の @supabase/ssr の createBrowserClient を使用してクライアントを初期化
+// これにより、クライアント側でも Cookie を介した認証状態の同期が可能になります
+export const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 // --- お店（Shop）関連の型定義 ---
 export type Shop = {

@@ -1,39 +1,41 @@
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-
-export async function GET(request: NextRequest) {
-  const requestUrl = new URL(request.url)
-  const code = requestUrl.searchParams.get('code')
-
-  console.log('🔐 [Auth Callback] コールバック受信, code:', code ? '存在' : 'なし')
+export async function GET(request: Request) {
+  const { searchParams, origin } = new URL(request.url)
+  const code = searchParams.get('code')
+  const next = searchParams.get('next') ?? '/profile'
 
   if (code) {
-    // サーバーサイドでのセッション交換
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
+    const cookieStore = cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            // path: '/' を入れることで、アプリ全体でCookieを使えるようにします
+            cookieStore.set({ name, value, ...options, path: '/' })
+          },
+          remove(name: string, options: CookieOptions) {
+            cookieStore.set({ name, value: '', ...options, path: '/' })
+          },
+        },
       }
-    })
+    )
+
+    const { error } = await supabase.auth.exchangeCodeForSession(code)
     
-    // 認証コードをセッションに交換
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-    
-    if (error) {
-      console.error('🔐 [Auth Callback] セッション交換エラー:', error)
-      return NextResponse.redirect(new URL('/login?error=auth_failed', request.url))
+    if (!error) {
+      // 成功時、一瞬待機させるようなリダイレクト（確実にCookieを焼くため）
+      const response = NextResponse.redirect(`${origin}${next}`)
+      return response
     }
-    
-    console.log('🔐 [Auth Callback] セッション交換成功:', {
-      userId: data.session?.user?.id,
-      email: data.session?.user?.email,
-    })
   }
 
-  // 認証完了後、プロフィールページにリダイレクト
-  console.log('🔐 [Auth Callback] プロフィールページへリダイレクト')
-  return NextResponse.redirect(new URL('/profile', request.url))
+  return NextResponse.redirect(`${origin}/auth/auth-code-error`)
 }

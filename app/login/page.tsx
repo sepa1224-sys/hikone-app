@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Mail, Lock, Eye, EyeOff, UserPlus, LogIn, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { createBrowserClient } from '@supabase/ssr'
 import { useAuth } from '@/components/AuthProvider'
 
 // Googleアイコン（SVG）
@@ -32,6 +32,12 @@ const GoogleIcon = () => (
 export default function LoginPage() {
   const router = useRouter()
   
+  // 最新の @supabase/ssr を使用してクライアントを初期化
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+  
   // AuthProvider から認証状態を取得
   const { session, loading: authLoading } = useAuth()
   
@@ -51,6 +57,7 @@ export default function LoginPage() {
     if (!authLoading && session) {
       console.log('🔑 [Login] 既にログイン済み → プロフィールへリダイレクト')
       router.push('/profile')
+      router.refresh()
     }
   }, [authLoading, session, router])
 
@@ -71,8 +78,10 @@ export default function LoginPage() {
         if (error) throw error
         console.log('🔑 [Login] ログイン成功:', data.session?.user?.email)
         setSuccess('ログインしました！')
-        // AuthProvider が状態を検知してリダイレクトするので少し待つ
-        setTimeout(() => router.push('/profile'), 500)
+        
+        // ログイン成功後に /profile へ遷移し、状態を同期するために refresh を実行
+        router.push('/profile')
+        router.refresh()
       } else {
         console.log('🔑 [Login] 新規登録実行中...')
         const { error } = await supabase.auth.signUp({
@@ -97,10 +106,12 @@ export default function LoginPage() {
 
     try {
       console.log('🔑 [Login] Googleログイン実行中...')
+      // PKCEフローを確実に維持するため、最新の signInWithOAuth を使用
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
+          // PKCEフローは createBrowserClient を使用していれば自動的に適用されます
         },
       })
       if (error) throw error
