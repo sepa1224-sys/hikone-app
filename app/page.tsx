@@ -7,7 +7,7 @@ import {
   ChevronRight, LogOut, Edit, Mail, MapPin, User, Search,
   Cloud, CloudRain, CloudSun, Droplets, Wind, Ticket, Gift, CalendarDays, PartyPopper, ShoppingBag,
   Camera, Trophy, Target, CheckCircle, Star, Coffee, Utensils, Castle, Mountain, 
-  Heart, ShoppingCart, Bike, Upload, Award, MessageSquare, Activity, Footprints, Pause, Square
+  Heart, ShoppingCart, Bike, Upload, Award, MessageSquare, Activity, Footprints
 } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
@@ -140,7 +140,7 @@ export default function AppHome() {
   // AuthProviderから認証状態を取得（一本化）
   const { session, user: authUser, loading: authLoading } = useAuth()
   
-  const [view, setView] = useState<'main' | 'profile' | 'running_mode'>('main')
+  const [view, setView] = useState<'main' | 'profile'>('main')
   
   // デバッグログ：viewステートの変更を追跡
   console.log("Current View State:", view)
@@ -226,208 +226,6 @@ export default function AppHome() {
   const [missionPhotoPreview, setMissionPhotoPreview] = useState<string | null>(null)
   const [uploadingMission, setUploadingMission] = useState(false)
   const missionFileInputRef = useRef<HTMLInputElement>(null)
-
-  // ランニング・ウォーキング計測用のステート
-  const [isRunning, setIsRunning] = useState(false)
-  const [isPaused, setIsPaused] = useState(false)
-  const [elapsedTime, setElapsedTime] = useState(0) // 経過時間（秒）
-  const [distance, setDistance] = useState(0) // 走行距離（km）
-  const [currentPace, setCurrentPace] = useState<number | null>(null) // 現在のペース（min/km）
-  const [gpsWatchId, setGpsWatchId] = useState<number | null>(null)
-  const [gpsPositions, setGpsPositions] = useState<Array<{ lat: number; lng: number; timestamp: number }>>([])
-  const runningIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const startTimeRef = useRef<number | null>(null)
-  const pausedTimeRef = useRef<number>(0) // 一時停止していた時間の累計（秒）
-  const pauseStartTimeRef = useRef<number | null>(null) // 一時停止を開始した時刻
-
-  // 2点間の距離を計算（Haversine formula）
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371 // 地球の半径（km）
-    const dLat = (lat2 - lat1) * Math.PI / 180
-    const dLon = (lon2 - lon1) * Math.PI / 180
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2)
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-    return R * c
-  }
-
-  // タイマーをフォーマット（HH:MM:SS）
-  const formatTime = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
-    const secs = seconds % 60
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-  }
-
-  // ペースをフォーマット（min/km）
-  const formatPace = (pace: number | null): string => {
-    if (pace === null || pace === Infinity || isNaN(pace)) return '--:--'
-    const minutes = Math.floor(pace)
-    const seconds = Math.floor((pace - minutes) * 60)
-    return `${minutes}:${String(seconds).padStart(2, '0')}`
-  }
-
-  // GPS計測の開始
-  useEffect(() => {
-    if (view === 'running_mode' && isRunning && !isPaused) {
-      // GPS位置情報の監視を開始
-      if (navigator.geolocation) {
-        const watchId = navigator.geolocation.watchPosition(
-          (position) => {
-            const { latitude, longitude } = position.coords
-            const timestamp = Date.now()
-            
-            console.log('📍 [GPS] 位置情報取得:', { latitude, longitude, timestamp })
-            
-            setGpsPositions(prev => {
-              const newPositions = [...prev, { lat: latitude, lng: longitude, timestamp }]
-              
-              // 距離を計算（最後の2点間の距離を累積）
-              if (newPositions.length >= 2) {
-                const lastPos = newPositions[newPositions.length - 1]
-                const prevPos = newPositions[newPositions.length - 2]
-                const segmentDistance = calculateDistance(
-                  prevPos.lat, prevPos.lng,
-                  lastPos.lat, lastPos.lng
-                )
-                setDistance(prev => prev + segmentDistance)
-                
-                // ペースを計算（最後の1kmの平均ペース）
-                // 簡易版：現在の距離と経過時間から計算
-                if (elapsedTime > 0 && distance > 0) {
-                  const pace = (elapsedTime / 60) / distance // min/km
-                  setCurrentPace(pace)
-                }
-              }
-              
-              return newPositions
-            })
-          },
-          (error) => {
-            console.error('📍 [GPS] 位置情報取得エラー:', error)
-            // エラー時はシミュレーションデータを使用
-            const mockLat = 35.2746 + (Math.random() - 0.5) * 0.01
-            const mockLng = 136.2522 + (Math.random() - 0.5) * 0.01
-            setGpsPositions(prev => [...prev, { lat: mockLat, lng: mockLng, timestamp: Date.now() }])
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-          }
-        )
-        
-        setGpsWatchId(watchId)
-        console.log('📍 [GPS] 位置情報監視開始:', watchId)
-      } else {
-        console.warn('📍 [GPS] 位置情報APIが利用できません')
-        // シミュレーションモード
-        const simulateInterval = setInterval(() => {
-          const mockLat = 35.2746 + (Math.random() - 0.5) * 0.01
-          const mockLng = 136.2522 + (Math.random() - 0.5) * 0.01
-          setGpsPositions(prev => {
-            const newPositions = [...prev, { lat: mockLat, lng: mockLng, timestamp: Date.now() }]
-            if (newPositions.length >= 2) {
-              const lastPos = newPositions[newPositions.length - 1]
-              const prevPos = newPositions[newPositions.length - 2]
-              const segmentDistance = calculateDistance(
-                prevPos.lat, prevPos.lng,
-                lastPos.lat, lastPos.lng
-              )
-              setDistance(prev => prev + segmentDistance)
-            }
-            return newPositions
-          })
-        }, 5000) // 5秒ごとにシミュレーション
-        
-        return () => clearInterval(simulateInterval)
-      }
-    }
-    
-    return () => {
-      if (gpsWatchId !== null) {
-        navigator.geolocation.clearWatch(gpsWatchId)
-        setGpsWatchId(null)
-        console.log('📍 [GPS] 位置情報監視停止')
-      }
-    }
-  }, [view, isRunning, isPaused])
-
-  // タイマーの更新
-  useEffect(() => {
-    if (view === 'running_mode' && isRunning && !isPaused && startTimeRef.current) {
-      runningIntervalRef.current = setInterval(() => {
-        const now = Date.now()
-        const elapsed = Math.floor((now - startTimeRef.current! - pausedTimeRef.current * 1000) / 1000)
-        setElapsedTime(elapsed)
-        
-        // ペースを計算（距離と時間から）
-        if (elapsed > 0 && distance > 0) {
-          const pace = (elapsed / 60) / distance // min/km
-          setCurrentPace(pace)
-        }
-      }, 100) // 100msごとに更新
-      
-      return () => {
-        if (runningIntervalRef.current) {
-          clearInterval(runningIntervalRef.current)
-          runningIntervalRef.current = null
-        }
-      }
-    } else if (isPaused && pauseStartTimeRef.current === null) {
-      // 一時停止を開始
-      pauseStartTimeRef.current = Date.now()
-    } else if (!isPaused && pauseStartTimeRef.current !== null) {
-      // 一時停止を解除
-      const pauseDuration = (Date.now() - pauseStartTimeRef.current) / 1000
-      pausedTimeRef.current += pauseDuration
-      pauseStartTimeRef.current = null
-    }
-  }, [view, isRunning, isPaused, distance])
-
-  // 一時停止ボタンのハンドラー
-  const handlePause = () => {
-    if (isPaused) {
-      // 再開
-      setIsPaused(false)
-      if (pauseStartTimeRef.current) {
-        const pauseDuration = (Date.now() - pauseStartTimeRef.current) / 1000
-        pausedTimeRef.current += pauseDuration
-        pauseStartTimeRef.current = null
-      }
-    } else {
-      // 一時停止
-      setIsPaused(true)
-      pauseStartTimeRef.current = Date.now()
-    }
-  }
-
-  // 終了ボタンのハンドラー
-  const handleStop = () => {
-    if (confirm('計測を終了しますか？')) {
-      setIsRunning(false)
-      setIsPaused(false)
-      if (gpsWatchId !== null) {
-        navigator.geolocation.clearWatch(gpsWatchId)
-        setGpsWatchId(null)
-      }
-      if (runningIntervalRef.current) {
-        clearInterval(runningIntervalRef.current)
-        runningIntervalRef.current = null
-      }
-      // データをリセット
-      setElapsedTime(0)
-      setDistance(0)
-      setCurrentPace(null)
-      setGpsPositions([])
-      pausedTimeRef.current = 0
-      pauseStartTimeRef.current = null
-      startTimeRef.current = null
-      setView('main')
-    }
-  }
   
   // 編集フォーム用のステート
   const [username, setUsername] = useState<string>('')
@@ -1489,18 +1287,7 @@ export default function AppHome() {
                 <div className="grid grid-cols-2 gap-3">
                   {/* ランニング開始ボタン */}
                   <button
-                    onClick={() => {
-                      setView('running_mode')
-                      // 計測を開始
-                      setIsRunning(true)
-                      setIsPaused(false)
-                      setElapsedTime(0)
-                      setDistance(0)
-                      setCurrentPace(null)
-                      setGpsPositions([])
-                      pausedTimeRef.current = 0
-                      startTimeRef.current = Date.now()
-                    }}
+                    onClick={() => router.push('/running')}
                     className="bg-gradient-to-br from-orange-500 to-red-500 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all group"
                   >
                     <div className="absolute -right-4 -bottom-4 opacity-20">
@@ -1517,18 +1304,7 @@ export default function AppHome() {
 
                   {/* ウォーキング開始ボタン */}
                   <button
-                    onClick={() => {
-                      setView('running_mode')
-                      // 計測を開始
-                      setIsRunning(true)
-                      setIsPaused(false)
-                      setElapsedTime(0)
-                      setDistance(0)
-                      setCurrentPace(null)
-                      setGpsPositions([])
-                      pausedTimeRef.current = 0
-                      startTimeRef.current = Date.now()
-                    }}
+                    onClick={() => router.push('/running')}
                     className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all group"
                   >
                     <div className="absolute -right-4 -bottom-4 opacity-20">
@@ -2152,84 +1928,6 @@ export default function AppHome() {
           )
         )}
 
-        {/* running_mode ビュー：黒背景のスポーティな計測画面 */}
-        {view === 'running_mode' && (
-          <div className="fixed inset-0 bg-black z-50 flex flex-col">
-            {/* ヘッダー：戻るボタン */}
-            <div className="absolute top-4 left-4 z-10">
-              <button
-                onClick={() => {
-                  if (isRunning && confirm('計測を終了して戻りますか？')) {
-                    handleStop()
-                  } else {
-                    setView('main')
-                  }
-                }}
-                className="p-3 bg-black/50 backdrop-blur-md rounded-full hover:bg-black/70 transition-colors"
-              >
-                <ChevronRight size={24} className="rotate-180 text-white" />
-              </button>
-            </div>
-
-            {/* メインコンテンツ */}
-            <div className="flex-1 flex flex-col items-center justify-center px-6 pb-32">
-              {/* 上部：デジタルタイマー */}
-              <div className="mb-12">
-                <p className="text-7xl font-black text-white tracking-tighter font-mono">
-                  {formatTime(elapsedTime)}
-                </p>
-              </div>
-
-              {/* 中央：走行距離とペース */}
-              <div className="flex flex-col items-center gap-8 mb-12">
-                {/* 走行距離 */}
-                <div className="text-center">
-                  <p className="text-xs font-bold text-white/60 mb-2 uppercase tracking-wider">走行距離</p>
-                  <p className="text-5xl font-black text-white tracking-tighter">
-                    {distance.toFixed(2)}
-                    <span className="text-2xl font-bold text-white/70 ml-1">km</span>
-                  </p>
-                </div>
-
-                {/* 現在のペース */}
-                <div className="text-center">
-                  <p className="text-xs font-bold text-white/60 mb-2 uppercase tracking-wider">現在のペース</p>
-                  <p className="text-5xl font-black text-white tracking-tighter">
-                    {formatPace(currentPace)}
-                    <span className="text-2xl font-bold text-white/70 ml-1">min/km</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* 下部：一時停止と終了ボタン */}
-              <div className="flex gap-4 w-full max-w-md">
-                {/* 一時停止ボタン */}
-                <button
-                  onClick={handlePause}
-                  disabled={!isRunning}
-                  className={`flex-1 py-6 rounded-2xl font-black text-lg flex items-center justify-center gap-2 transition-all active:scale-95 ${
-                    isPaused
-                      ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
-                      : 'bg-white/10 hover:bg-white/20 text-white border-2 border-white/30'
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  <Pause size={24} />
-                  {isPaused ? '再開' : '一時停止'}
-                </button>
-
-                {/* 終了ボタン */}
-                <button
-                  onClick={handleStop}
-                  disabled={!isRunning}
-                  className="flex-1 py-6 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-black text-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Square size={24} />
-                  終了
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
 
 

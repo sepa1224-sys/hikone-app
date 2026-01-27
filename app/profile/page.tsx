@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode } from 'lucide-react'
+import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
 import { usePoints, usePointHistory, getPointHistoryStyle, PointHistory } from '@/lib/hooks/usePoints'
@@ -63,6 +63,106 @@ export default function ProfilePage() {
       } : null
     })
   }, [points, profile?.points, pointsLoading, authUser?.id, profile])
+  
+  // ポイント履歴の直接取得処理（プロフィール取得と同時に実行）
+  useEffect(() => {
+    const fetchHistoryDirectly = async () => {
+      if (!authUser?.id) {
+        console.log('📜 [HistoryFetch] ユーザーIDがないためスキップ')
+        return
+      }
+      
+      console.log('📜 [HistoryFetch] 取得開始')
+      console.log('📜 [HistoryFetch] ユーザーID:', authUser.id)
+      
+      try {
+        console.log('📜 [HistoryFetch] ユーザーID型確認:', {
+          authUserId: authUser.id,
+          authUserIdType: typeof authUser.id,
+          authUserIdLength: authUser.id?.length,
+          isString: typeof authUser.id === 'string'
+        })
+        
+        const { data, error } = await supabase
+          .from('point_history')
+          .select('*')
+          .eq('user_id', authUser.id)
+          .order('created_at', { ascending: false })
+          .limit(10) // テスト用に10件まで取得
+        
+        console.log('📜 [HistoryFetch] 結果:', data, 'エラー:', error)
+        
+        if (error) {
+          console.error('📜 [HistoryFetch] エラー詳細:', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          })
+        } else {
+          console.log('📜 [HistoryFetch] 取得成功:', data?.length || 0, '件')
+          if (data && data.length > 0) {
+            console.log('📜 [HistoryFetch] 履歴サンプル:', data.slice(0, 3))
+            // ユーザーIDの一致確認
+            data.forEach((item, index) => {
+              console.log(`📜 [HistoryFetch] 履歴[${index}] user_id:`, item.user_id, '型:', typeof item.user_id)
+              console.log(`📜 [HistoryFetch] 履歴[${index}] user_id一致:`, item.user_id === authUser.id)
+            })
+          } else {
+            console.log('📜 [HistoryFetch] 履歴が0件です（ユーザーID:', authUser.id, '）')
+          }
+        }
+      } catch (err) {
+        console.error('📜 [HistoryFetch] 例外エラー:', err)
+      }
+    }
+    
+    // 認証状態が確定してから実行
+    if (!authLoading && authUser?.id) {
+      fetchHistoryDirectly()
+    }
+  }, [authUser?.id, authLoading]) // user.idを依存配列に追加
+  
+  // ポイント履歴のデバッグログ
+  useEffect(() => {
+    console.log('📊 [Profile] ポイント履歴状態:', {
+      historyCount: pointHistory.length,
+      historyLoading,
+      authUserId: authUser?.id,
+      historyData: pointHistory.slice(0, 3).map(item => ({
+        id: item.id,
+        amount: item.amount,
+        type: item.type,
+        activity_type: (item as any).activity_type,
+        description: item.description,
+        created_at: item.created_at
+      }))
+    })
+  }, [pointHistory, historyLoading, authUser?.id])
+  
+  // ページフォーカス時に履歴を再取得
+  useEffect(() => {
+    const handleFocus = () => {
+      if (authUser?.id && !historyLoading) {
+        console.log('📊 [Profile] ページフォーカス: 履歴を再取得')
+        refetchHistory()
+      }
+    }
+    
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [authUser?.id, historyLoading, refetchHistory])
+  
+  // プロフィール画面マウント時に強制的に履歴を再取得
+  useEffect(() => {
+    if (authUser?.id && !historyLoading) {
+      console.log('📊 [Profile] マウント時: 履歴を強制再取得')
+      // 少し遅延させてから再取得（SWRの初期化を待つ）
+      setTimeout(() => {
+        refetchHistory()
+      }, 500)
+    }
+  }, [authUser?.id]) // マウント時とauthUser.idが変わった時のみ実行
   
   // フレンドリスト
   const { friends, isLoading: friendsLoading, addFriendToList, removeFriendFromList, refetch: refetchFriends } = useFriends(authUser?.id ?? null)
@@ -564,6 +664,29 @@ export default function ProfilePage() {
                 </div>
               </div>
             </div>
+            
+            {/* ポイント交換・履歴ボタン */}
+            <div className="mt-4 space-y-3">
+              {/* ギフト券と交換するボタン */}
+              <button
+                onClick={() => router.push('/redeem')}
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-blue-200/50 active:scale-95 transition-all flex items-center justify-center gap-3"
+              >
+                <Gift size={24} />
+                <span>ギフト券と交換する</span>
+                <ArrowRight size={20} />
+              </button>
+              
+              {/* 交換履歴・ギフト受取ボタン */}
+              <button
+                onClick={() => router.push('/redeem-history')}
+                className="w-full bg-white/90 hover:bg-white text-gray-700 hover:text-gray-900 border-2 border-gray-200 hover:border-gray-300 py-4 rounded-2xl font-black text-base shadow-lg active:scale-95 transition-all flex items-center justify-center gap-3"
+              >
+                <History size={20} />
+                <span>交換履歴・ギフト受取</span>
+                <ChevronRight size={18} />
+              </button>
+            </div>
           </div>
         </div>
         
@@ -871,34 +994,90 @@ export default function ProfilePage() {
           ) : pointHistory.length === 0 ? (
             <div className="py-8 text-center">
               <span className="text-4xl opacity-30">📭</span>
-              <p className="text-sm text-gray-400 font-bold mt-2">まだ履歴がありません</p>
+              <p className="text-sm text-gray-400 font-bold mt-2">履歴はまだありません</p>
               <p className="text-xs text-gray-300 mt-1">チャレンジや招待でポイントを貯めよう！</p>
+              <p className="text-[10px] text-gray-400 mt-2 font-bold">
+                ユーザーID: {authUser?.id || '未取得'}
+              </p>
             </div>
           ) : (
             <div className="space-y-3 max-h-[300px] overflow-y-auto">
-              {pointHistory.map((item: PointHistory) => {
-                const style = getPointHistoryStyle(item.type)
-                return (
-                  <div 
-                    key={item.id}
-                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl"
-                  >
-                    <div className={`w-10 h-10 ${style.bgColor} rounded-xl flex items-center justify-center`}>
-                      <span className="text-lg">{style.icon}</span>
+              {[...pointHistory]
+                // created_atで降順ソート（最新が上）
+                .sort((a, b) => {
+                  const dateA = new Date(a.created_at).getTime()
+                  const dateB = new Date(b.created_at).getTime()
+                  return dateB - dateA // 降順
+                })
+                // activity_typeに関係なく全ての履歴を表示
+                .map((item: PointHistory) => {
+                  const style = getPointHistoryStyle(item.type)
+                  // 日付をフォーマット（1月27日形式）
+                  const formatHistoryDate = (dateString: string) => {
+                    const date = new Date(dateString)
+                    const month = date.getMonth() + 1
+                    const day = date.getDate()
+                    return `${month}月${day}日`
+                  }
+                  // アクティビティタイプに基づいて表示テキストとアイコンを決定
+                  const activityType = (item as any).activity_type
+                  let displayText = item.description
+                  let displayIcon = style.icon
+                  
+                  if (activityType === 'running') {
+                    displayText = 'ランニング'
+                    displayIcon = '🏃‍♂️'
+                  } else if (activityType === 'redemption') {
+                    displayText = 'ポイント交換'
+                    displayIcon = '🎁'
+                  }
+                  
+                  // 走行距離の取得（ランニングの場合のみ）
+                  const runningDistance = activityType === 'running' && (item as any).distance != null
+                    ? Number((item as any).distance)
+                    : null
+                  
+                  // ポイントの色：プラスは緑、マイナスは赤
+                  const pointColor = item.amount >= 0
+                    ? 'text-green-600'
+                    : 'text-red-500'
+                  
+                  return (
+                    <div 
+                      key={item.id}
+                      className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+                    >
+                      <div className={`w-12 h-12 ${style.bgColor} rounded-2xl flex items-center justify-center flex-shrink-0`}>
+                        <span className="text-xl">{displayIcon}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black text-gray-800 truncate mb-1">{displayText}</p>
+                        <p className="text-xs text-gray-500 font-bold">{formatHistoryDate(item.created_at)}</p>
+                      </div>
+                      <div className={`text-right flex-shrink-0 ${pointColor}`}>
+                        {/* ランニングの場合は距離とポイントをセットで表示 */}
+                        {runningDistance !== null ? (
+                          <>
+                            <p className="text-sm font-black mb-0.5">
+                              {runningDistance.toFixed(2)}km
+                            </p>
+                            <p className="text-base font-black">
+                              +{item.amount.toLocaleString()}
+                            </p>
+                            <p className="text-[10px] font-bold opacity-70">pt</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-base font-black">
+                              {item.amount >= 0 ? '+' : ''}{item.amount.toLocaleString()}
+                            </p>
+                            <p className="text-[10px] font-bold opacity-70">pt</p>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-black text-gray-800 truncate">{item.description}</p>
-                      <p className="text-[10px] text-gray-400 font-bold">{formatDate(item.created_at)}</p>
-                    </div>
-                    <div className={`text-right ${item.amount >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                      <p className="text-sm font-black">
-                        {item.amount >= 0 ? '+' : ''}{item.amount.toLocaleString()}
-                      </p>
-                      <p className="text-[10px] font-bold">pt</p>
-                    </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
             </div>
           )}
         </div>
@@ -1042,6 +1221,23 @@ export default function ProfilePage() {
               </div>
               <ChevronRight size={20} className="text-gray-400 group-hover:text-blue-500 transition-colors" />
             </button>
+
+            {/* 管理者ダッシュボード（is_adminがtrueの場合のみ表示） */}
+            {profile?.is_admin === true && (
+              <button
+                onClick={() => router.push('/admin')}
+                className="w-full flex items-center gap-4 p-4 bg-gray-50 hover:bg-indigo-50 rounded-2xl transition-colors group border-2 border-indigo-200"
+              >
+                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
+                  <Settings size={20} className="text-indigo-600" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-black text-gray-800">管理者ダッシュボード</p>
+                  <p className="text-xs text-gray-500 font-bold">システム設定と申請管理</p>
+                </div>
+                <ChevronRight size={20} className="text-gray-400 group-hover:text-indigo-500 transition-colors" />
+              </button>
+            )}
           </div>
         </div>
 

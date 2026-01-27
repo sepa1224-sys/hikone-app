@@ -1,9 +1,30 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-const supabaseUrl = 'https://kawntunevmabyxqmhqnv.supabase.co'
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imthd250dW5ldm1hYnl4cW1ocW52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0OTI3ODYsImV4cCI6MjA4NDA2ODc4Nn0.OTwRa687dfxOpDs22NcS8BO2EXZYq-4pBIEh7_7RJow'
+// シングルトンパターン: モジュールレベルで1回だけcreateClientを実行
+// これにより、アプリ全体で同じSupabaseクライアントインスタンスが共有される
+// 複数回createClientが呼ばれることを防ぎ、AbortErrorの原因となる重複リクエストを回避
+let supabaseInstance: SupabaseClient | null = null
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+if (!supabaseInstance) {
+  supabaseInstance = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        persistSession: true,        // セッションをローカルストレージに永続化
+        autoRefreshToken: true,      // トークンの自動リフレッシュを有効化
+        detectSessionInUrl: true,    // URLからセッションを検出（OAuthコールバック用）
+        // ブラウザのLock競合によるAbortErrorを防ぐための設定
+        storageKey: 'app-auth-lock',  // ロック競合を防ぐためのストレージキー
+        flowType: 'pkce',            // PKCEフローを使用（セキュリティ向上）
+        // locksオプションを無効化または調整してAbortErrorを防ぐ
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      }
+    }
+  )
+}
+
+export const supabase = supabaseInstance
 
 // --- お店（Shop）関連の型定義 ---
 export type Shop = {

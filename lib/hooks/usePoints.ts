@@ -12,6 +12,8 @@ export interface PointHistory {
   user_id: string
   amount: number
   type: 'earn' | 'use' | 'referral' | 'bonus'
+  activity_type?: string // アクティビティタイプ（'running' など）
+  distance?: number // 走行距離（キロメートル）
   description: string
   created_at: string
 }
@@ -56,23 +58,58 @@ const fetchPoints = async (userId: string): Promise<PointsData | null> => {
 
 // SWR用のフェッチャー関数（ポイント履歴）
 const fetchPointHistory = async (userId: string): Promise<PointHistory[]> => {
-  if (!userId) return []
+  if (!userId) {
+    console.log(`📜 [HistoryFetch] userIdが空のためスキップ`)
+    return []
+  }
   
-  console.log(`💰 [SWR] ポイント履歴取得開始: ${userId}`)
+  console.log(`📜 [HistoryFetch] 取得開始`)
+  console.log(`📜 [HistoryFetch] ユーザーID: ${userId}`)
+  console.log(`📜 [HistoryFetch] ユーザーID型確認:`, {
+    userId,
+    userIdType: typeof userId,
+    userIdLength: userId?.length,
+    isString: typeof userId === 'string'
+  })
   
+  // キャッシュを無効化して強制的に最新データを取得
+  // activity_typeに関係なく全ての履歴を取得（runningタイプも含む）
   const { data, error } = await supabase
     .from('point_history')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
-    .limit(50)
+    .limit(10) // テスト用に10件まで取得
+  
+  console.log(`📜 [HistoryFetch] 結果:`, data, 'エラー:', error)
   
   if (error) {
-    console.error(`💰 [SWR] ポイント履歴取得エラー:`, error)
+    console.error(`📜 [HistoryFetch] エラー詳細:`, {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint
+    })
     return []
   }
   
-  console.log(`💰 [SWR] ポイント履歴取得成功: ${data?.length || 0}件`)
+  console.log(`📜 [HistoryFetch] 取得成功: ${data?.length || 0}件`)
+  if (data && data.length > 0) {
+    console.log(`📜 [HistoryFetch] 履歴サンプル（最初の3件）:`, data.slice(0, 3).map(item => ({
+      id: item.id,
+      user_id: item.user_id,
+      amount: item.amount,
+      type: item.type,
+      activity_type: (item as any).activity_type,
+      description: item.description,
+      created_at: item.created_at
+    })))
+    // runningタイプの履歴が含まれているか確認
+    const runningHistory = data.filter((item: any) => item.activity_type === 'running')
+    console.log(`📜 [HistoryFetch] runningタイプの履歴: ${runningHistory.length}件`)
+  } else {
+    console.log(`📜 [HistoryFetch] 履歴が0件です`)
+  }
   return data || []
 }
 
@@ -116,10 +153,12 @@ export function usePointHistory(userId: string | null) {
     userId ? `point-history:${userId}` : null,
     () => fetchPointHistory(userId!),
     {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      dedupingInterval: 60000,
-      revalidateIfStale: false,
+      revalidateOnFocus: true, // フォーカス時に再取得を有効化
+      revalidateOnReconnect: true, // 再接続時に再取得を有効化
+      dedupingInterval: 0, // キャッシュを無効化（常に最新データを取得）
+      revalidateIfStale: true, // 古いデータでも再取得
+      revalidateOnMount: true, // マウント時に必ず再取得
+      refreshInterval: 0, // 自動更新は無効
       errorRetryCount: 2,
       errorRetryInterval: 3000,
     }
@@ -129,7 +168,7 @@ export function usePointHistory(userId: string | null) {
     history: data ?? [],
     error,
     isLoading,
-    refetch: () => mutate()
+    refetch: () => mutate(undefined, { revalidate: true }) // 強制的に再取得
   }
 }
 

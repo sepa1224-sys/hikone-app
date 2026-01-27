@@ -1,14 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Utensils, Bus, Home, LayoutGrid, UserCircle } from 'lucide-react'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+import { Utensils, Bus, Home, LayoutGrid, UserCircle, Settings } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 interface BottomNavigationProps {
   onNavigate?: () => void
@@ -34,21 +30,139 @@ export default function BottomNavigation({ onNavigate }: BottomNavigationProps) 
   const pathname = usePathname()
   const router = useRouter()
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
+  const [isAdmin, setIsAdmin] = useState<boolean>(false)
+  const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null)
+  const isMountedRef = useRef(true)
+  
+  // ランニングページではナビゲーションを非表示
+  if (pathname === '/running') {
+    return null
+  }
 
-  // ログイン状態を確認
+  // ログイン状態と管理者権限を確認
   useEffect(() => {
+    let isMounted = true
+
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setIsLoggedIn(!!session)
+      if (!isMounted) return
+
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        // AbortErrorの場合は無視
+        if (error && error.name === 'AbortError') {
+          return
+        }
+        
+        if (!isMounted) return
+        
+        setIsLoggedIn(!!session)
+        
+        // ログインしている場合、管理者権限をチェック
+        if (session?.user) {
+          try {
+            const { data, error: profileError } = await supabase
+              .from('profiles')
+              .select('is_admin')
+              .eq('id', session.user.id)
+              .single()
+            
+            // AbortErrorの場合は無視
+            if (profileError && profileError.name === 'AbortError') {
+              return
+            }
+            
+            if (!isMounted) return
+            
+            setIsAdmin(data?.is_admin === true)
+          } catch (err: any) {
+            // AbortErrorの場合は無視
+            if (err?.name === 'AbortError') {
+              return
+            }
+            console.error('管理者権限チェックエラー:', err)
+            if (isMounted) {
+              setIsAdmin(false)
+            }
+          }
+        } else {
+          if (isMounted) {
+            setIsAdmin(false)
+          }
+        }
+      } catch (err: any) {
+        // AbortErrorの場合は無視
+        if (err?.name === 'AbortError') {
+          return
+        }
+        console.error('認証チェックエラー:', err)
+      }
     }
+    
     checkAuth()
 
     // 認証状態の変化を監視
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setIsLoggedIn(!!session)
-    })
+    try {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (!isMounted) return
 
-    return () => subscription.unsubscribe()
+        setIsLoggedIn(!!session)
+        
+        if (session?.user) {
+          try {
+            const { data, error: profileError } = await supabase
+              .from('profiles')
+              .select('is_admin')
+              .eq('id', session.user.id)
+              .single()
+            
+            // AbortErrorの場合は無視
+            if (profileError && profileError.name === 'AbortError') {
+              return
+            }
+            
+            if (!isMounted) return
+            
+            setIsAdmin(data?.is_admin === true)
+          } catch (err: any) {
+            // AbortErrorの場合は無視
+            if (err?.name === 'AbortError') {
+              return
+            }
+            if (isMounted) {
+              setIsAdmin(false)
+            }
+          }
+        } else {
+          if (isMounted) {
+            setIsAdmin(false)
+          }
+        }
+      })
+
+      subscriptionRef.current = subscription
+    } catch (err: any) {
+      // AbortErrorの場合は無視
+      if (err?.name !== 'AbortError') {
+        console.error('認証状態監視設定エラー:', err)
+      }
+    }
+
+    return () => {
+      isMounted = false
+      isMountedRef.current = false
+      if (subscriptionRef.current) {
+        try {
+          subscriptionRef.current.unsubscribe()
+          subscriptionRef.current = null
+        } catch (err: any) {
+          // AbortErrorの場合は無視
+          if (err?.name !== 'AbortError') {
+            console.error('サブスクリプション解除エラー:', err)
+          }
+        }
+      }
+    }
   }, [])
 
   const isActive = (href: string) => pathname === href
@@ -90,6 +204,7 @@ export default function BottomNavigation({ onNavigate }: BottomNavigationProps) 
                 <Link 
                   key={item.href}
                   href={item.href} 
+                  prefetch={false}
                   className="relative flex flex-col items-center w-16 h-full"
                   onClick={onNavigate}
                 >
@@ -108,6 +223,7 @@ export default function BottomNavigation({ onNavigate }: BottomNavigationProps) 
               <Link 
                 key={item.href}
                 href={item.requiresAuth && !isLoggedIn ? '/login' : item.href}
+                prefetch={false}
                 className="flex flex-col items-center justify-center flex-1 active:opacity-60 transition-opacity"
                 onClick={(e) => handleProfileClick(e, item)}
               >
