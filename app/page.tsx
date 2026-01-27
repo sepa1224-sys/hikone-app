@@ -157,8 +157,48 @@ export default function AppHome() {
   const [selectedDestinationName, setSelectedDestinationName] = useState<string>('')
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [chatInput, setChatInput] = useState('')
-  const [messages, setMessages] = useState([{ role: 'ai', text: '何かお手伝いするニャ？' }])
+  const [messages, setMessages] = useState<{ role: string; text: string }[]>([{ role: 'ai', text: '何かお手伝いするニャ？' }])
+  const [isChatLoading, setIsChatLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // チャット送信処理
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || isChatLoading) return
+
+    const userMessage = { role: 'user', text: chatInput }
+    setMessages(prev => [...prev, userMessage])
+    setChatInput('') // 入力欄を空にする
+    setIsChatLoading(true)
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMessage.text }),
+      })
+
+      const data = await response.json()
+
+      if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+        const aiText = data.candidates[0].content.parts[0].text
+        setMessages(prev => [...prev, { role: 'ai', text: aiText }])
+      } else {
+        setMessages(prev => [...prev, { role: 'ai', text: 'ごめんニャ、うまく聞き取れなかったニャ...' }])
+      }
+    } catch (error) {
+      console.error('Chat Error:', error)
+      setMessages(prev => [...prev, { role: 'ai', text: 'エラーが発生したニャ。少し時間を置いてまた送ってニャ！' }])
+    } finally {
+      setIsChatLoading(false)
+    }
+  }
+
+  // チャットの自動スクロール
+  useEffect(() => {
+    if (isChatOpen) {
+      scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages, isChatOpen])
   
   // 経路検索用のステート
   const [startPoint, setStartPoint] = useState<string>('彦根駅')
@@ -1933,49 +1973,74 @@ export default function AppHome() {
 
       {/* --- チャット画面（下からスライドアニメーション） --- */}
       {isChatOpen && (
-        <>
-          {/* 背景オーバーレイ */}
-          <div 
-            className="fixed inset-0 z-[1999] bg-black/40 animate-fade-in"
-            onClick={() => setIsChatOpen(false)}
-          />
-          {/* チャット画面 */}
-          <div className="fixed inset-0 z-[2000] flex flex-col bg-white animate-slide-up">
+        <div className="fixed inset-0 z-[2000] flex flex-col bg-white animate-slide-up">
           {/* ヘッダー */}
           <div className="flex-shrink-0 p-4 border-b flex justify-between items-center bg-white">
             <div className="flex items-center gap-3">
-              <img src={HIKONYAN_IMAGE} className="w-8 h-8" />
+              <img src={HIKONYAN_IMAGE} className="w-8 h-8 object-contain" alt="ひこにゃん" />
               <p className="font-black text-gray-800 text-sm">ひこにゃんAI</p>
             </div>
-            <button onClick={() => setIsChatOpen(false)} className="p-2 bg-gray-100 rounded-full"><X size={20} /></button>
+            <button 
+              onClick={() => setIsChatOpen(false)} 
+              className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+            >
+              <X size={20} />
+            </button>
           </div>
           
           {/* メッセージエリア（スクロール可能） */}
-          <div className="flex-1 min-h-0 p-4 bg-gray-50 overflow-y-auto space-y-4">
+          <div className="flex-1 min-h-0 p-4 bg-gray-50 overflow-y-auto space-y-4 pb-10">
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-3 rounded-2xl text-[13px] font-bold ${msg.role === 'user' ? 'bg-red-500 text-white' : 'bg-white border border-gray-100 text-gray-700'}`}>{msg.text}</div>
+                <div className={`max-w-[80%] p-3 rounded-2xl text-[13px] font-bold shadow-sm ${
+                  msg.role === 'user' 
+                    ? 'bg-red-500 text-white rounded-tr-none' 
+                    : 'bg-white border border-gray-100 text-gray-700 rounded-tl-none'
+                }`}>
+                  {msg.text}
+                </div>
               </div>
             ))}
+            {isChatLoading && (
+              <div className="flex justify-start">
+                <div className="bg-white border border-gray-100 text-gray-400 p-3 rounded-2xl rounded-tl-none text-[13px] font-bold animate-pulse shadow-sm">
+                  ひこにゃんが考えてるニャ...
+                </div>
+              </div>
+            )}
             <div ref={scrollRef} />
           </div>
 
           {/* 入力エリア（固定、最下部に配置） */}
-          <div className="flex-shrink-0 p-4 border-t bg-white safe-area-inset-bottom">
-            <div className="max-w-xl mx-auto bg-gray-100 rounded-full px-4 py-2.5 flex items-center gap-3 border border-gray-200">
-              <input 
-                autoFocus
-                value={chatInput} 
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && (setMessages([...messages, { role: 'user', text: chatInput }]), setChatInput(''))}
-                className="bg-transparent flex-1 outline-none font-bold text-sm" 
-                placeholder="メッセージを入力ニャ..." 
-              />
-              <button onClick={() => { if(!chatInput.trim()) return; setMessages([...messages, { role: 'user', text: chatInput }]); setChatInput(''); }} className="text-red-500"><Send size={20}/></button>
+          <div className="flex-shrink-0 p-4 border-t bg-white pb-safe">
+            <div className="max-w-2xl mx-auto flex items-center gap-2">
+              <div className="flex-1 bg-gray-100 rounded-full px-4 py-3 flex items-center gap-3 border border-gray-200 focus-within:border-red-300 focus-within:ring-2 focus-within:ring-red-100 transition-all">
+                <input 
+                  autoFocus
+                  value={chatInput} 
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                      handleSendMessage()
+                    }
+                  }}
+                  className="bg-transparent flex-1 outline-none font-bold text-sm text-gray-800" 
+                  placeholder="メッセージを入力ニャ..." 
+                  disabled={isChatLoading}
+                />
+                <button 
+                  onClick={handleSendMessage} 
+                  disabled={!chatInput.trim() || isChatLoading}
+                  className={`p-1 transition-colors ${
+                    !chatInput.trim() || isChatLoading ? 'text-gray-300' : 'text-red-500 hover:text-red-600'
+                  }`}
+                >
+                  <Send size={22} fill={chatInput.trim() && !isChatLoading ? "currentColor" : "none"} />
+                </button>
+              </div>
             </div>
           </div>
-          </div>
-        </>
+        </div>
       )}
 
       {/* 街選択ポップアップ（全国対応） */}

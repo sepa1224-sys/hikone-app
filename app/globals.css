@@ -135,3 +135,8 @@ body {
 .animate-in.zoom-in {
   animation: zoom-in 0.3s ease-out;
 }
+
+/* セーフエリア対応のユーティリティ */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
