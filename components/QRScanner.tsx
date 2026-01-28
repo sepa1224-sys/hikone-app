@@ -56,16 +56,19 @@ export default function QRScanner({ onScanSuccess, onClose, title = 'QRスキャ
 
   // QRコードから招待コードを抽出
   const extractReferralCode = useCallback((qrData: string): string | null => {
-    if (qrData.startsWith('hikopo:')) {
-      const code = qrData.replace('hikopo:', '').trim().toUpperCase()
+    if (!qrData) return null
+    const cleaned = qrData.replace(/\s/g, '') // 全ての空白・改行を除去
+    
+    if (cleaned.startsWith('hikopo:')) {
+      const code = cleaned.replace('hikopo:', '').toUpperCase()
       if (/^[A-Z0-9]{8,12}$/.test(code)) {
         return code
       }
     }
     
-    const trimmed = qrData.trim().toUpperCase()
-    if (/^[A-Z0-9]{8,12}$/.test(trimmed)) {
-      return trimmed
+    const code = cleaned.toUpperCase()
+    if (/^[A-Z0-9]{8,12}$/.test(code)) {
+      return code
     }
     
     return null

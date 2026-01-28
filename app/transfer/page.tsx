@@ -90,6 +90,9 @@ function TransferPageContent() {
     // AuthProvider がまだローディング中なら何もしない
     if (authLoading) return
     
+    // ロード状態を先に解除（カメラ権限待ちなどで止まらないように）
+    setLoading(false)
+    
     // セッションがない場合はログインページへ
     if (!session || !authUser) {
       console.log('💸 [Transfer] セッションなし → ログインページへ')
@@ -100,13 +103,13 @@ function TransferPageContent() {
     // セッションがある場合
     console.log('💸 [Transfer] セッション確認OK')
     setCurrentUser(authUser)
-    setLoading(false)
 
     // URLパラメータから招待コードを取得
     const code = searchParams.get('code')
     if (code) {
-      setReceiverCode(code.toUpperCase())
-      checkReceiver(code.toUpperCase())
+      const cleanedCode = code.trim().toUpperCase()
+      setReceiverCode(cleanedCode)
+      checkReceiver(cleanedCode)
     }
   }, [authLoading, session, authUser, router, searchParams, checkReceiver])
   
@@ -123,15 +126,16 @@ function TransferPageContent() {
   
   // QRスキャン成功時
   const handleQRScanSuccess = useCallback((referralCode: string) => {
-    setReceiverCode(referralCode)
+    const cleanedCode = referralCode.trim().toUpperCase()
+    setReceiverCode(cleanedCode)
     setShowQRScanner(false)
     
     // トースト表示
-    setScanToast(`コード「${referralCode}」を読み取りました`)
+    setScanToast(`コード「${cleanedCode}」を読み取りました`)
     setTimeout(() => setScanToast(null), 3000)
     
     // 相手の情報を取得
-    checkReceiver(referralCode)
+    checkReceiver(cleanedCode)
   }, [checkReceiver])
   
   // 確認ダイアログを開く

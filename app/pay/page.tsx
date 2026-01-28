@@ -43,9 +43,9 @@ function PayPageContent() {
     const code = searchParams.get('code')
     if (code) {
       setMode('scan')
-      const upperCode = code.toUpperCase()
-      setReceiverCode(upperCode)
-      handleReceiverCheck(upperCode)
+      const cleanedCode = code.trim().toUpperCase()
+      setReceiverCode(cleanedCode)
+      handleReceiverCheck(cleanedCode)
     }
   }, [searchParams])
 
@@ -63,9 +63,10 @@ function PayPageContent() {
   }
 
   const handleScanSuccess = (code: string) => {
-    setReceiverCode(code)
+    const cleanedCode = code.trim().toUpperCase()
+    setReceiverCode(cleanedCode)
     setShowScanner(false)
-    handleReceiverCheck(code)
+    handleReceiverCheck(cleanedCode)
   }
 
   const handlePay = async () => {
