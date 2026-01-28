@@ -151,13 +151,13 @@ export default function AppHome() {
     setIsMounted(true)
     console.log('📱 [Home] マウント完了')
     
-    // 安全装置: 1.5秒後に強制的にローディングを終了し、画面を表示させる
+    // 【最優先】安全装置: 1秒後に強制的にローディングを終了し、画面を表示させる
     // どんな理由があっても、この時間が経過すればスケルトンを消す
     const timer = setTimeout(() => {
       setLoading(false)
       setProfileChecked(true)
-      console.log('🕒 [Home] 1.5秒経過: 安全装置によりロードを強制終了しました')
-    }, 1500)
+      console.log('🕒 [Home] 1秒経過: 安全装置によりロードを強制終了しました')
+    }, 1000)
     
     return () => clearTimeout(timer)
   }, [])
@@ -305,11 +305,12 @@ export default function AppHome() {
   const { stats: municipalityStats, isLoading: statsLoading, refetch: refetchStats } = useMunicipalityStats(userCity, authUser?.id)
   
   // 全てのデータ読み込みが完了したらローディングを終了
+  // 【超安全モード】authLoading のみ監視し、他は非同期で表示させる
   useEffect(() => {
-    if (!authLoading && !statsLoading && !wasteLoading && !pointsLoading) {
+    if (!authLoading) {
       setLoading(false)
     }
-  }, [authLoading, statsLoading, wasteLoading, pointsLoading])
+  }, [authLoading])
 
   // フォトコンテストイベント（events テーブルから取得）
   const [activeEvent, setActiveEvent] = useState<{
@@ -703,9 +704,10 @@ export default function AppHome() {
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
   // 認証中または読み込み中の表示
-  // 1.5秒経過して loading が false になれば、他の状態に関わらず強制的にスケルトンを解除する
-  if (!isMounted || loading) {
-    return <HomeSkeleton />
+  // 【超安全モード】スケルトン画面を完全にスキップして即座にUIを表示させる
+  // どんな理由があっても、マウントさえ完了すればメイン画面を出す
+  if (!isMounted) {
+    return null // スケルトンすら出さない（真っ白な画面から即座にUIが出るようにする）
   }
 
   // 統計データの存在チェックを強化
@@ -743,7 +745,7 @@ export default function AppHome() {
             >
               <span className="text-sm">💰</span>
               <span className="text-xs font-black text-white">
-                {pointsLoading ? '...' : userPoints.toLocaleString()}
+                {pointsLoading ? '...' : (userPoints || 0).toLocaleString()}
               </span>
               <span className="text-[10px] font-bold text-white/80">pt</span>
             </div>
@@ -777,11 +779,13 @@ export default function AppHome() {
           <div className="max-w-xl mx-auto animate-in fade-in duration-500 space-y-4">
             
             {/* 0. 市民カウンター（町ごとの登録者数 / その町の人口） + 会員番号 */}
-            {/* 表示する自治体名: userCity（ログインユーザーの居住地）を優先、なければ municipalityStats.municipalityName、最終フォールバックは「彦根市」 */}
+            {/* 表示する自治体名: userCity（ログインユーザーの居住地）を優先、なければ safeStats.municipalityName、最終フォールバックは「彦根市」 */}
             {(() => {
+              if (!safeStats) return null
               const displayCityName = userCity || safeStats.municipalityName || '彦根市'
               return (
                 <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-4 shadow-lg">
+                  {/* ... */}
                   {/* 上段：町ごとの登録者数 / その町の人口 */}
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
@@ -838,7 +842,7 @@ export default function AppHome() {
                   </div>
                 </div>
               )
-            })()}
+            })() : null}
             
             {/* 0.5 支払いボタン（QR決済） */}
             <div className="grid grid-cols-1 gap-3">
@@ -861,12 +865,17 @@ export default function AppHome() {
             </div>
 
             {/* 1. ゴミ収集情報カード（独立コンポーネント） */}
-            <WasteScheduleCard
-              userCity={userCity}
-              userSelectedArea={userSelectedArea}
-              userWasteSchedule={swrWasteSchedule}
-              onSetupClick={() => setView('profile')}
-            />
+            {(() => {
+              if (!swrWasteSchedule) return null
+              return (
+                <WasteScheduleCard
+                  userCity={userCity}
+                  userSelectedArea={userSelectedArea}
+                  userWasteSchedule={swrWasteSchedule}
+                  onSetupClick={() => setView('profile')}
+                />
+              )
+            })()}
 
             {/* 1.5. 暮らしセクション：ランニング・ウォーキングアクションカード */}
             {mode === 'local' && (

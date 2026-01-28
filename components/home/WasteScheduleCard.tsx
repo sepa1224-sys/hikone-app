@@ -239,6 +239,9 @@ export default function WasteScheduleCard({
   const [mounted, setMounted] = useState(false)
   const [currentMonth, setCurrentMonth] = useState(new Date()) // 月間カレンダー用の表示月
   
+  // 【超安全モード】データがない場合は何も表示しない
+  if (!userWasteSchedule) return null
+
   // クライアントサイドでのみ実行（Portal用）
   useEffect(() => {
     setMounted(true)
