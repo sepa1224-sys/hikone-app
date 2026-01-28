@@ -842,7 +842,7 @@ export default function AppHome() {
                   </div>
                 </div>
               )
-            })() : null}
+            })()}
             
             {/* 0.5 支払いボタン（QR決済） */}
             <div className="grid grid-cols-1 gap-3">
