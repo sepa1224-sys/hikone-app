@@ -239,7 +239,7 @@ export default function ProfileRegistrationModal({
       if (data) {
         // 既存データをフォームに反映
         // birthdayはYYYY-MM-DD形式で取得される（date型）
-        const birthday = data?.birthday || ''
+        const birthday = data.birthday || ''
         let year = '', month = '', day = ''
         
         if (birthday) {
@@ -252,36 +252,36 @@ export default function ProfileRegistrationModal({
         }
         
         // 都道府県：prefecture を優先、なければ location を使用（後方互換性）
-        const prefectureValue = data?.prefecture || data?.location || ''
+        const prefectureValue = data.prefecture || data.location || ''
         
         // 地方区分を自動検出（DBにない場合）
-        let region = data?.region || ''
-        if (!region && data?.city && prefectureValue === '滋賀県') {
-          region = getRegionByCity(data?.city) || ''
+        let region = data.region || ''
+        if (!region && data.city && prefectureValue === '滋賀県') {
+          region = getRegionByCity(data.city) || ''
         }
         
         // 詳細エリア：detail_area を優先、なければ selected_area を使用
-        const detailAreaValue = data?.detail_area || ''
-        const selectedAreaValue = data?.selected_area || ''
+        const detailAreaValue = data.detail_area || ''
+        const selectedAreaValue = data.selected_area || ''
         
         console.log('📋 [Profile] 取得データ:', {
           prefecture: prefectureValue,
           region: region,
-          city: data?.city,
+          city: data.city,
           selected_area: selectedAreaValue,
           detail_area: detailAreaValue
         })
         
         setFormData({
-          full_name: data?.full_name || userFullName || '',
-          gender: data?.gender || '',
+          full_name: data.full_name || userFullName || '',
+          gender: data.gender || '',
           birthday: birthday,
           prefecture: prefectureValue, // 都道府県
           region: region, // 地方区分
-          city: data?.city || '', // 市区町村
+          city: data.city || '', // 市区町村
           selected_area: selectedAreaValue, // ゴミ収集エリア
           detail_area: detailAreaValue, // 詳細エリア
-          interests: data?.interests || []
+          interests: data.interests || []
         })
         
         setBirthYear(year)
@@ -381,11 +381,14 @@ export default function ProfileRegistrationModal({
         })
         .select()
 
-      // detail_area カラムが存在しないエラーの場合、detail_area を除いて再試行
-      if (error && error.message.includes('detail_area')) {
-        console.warn('📋 [Profile] detail_area カラムが存在しないため、除外して再試行')
+      // detail_area や学生関連のカラムが存在しないエラーの場合、それらを除いて再試行
+      if (error && (error.message.includes('detail_area') || error.message.includes('is_student') || error.message.includes('school_name') || error.message.includes('grade'))) {
+        console.warn('📋 [Profile] 新しいカラムが存在しないため、除外して再試行')
         const retryProfileData = { ...profileData }
         delete retryProfileData.detail_area
+        delete retryProfileData.is_student
+        delete retryProfileData.school_name
+        delete retryProfileData.grade
         const retryResult = await supabase
           .from('profiles')
           .upsert(retryProfileData, { 

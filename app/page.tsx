@@ -955,6 +955,26 @@ export default function AppHome() {
                 </div>
               )
             })()}
+
+            {/* 学生情報（学生の場合のみ表示） */}
+            {authProfile?.is_student && (
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 shadow-sm border border-blue-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                    <Award size={18} className="text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">所属</p>
+                    <p className="text-sm font-black text-gray-800">
+                      {authProfile?.school_name} {authProfile?.grade ? `${authProfile.grade}年` : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="bg-blue-500 text-white text-[10px] font-black px-2 py-1 rounded-lg">
+                  学生会員
+                </div>
+              </div>
+            )}
             
             {/* 0.5 支払いボタン（QR決済） */}
             <div className="grid grid-cols-1 gap-3">
@@ -1825,9 +1845,9 @@ export default function AppHome() {
       */}
       {profileChecked && showProfileModal && authUser && view === 'main' && (
         <ProfileRegistrationModal
-          userId={authUser?.id}
-          userEmail={authUser?.email}
-          userFullName={authUser?.user_metadata?.full_name || authUser?.user_metadata?.name || profile?.full_name}
+          userId={authUser.id}
+          userEmail={authUser.email}
+          userFullName={authUser.user_metadata?.full_name || authUser.user_metadata?.name || profile?.full_name}
           onComplete={async () => {
             setShowProfileModal(false)
             await refreshProfile()
