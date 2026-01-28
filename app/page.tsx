@@ -149,16 +149,17 @@ export default function AppHome() {
 
   useEffect(() => {
     setIsMounted(true)
-    // 安全装置: 3秒後に強制的にローディングを終了し、画面を表示させる
+    console.log('📱 [Home] マウント完了')
+    
+    // 安全装置: 2秒後に強制的にローディングを終了し、画面を表示させる
     const timer = setTimeout(() => {
-      if (loading) {
-        console.log('🕒 [Home] 安全装置によりロードを強制終了します')
-        setLoading(false)
-        setProfileChecked(true)
-      }
-    }, 3000)
+      setLoading(false)
+      setProfileChecked(true)
+      console.log('🕒 [Home] 安全装置によりロードを強制終了しました')
+    }, 2000)
+    
     return () => clearTimeout(timer)
-  }, [loading])
+  }, [])
 
   const [view, setView] = useState<'main' | 'profile'>('main')
   
@@ -701,11 +702,28 @@ export default function AppHome() {
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
   // 認証中または読み込み中の表示
-  // 3秒経過して loading が false になれば、強制的にスケルトンを解除して画面を表示させる
+  // 2秒経過して loading が false になれば、強制的にスケルトンを解除して画面を表示させる
+  // モバイルでのハング防止のため、loading ステートを最優先する
   const isActuallyLoading = !isMounted || (loading && (authLoading || statsLoading || wasteLoading || pointsLoading))
   
-  if (isActuallyLoading) {
+  // 【超重要】安全装置：2秒経過してもスケルトンが消えない場合は、強制的に表示を許可する
+  // loading が false になれば、他の状態に関わらずスケルトンを表示しない
+  if (isMounted && !loading) {
+    // ここでは何もしない（isActuallyLoading が false になっているはず）
+  }
+
+  if (isActuallyLoading && loading) {
     return <HomeSkeleton />
+  }
+
+  // 統計データの存在チェックを強化
+  const safeStats = municipalityStats || {
+    municipalityName: userCity || '彦根市',
+    population: 110489,
+    registeredUsers: 0,
+    totalAppUsers: 0,
+    mascotName: 'ひこにゃん',
+    populationUpdatedAt: null
   }
 
   // ログイン済みだがプロフィール取得中の場合（無限ロード防止のため、一定条件で表示を許可）
@@ -769,8 +787,7 @@ export default function AppHome() {
             {/* 0. 市民カウンター（町ごとの登録者数 / その町の人口） + 会員番号 */}
             {/* 表示する自治体名: userCity（ログインユーザーの居住地）を優先、なければ municipalityStats.municipalityName、最終フォールバックは「彦根市」 */}
             {(() => {
-              const displayCityName = userCity || municipalityStats?.municipalityName || '彦根市'
-              console.log('🏙️ [Home UI] 表示する自治体名:', displayCityName, '(userCity:', userCity, ', stats:', municipalityStats?.municipalityName, ')')
+              const displayCityName = userCity || safeStats.municipalityName || '彦根市'
               return (
                 <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-4 shadow-lg">
                   {/* 上段：町ごとの登録者数 / その町の人口 */}
@@ -784,29 +801,29 @@ export default function AppHome() {
                           {/* 自治体名を表示（userCityを優先） */}
                           {displayCityName}の仲間
                         </p>
-                        <p className="text-lg font-black text-white">
+                        <div className="text-lg font-black text-white">
                           {statsLoading ? (
                             <span className="opacity-70 animate-pulse">読み込み中...</span>
                           ) : (
-                            <>
+                            <div className="flex items-baseline gap-1">
                               {/* 町ごとの登録者数 / その町の人口 */}
                               <span className="text-yellow-300">
-                                {municipalityStats?.registeredUsers?.toLocaleString() || '0'}
+                                {(safeStats?.registeredUsers || 0).toLocaleString()}
                               </span>
                               <span className="text-sm font-bold opacity-80">人</span>
                               <span className="mx-1 opacity-50">/</span>
                               {/* 人口が0の場合は「取得中」と表示、それ以外は人口を表示 */}
-                              {(municipalityStats?.population || 0) > 0 ? (
+                              {(safeStats?.population || 0) > 0 ? (
                                 <>
-                                  <span>{municipalityStats?.population?.toLocaleString()}</span>
+                                  <span>{(safeStats?.population || 0).toLocaleString()}</span>
                                   <span className="text-sm font-bold opacity-80">人</span>
                                 </>
                               ) : (
                                 <span className="text-sm opacity-70">取得中...</span>
                               )}
-                            </>
+                            </div>
                           )}
-                        </p>
+                        </div>
                       </div>
                     </div>
                     <div className="text-right">
@@ -815,11 +832,11 @@ export default function AppHome() {
                         {displayCityName}
                       </p>
                       {/* 普及率：その町の登録人数 ÷ その町の人口 */}
-                      {!statsLoading && municipalityStats && (municipalityStats?.population || 0) > 0 && (
+                      {!statsLoading && safeStats && (safeStats?.population || 0) > 0 && (
                         <p className="text-[10px] font-bold text-yellow-300">
                           {(() => {
-                            const registered = municipalityStats?.registeredUsers || 0
-                            const population = municipalityStats?.population || 1
+                            const registered = safeStats?.registeredUsers || 0
+                            const population = safeStats?.population || 1
                             const rate = (registered / population) * 100
                             return `普及率 ${rate.toFixed(3)}%`
                           })()}
@@ -831,6 +848,26 @@ export default function AppHome() {
               )
             })()}
             
+            {/* 0.5 支払いボタン（QR決済） */}
+            <div className="grid grid-cols-1 gap-3">
+              <button
+                onClick={() => {
+                  if (authUser) {
+                    router.push('/pay')
+                  } else {
+                    router.push('/login')
+                  }
+                }}
+                className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white py-4 rounded-[2rem] font-black text-lg shadow-xl shadow-red-200/50 active:scale-[0.98] transition-all flex items-center justify-center gap-3 border-b-4 border-red-800"
+              >
+                <div className="bg-white/20 p-2 rounded-full">
+                  <Camera size={24} />
+                </div>
+                <span>ひこポで払う</span>
+                <Sparkles size={16} className="animate-pulse" />
+              </button>
+            </div>
+
             {/* 1. ゴミ収集情報カード（独立コンポーネント） */}
             <WasteScheduleCard
               userCity={userCity}

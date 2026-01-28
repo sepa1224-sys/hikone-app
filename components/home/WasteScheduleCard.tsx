@@ -350,172 +350,95 @@ export default function WasteScheduleCard({
   
   return (
     <>
-      <div className="bg-white rounded-[2rem] p-5 shadow-sm border border-gray-100">
-        {/* ヘッダー：タイトルとエリアバッジ */}
-        <div className="flex items-center gap-2 mb-4">
-          <Trash2 size={18} className="text-red-500" />
-          <h2 className="text-sm font-black text-gray-800">ゴミ収集情報</h2>
+      <div className="bg-white rounded-[2rem] p-4 shadow-sm border border-gray-100">
+        {/* ヘッダー：タイトルとエリアバッジ（高さを抑える） */}
+        <div className="flex items-center gap-2 mb-3">
+          <Trash2 size={16} className="text-red-500" />
+          <h2 className="text-xs font-black text-gray-800">ゴミ収集</h2>
           {userSelectedArea && (
-            <span className="ml-auto px-2.5 py-1 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-black rounded-full shadow-sm">
-              {userSelectedArea.split('・').slice(0, 2).join('・')}...
+            <span className="ml-auto px-2 py-0.5 bg-gradient-to-r from-orange-500 to-red-500 text-white text-[8px] font-black rounded-full shadow-sm">
+              {userSelectedArea.split('・')[0]}...
             </span>
           )}
         </div>
         
-        {/* エリア未設定の場合: userSelectedArea が null, undefined, または空文字の場合のみ */}
+        {/* エリア未設定の場合 */}
         {(!userSelectedArea || userSelectedArea.trim() === '') ? (
           <div 
-            className="bg-blue-50 border border-blue-200 rounded-xl p-4 cursor-pointer hover:bg-blue-100 transition-colors"
+            className="bg-blue-50 border border-blue-200 rounded-xl p-3 cursor-pointer hover:bg-blue-100 transition-colors"
             onClick={onSetupClick}
           >
-            <p className="text-sm text-blue-700 font-bold text-center mb-2">
-              💡 お住まいのエリアを設定しましょう
+            <p className="text-[11px] text-blue-700 font-bold text-center">
+              💡 エリアを設定して収集日を表示
             </p>
-            <p className="text-[10px] text-blue-500 text-center">
-              プロフィールからお住まいのエリアを選択すると、<br/>
-              正確なゴミ収集日が表示されます
-            </p>
-            <p className="text-[10px] text-blue-600 font-bold text-center mt-2">
-              タップしてプロフィールを編集 →
-            </p>
-            {/* デバッグ用: 現在の値を表示 */}
-            {process.env.NODE_ENV === 'development' && (
-              <p className="text-[8px] text-gray-400 text-center mt-2">
-                Debug: userSelectedArea = "{userSelectedArea || 'null/undefined'}"
-              </p>
-            )}
           </div>
         ) : (
           <>
-            {/* 今日・明日の2カラムレイアウト */}
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            {/* 今日・明日の2カラムレイアウト（高さを大幅に圧縮） */}
+            <div className="grid grid-cols-2 gap-2 mb-2">
               {/* 今日のパネル */}
-              <div className={`${wasteInfo.today.length > 0 ? 'bg-white' : 'bg-gray-50'} rounded-2xl p-3 border-2 ${wasteInfo.today.length > 0 ? 'border-orange-200' : 'border-gray-200'}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <p className={`text-xs font-black ${wasteInfo.today.length > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
-                    今日
-                  </p>
-                  <p className="text-[10px] text-gray-500 font-bold">
-                    {DAY_NAMES[todayDow]}曜
-                  </p>
+              <div className={`${wasteInfo.today.length > 0 ? 'bg-orange-50/50' : 'bg-gray-50'} rounded-xl p-2 border ${wasteInfo.today.length > 0 ? 'border-orange-100' : 'border-gray-100'} flex items-center justify-between`}>
+                <div className="flex flex-col">
+                  <span className={`text-[10px] font-black ${wasteInfo.today.length > 0 ? 'text-orange-500' : 'text-gray-400'}`}>今日</span>
+                  <span className="text-[8px] text-gray-400 font-bold">{DAY_NAMES[todayDow]}曜</span>
                 </div>
                 
-                {wasteInfo.today.length === 0 ? (
-                  /* 収集なし */
-                  <div className="flex flex-col items-center justify-center py-4">
-                    <span className="text-3xl opacity-30">📭</span>
-                    <p className="text-lg font-black text-gray-300 mt-1">なし</p>
-                  </div>
-                ) : wasteInfo.today.length === 1 ? (
-                  /* 1種類のみ */
-                  <div className="flex flex-col items-center py-2">
-                    <span className="text-4xl mb-2">{getWasteIcon(wasteInfo.today[0])}</span>
-                    <p className={`text-sm font-black ${getWasteColor(wasteInfo.today[0]).text} text-center`}>
-                      {wasteInfo.today[0]}
-                    </p>
-                  </div>
-                ) : wasteInfo.today.length === 2 ? (
-                  /* 2種類：上下2分割 */
-                  <div className="flex flex-col divide-y divide-gray-100">
-                    {wasteInfo.today.map((waste, idx) => (
-                      <div key={idx} className="flex items-center gap-2 py-2">
-                        <span className="text-2xl">{getWasteIcon(waste)}</span>
-                        <p className={`text-xs font-black ${getWasteColor(waste).text} flex-1`}>
-                          {waste}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  /* 3種類以上：コンパクトなリスト */
-                  <div className="space-y-1">
-                    {wasteInfo.today.map((waste, idx) => (
-                      <div key={idx} className="flex items-center gap-1.5">
-                        <div className={`w-2 h-2 rounded-full ${getWasteColor(waste).dot}`} />
-                        <p className={`text-[10px] font-black ${getWasteColor(waste).text}`}>
-                          {waste}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="flex items-center gap-1">
+                  {wasteInfo.today.length === 0 ? (
+                    <span className="text-xs font-black text-gray-300">なし</span>
+                  ) : (
+                    <div className="flex -space-x-1">
+                      {wasteInfo.today.slice(0, 2).map((waste, idx) => (
+                        <span key={idx} className="text-xl" title={waste}>{getWasteIcon(waste)}</span>
+                      ))}
+                      {wasteInfo.today.length > 2 && <span className="text-[8px] font-bold text-orange-500 self-end">+{wasteInfo.today.length - 2}</span>}
+                    </div>
+                  )}
+                </div>
               </div>
               
               {/* 明日のパネル */}
-              <div className={`${wasteInfo.tomorrow.length > 0 ? 'bg-white' : 'bg-gray-50'} rounded-2xl p-3 border-2 ${wasteInfo.tomorrow.length > 0 ? 'border-blue-200' : 'border-gray-200'}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <p className={`text-xs font-black ${wasteInfo.tomorrow.length > 0 ? 'text-blue-500' : 'text-gray-400'}`}>
-                    明日
-                  </p>
-                  <p className="text-[10px] text-gray-500 font-bold">
-                    {DAY_NAMES[tomorrowDow]}曜
-                  </p>
+              <div className={`${wasteInfo.tomorrow.length > 0 ? 'bg-blue-50/50' : 'bg-gray-50'} rounded-xl p-2 border ${wasteInfo.tomorrow.length > 0 ? 'border-blue-100' : 'border-gray-100'} flex items-center justify-between`}>
+                <div className="flex flex-col">
+                  <span className={`text-[10px] font-black ${wasteInfo.tomorrow.length > 0 ? 'text-blue-500' : 'text-gray-400'}`}>明日</span>
+                  <span className="text-[8px] text-gray-400 font-bold">{DAY_NAMES[tomorrowDow]}曜</span>
                 </div>
                 
-                {wasteInfo.tomorrow.length === 0 ? (
-                  /* 収集なし */
-                  <div className="flex flex-col items-center justify-center py-4">
-                    <span className="text-3xl opacity-30">📭</span>
-                    <p className="text-lg font-black text-gray-300 mt-1">なし</p>
-                  </div>
-                ) : wasteInfo.tomorrow.length === 1 ? (
-                  /* 1種類のみ */
-                  <div className="flex flex-col items-center py-2">
-                    <span className="text-4xl mb-2">{getWasteIcon(wasteInfo.tomorrow[0])}</span>
-                    <p className={`text-sm font-black ${getWasteColor(wasteInfo.tomorrow[0]).text} text-center`}>
-                      {wasteInfo.tomorrow[0]}
-                    </p>
-                  </div>
-                ) : wasteInfo.tomorrow.length === 2 ? (
-                  /* 2種類：上下2分割 */
-                  <div className="flex flex-col divide-y divide-gray-100">
-                    {wasteInfo.tomorrow.map((waste, idx) => (
-                      <div key={idx} className="flex items-center gap-2 py-2">
-                        <span className="text-2xl">{getWasteIcon(waste)}</span>
-                        <p className={`text-xs font-black ${getWasteColor(waste).text} flex-1`}>
-                          {waste}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  /* 3種類以上：コンパクトなリスト */
-                  <div className="space-y-1">
-                    {wasteInfo.tomorrow.map((waste, idx) => (
-                      <div key={idx} className="flex items-center gap-1.5">
-                        <div className={`w-2 h-2 rounded-full ${getWasteColor(waste).dot}`} />
-                        <p className={`text-[10px] font-black ${getWasteColor(waste).text}`}>
-                          {waste}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="flex items-center gap-1">
+                  {wasteInfo.tomorrow.length === 0 ? (
+                    <span className="text-xs font-black text-gray-300">なし</span>
+                  ) : (
+                    <div className="flex -space-x-1">
+                      {wasteInfo.tomorrow.slice(0, 2).map((waste, idx) => (
+                        <span key={idx} className="text-xl" title={waste}>{getWasteIcon(waste)}</span>
+                      ))}
+                      {wasteInfo.tomorrow.length > 2 && <span className="text-[8px] font-bold text-blue-500 self-end">+{wasteInfo.tomorrow.length - 2}</span>}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             
-            {/* 今週のスケジュールボタン */}
-            <button
-              onClick={() => setShowWeeklyModal(true)}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors mb-2"
-            >
-              <Clock size={16} className="text-gray-500" />
-              <span className="text-xs font-bold text-gray-600">今週のスケジュール</span>
-              <ChevronRight size={14} className="text-gray-400" />
-            </button>
-            
-            {/* 今月のスケジュールボタン */}
-            <button
-              onClick={() => {
-                setCurrentMonth(new Date()) // 今月にリセット
-                setShowMonthlyModal(true)
-              }}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
-            >
-              <Calendar size={16} className="text-gray-500" />
-              <span className="text-xs font-bold text-gray-600">今月のスケジュール</span>
-              <ChevronRight size={14} className="text-gray-400" />
-            </button>
+            {/* カレンダーボタンを横並びに */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setShowWeeklyModal(true)}
+                className="flex items-center justify-center gap-1.5 py-1.5 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-100"
+              >
+                <Clock size={12} className="text-gray-400" />
+                <span className="text-[9px] font-bold text-gray-500">週間</span>
+              </button>
+              <button
+                onClick={() => {
+                  setCurrentMonth(new Date())
+                  setShowMonthlyModal(true)
+                }}
+                className="flex items-center justify-center gap-1.5 py-1.5 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-100"
+              >
+                <Calendar size={12} className="text-gray-400" />
+                <span className="text-[9px] font-bold text-gray-500">月間</span>
+              </button>
+            </div>
           </>
         )}
       </div>
