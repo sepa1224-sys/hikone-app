@@ -152,11 +152,11 @@ export default function AppHome() {
     console.log('📱 [Home] マウント完了')
     
     // 安全装置: 1.5秒後に強制的にローディングを終了し、画面を表示させる
-    // 2秒だと体感で長く感じるため、少し短縮して確実に解除します
+    // どんな理由があっても、この時間が経過すればスケルトンを消す
     const timer = setTimeout(() => {
       setLoading(false)
       setProfileChecked(true)
-      console.log('🕒 [Home] 安全装置によりロードを強制終了しました')
+      console.log('🕒 [Home] 1.5秒経過: 安全装置によりロードを強制終了しました')
     }, 1500)
     
     return () => clearTimeout(timer)
@@ -703,15 +703,8 @@ export default function AppHome() {
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
   // 認証中または読み込み中の表示
-  // 1.5秒経過して loading が false になれば、強制的にスケルトンを解除して画面を表示させる
-  // モバイルでのハング防止のため、loading ステートを最優先する
-  const isActuallyLoading = !isMounted || (loading && (authLoading || statsLoading || wasteLoading || pointsLoading))
-  
-  // 【超重要】安全装置：1.5秒経過してもスケルトンが消えない場合は、強制的に表示を許可する
-  // loading が false になれば、他の状態に関わらずスケルトンを表示しない
-  if (isMounted && !loading) {
-    // 強制表示モード
-  } else if (isActuallyLoading) {
+  // 1.5秒経過して loading が false になれば、他の状態に関わらず強制的にスケルトンを解除する
+  if (!isMounted || loading) {
     return <HomeSkeleton />
   }
 
@@ -807,14 +800,14 @@ export default function AppHome() {
                             <div className="flex items-baseline gap-1">
                               {/* 町ごとの登録者数 / その町の人口 */}
                               <span className="text-yellow-300">
-                                {(safeStats?.registeredUsers || 0).toLocaleString()}
+                                {Number(safeStats?.registeredUsers || 0).toLocaleString()}
                               </span>
                               <span className="text-sm font-bold opacity-80">人</span>
                               <span className="mx-1 opacity-50">/</span>
                               {/* 人口が0の場合は「取得中」と表示、それ以外は人口を表示 */}
-                              {(safeStats?.population || 0) > 0 ? (
+                              {Number(safeStats?.population || 0) > 0 ? (
                                 <>
-                                  <span>{(safeStats?.population || 0).toLocaleString()}</span>
+                                  <span>{Number(safeStats?.population || 0).toLocaleString()}</span>
                                   <span className="text-sm font-bold opacity-80">人</span>
                                 </>
                               ) : (
