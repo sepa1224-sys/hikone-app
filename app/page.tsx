@@ -294,14 +294,14 @@ export default function AppHome() {
   
   // SWRでゴミ収集スケジュールをキャッシュ付きで取得
   // ※ userSelectedArea が変更されると、SWRのキーが変わり自動的に再フェッチされる
-  const { wasteSchedule: swrWasteSchedule, isLoading: wasteLoading, refetch: refetchWaste } = useWasteSchedule(userSelectedArea)
+  const { wasteSchedule: swrWasteSchedule, isLoading: wasteLoading, error: wasteError, refetch: refetchWaste } = useWasteSchedule(userSelectedArea)
   
   // SWRでポイント情報をキャッシュ付きで取得
-  const { points: userPoints, referralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(authUser?.id ?? null)
+  const { points: userPoints, referralCode, isLoading: pointsLoading, error: pointsError, refetch: refetchPoints } = usePoints(authUser?.id ?? null)
   
   // SWRで自治体の人口・登録者数を取得（authUser?.idを渡して自分がカウントに含まれているか確認）
   // ※ userCity が変更されると、SWRのキーが変わり自動的に再フェッチされる
-  const { stats: municipalityStats, isLoading: statsLoading, refetch: refetchStats } = useMunicipalityStats(userCity, authUser?.id)
+  const { stats: municipalityStats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useMunicipalityStats(userCity, authUser?.id)
   
   // 全てのデータ読み込みが完了したらローディングを終了
   useEffect(() => {
@@ -732,6 +732,35 @@ export default function AppHome() {
   return (
     <div className="h-screen bg-blue-50/30 font-sans flex flex-col text-gray-800 tracking-tight overflow-hidden">
       
+      {/* デバッグ情報とエラー表示 */}
+      <div className="fixed top-0 left-0 right-0 z-[9999] pointer-events-none">
+        <div className="max-w-xl mx-auto p-2">
+          {/* ローディング状態のデバッグ表示 */}
+          <div className="bg-black/80 text-white text-[10px] p-2 rounded-lg mb-2 flex flex-wrap gap-2 pointer-events-auto">
+            <span className={loading ? 'text-yellow-400' : 'text-green-400'}>loading: {loading ? 'true' : 'false'}</span>
+            <span className={authLoading ? 'text-yellow-400' : 'text-green-400'}>auth: {authLoading ? 'true' : 'false'}</span>
+            <span className={statsLoading ? 'text-yellow-400' : 'text-green-400'}>stats: {statsLoading ? 'true' : 'false'}</span>
+            <span className={wasteLoading ? 'text-yellow-400' : 'text-green-400'}>waste: {wasteLoading ? 'true' : 'false'}</span>
+            <span className={pointsLoading ? 'text-yellow-400' : 'text-green-400'}>points: {pointsLoading ? 'true' : 'false'}</span>
+          </div>
+
+          {/* エラー表示 */}
+          {(statsError || wasteError || pointsError) && (
+            <div className="bg-red-600 text-white p-4 rounded-xl shadow-2xl border-4 border-white animate-bounce pointer-events-auto">
+              <h3 className="font-black text-lg mb-2 flex items-center gap-2">
+                <X className="bg-white text-red-600 rounded-full" size={20} />
+                エラーが発生したニャ！
+              </h3>
+              <div className="text-xs font-bold space-y-1 overflow-auto max-h-40">
+                {statsError && <p>📊 Stats: {statsError.message || JSON.stringify(statsError)}</p>}
+                {wasteError && <p>🗑️ Waste: {wasteError.message || JSON.stringify(wasteError)}</p>}
+                {pointsError && <p>💰 Points: {pointsError.message || JSON.stringify(pointsError)}</p>}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* --- ヘッダー：コンパクト化したスイッチ --- */}
       <div className="bg-white/90 backdrop-blur-md px-4 py-2 border-b border-gray-100 shadow-sm z-[110]">
         <div className="max-w-xl mx-auto flex items-center gap-3">
