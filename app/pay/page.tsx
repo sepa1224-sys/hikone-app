@@ -34,6 +34,9 @@ function PayPageContent() {
   const [paying, setPaying] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
+  const [showSuccess, setShowSuccess] = useState(false)
+  const [successAmount, setSuccessAmount] = useState('')
+  const [successReceiver, setSuccessReceiver] = useState('')
 
   // 初期化：URLパラメータがあればセット
   useEffect(() => {
@@ -86,7 +89,17 @@ function PayPageContent() {
       setResult(transferResult)
       if (transferResult.success) {
         refetchPoints()
-        setTimeout(() => router.push('/profile'), 3000)
+        
+        // 支払い完了音を再生
+        const audio = new Audio('/sounds/payment.mp3')
+        audio.play().catch(e => console.log('音声再生に失敗しました（ユーザー操作が必要な場合があります）:', e))
+        
+        setSuccessAmount(amount)
+        setSuccessReceiver(receiverPreview?.name || '')
+        setShowSuccess(true)
+        
+        // 5秒後にホーム画面へ
+        setTimeout(() => router.push('/'), 5000)
       }
     } catch (error) {
       setResult({ success: false, message: '予期しないエラーが発生しました' })
@@ -288,6 +301,52 @@ function PayPageContent() {
           </div>
         )}
       </div>
+
+      {/* 支払い完了アニメーション・画面 */}
+      {showSuccess && (
+        <div className="fixed inset-0 z-[20000] bg-white flex flex-col items-center justify-center p-6 animate-in fade-in duration-500">
+          <div className="w-full max-w-sm text-center space-y-8">
+            <div className="relative">
+              <div className="w-32 h-32 bg-green-100 rounded-full flex items-center justify-center mx-auto animate-bounce">
+                <Check size={64} className="text-green-500" />
+              </div>
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32">
+                <Sparkles size={32} className="text-yellow-400 absolute -top-2 -right-2 animate-pulse" />
+                <Sparkles size={24} className="text-yellow-300 absolute bottom-0 -left-4 animate-pulse delay-75" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-3xl font-black text-gray-800">支払い完了</h2>
+              <p className="text-gray-500 font-bold">ご利用ありがとうございました！</p>
+            </div>
+
+            <div className="bg-gray-50 rounded-3xl p-8 border-2 border-dashed border-gray-200 space-y-4">
+              <div className="flex justify-between items-center text-sm text-gray-500 font-bold">
+                <span>支払い先</span>
+                <span className="text-gray-800">{successReceiver}</span>
+              </div>
+              <div className="pt-4 border-t border-gray-100 flex justify-between items-end">
+                <span className="text-sm text-gray-500 font-bold pb-1">金額</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-black text-red-600">{parseInt(successAmount).toLocaleString()}</span>
+                  <span className="text-lg font-black text-red-600">pt</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-8">
+              <button
+                onClick={() => router.push('/')}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 py-4 rounded-2xl font-black transition-all"
+              >
+                ホームに戻る
+              </button>
+              <p className="text-xs text-gray-400 mt-4 animate-pulse">数秒後に自動で戻ります...</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showConfirm && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">

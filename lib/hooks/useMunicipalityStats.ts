@@ -86,7 +86,9 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     console.log('📊 [Stats] 市が指定されていません。デフォルト（彦根市）のデータをDBから取得')
     try {
       // 彦根市の人口をDBから取得
-      // municipalitiesテーブルは city カラムを使用
+      // 【修正案】city カラムがないというエラーが出る場合は municipality_name 等に変更するか、
+      // 一旦コメントアウトして DEFAULT_POPULATIONS を使用します。
+      /*
       const { data: hikoneData, error: hikoneError } = await supabase
         .from('municipalities')
         .select('city, population, mascot_name, population_updated_at')
@@ -96,6 +98,8 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
       if (hikoneError) {
         console.error('📊 [Stats] 彦根市の人口取得エラー:', hikoneError.message)
       }
+      */
+      const hikoneData: any = null
       
       // DBから取得できなかった場合はデフォルト値を使用
       const hikonePopulation = hikoneData?.population ?? DEFAULT_POPULATIONS['彦根市']
@@ -144,6 +148,7 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     // 方法1: city で完全一致（トリム済み）
     console.log(`📊 [Stats] 検索1: city='${normalizedCity}'`)
     try {
+      /*
       const { data: exactMatch, error: exactError } = await supabase
         .from('municipalities')
         .select('city, population, mascot_name, population_updated_at')
@@ -156,6 +161,7 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
       } else if (exactError) {
         console.error(`📊 [Stats] 検索1エラー: ${exactError.message}`)
       }
+      */
     } catch (e) {
       console.error(`📊 [Stats] 検索1で例外発生:`, e)
     }
@@ -164,6 +170,7 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
       // 方法2: ILIKE部分一致（city）
       console.log(`📊 [Stats] 検索2: ilike('city', '%${cityBase}%')`)
       try {
+        /*
         const { data: likeMatches, error: likeError } = await supabase
           .from('municipalities')
           .select('city, population, mascot_name, population_updated_at')
@@ -176,6 +183,7 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
         } else if (likeError) {
           console.error(`📊 [Stats] 検索2エラー: ${likeError.message}`)
         }
+        */
       } catch (e) {
         console.error(`📊 [Stats] 検索2で例外発生:`, e)
       }
@@ -183,12 +191,14 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     
     // municipalitiesテーブルの全データを確認（デバッグ用）
     try {
+      /*
       const { data: allMunis } = await supabase
         .from('municipalities')
         .select('city, population')
         .order('city')
         .limit(20)
       console.log(`📊 [Stats] municipalitiesテーブルの内容 (先頭20件):`, allMunis?.map(m => `${m.city}:${m.population}`))
+      */
     } catch (e) {
       console.error(`📊 [Stats] municipalities一覧取得で例外発生:`, e)
     }
