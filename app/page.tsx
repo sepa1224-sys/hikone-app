@@ -151,12 +151,13 @@ export default function AppHome() {
     setIsMounted(true)
     console.log('📱 [Home] マウント完了')
     
-    // 安全装置: 2秒後に強制的にローディングを終了し、画面を表示させる
+    // 安全装置: 1.5秒後に強制的にローディングを終了し、画面を表示させる
+    // 2秒だと体感で長く感じるため、少し短縮して確実に解除します
     const timer = setTimeout(() => {
       setLoading(false)
       setProfileChecked(true)
       console.log('🕒 [Home] 安全装置によりロードを強制終了しました')
-    }, 2000)
+    }, 1500)
     
     return () => clearTimeout(timer)
   }, [])
@@ -702,17 +703,15 @@ export default function AppHome() {
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
   // 認証中または読み込み中の表示
-  // 2秒経過して loading が false になれば、強制的にスケルトンを解除して画面を表示させる
+  // 1.5秒経過して loading が false になれば、強制的にスケルトンを解除して画面を表示させる
   // モバイルでのハング防止のため、loading ステートを最優先する
   const isActuallyLoading = !isMounted || (loading && (authLoading || statsLoading || wasteLoading || pointsLoading))
   
-  // 【超重要】安全装置：2秒経過してもスケルトンが消えない場合は、強制的に表示を許可する
+  // 【超重要】安全装置：1.5秒経過してもスケルトンが消えない場合は、強制的に表示を許可する
   // loading が false になれば、他の状態に関わらずスケルトンを表示しない
   if (isMounted && !loading) {
-    // ここでは何もしない（isActuallyLoading が false になっているはず）
-  }
-
-  if (isActuallyLoading && loading) {
+    // 強制表示モード
+  } else if (isActuallyLoading) {
     return <HomeSkeleton />
   }
 

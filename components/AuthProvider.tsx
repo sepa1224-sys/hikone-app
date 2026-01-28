@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // モバイル環境などで getSession がハングする場合があるため、タイムアウトを設ける
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Auth Timeout')), 5000)
+        setTimeout(() => reject(new Error('Auth Timeout')), 2000)
       )
 
       try {
