@@ -145,9 +145,19 @@ export default function AppHome() {
   
   // マウント済みフラグ（ハイドレーションエラー防止）
   const [isMounted, setIsMounted] = useState(false)
+  const [loading, setLoading] = useState(true)
+
   useEffect(() => {
     setIsMounted(true)
-  }, [])
+    // 安全装置: 5秒後に強制的にローディングを終了
+    const timer = setTimeout(() => {
+      if (loading) {
+        console.log('🕒 [Home] 5秒経過: 安全装置によりロードを終了します')
+        setLoading(false)
+      }
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [loading])
 
   const [view, setView] = useState<'main' | 'profile'>('main')
   
@@ -395,6 +405,9 @@ export default function AppHome() {
           prize_amount: 5000,
           end_date: '2026-02-28'
         })
+      } finally {
+        // 全体のロード状態を解除
+        setLoading(false)
       }
     }
     fetchActiveEvent()
@@ -679,7 +692,7 @@ export default function AppHome() {
 
   // 認証中または読み込み中の表示
   // ただし、モバイル環境でのハングを防ぐため、マウントされていない場合はスケルトンを表示しない
-  if (!isMounted || authLoading) {
+  if (!isMounted || authLoading || loading) {
     return <HomeSkeleton />
   }
 

@@ -86,24 +86,19 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     console.log('📊 [Stats] 市が指定されていません。デフォルト（彦根市）のデータをDBから取得')
     try {
       // 彦根市の人口をDBから取得
-      // 【修正案】city カラムがないというエラーが出る場合は municipality_name 等に変更するか、
-      // 一旦コメントアウトして DEFAULT_POPULATIONS を使用します。
-      /*
       const { data: hikoneData, error: hikoneError } = await supabase
         .from('municipalities')
-        .select('city, population, mascot_name, population_updated_at')
-        .eq('city', '彦根市')
+        .select('name, population, mascot_name, population_updated_at')
+        .eq('name', '彦根市')
         .maybeSingle()
       
       if (hikoneError) {
         console.error('📊 [Stats] 彦根市の人口取得エラー:', hikoneError.message)
       }
-      */
-      const hikoneData: any = null
       
       // DBから取得できなかった場合はデフォルト値を使用
-      const hikonePopulation = hikoneData?.population ?? DEFAULT_POPULATIONS['彦根市']
-      console.log(`📊 [Stats] 彦根市の人口: ${hikonePopulation} (DB: ${hikoneData?.population ?? 'null'}, デフォルト: ${DEFAULT_POPULATIONS['彦根市']})`)
+      const hikonePopulation = (hikoneData as any)?.population ?? DEFAULT_POPULATIONS['彦根市']
+      console.log(`📊 [Stats] 彦根市の人口: ${hikonePopulation} (DB: ${(hikoneData as any)?.population ?? 'null'}, デフォルト: ${DEFAULT_POPULATIONS['彦根市']})`)
       
       // 彦根市の登録者数を取得
       const { count: hikoneUsers } = await supabase
@@ -124,8 +119,8 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
         population: hikonePopulation,  // DBから取得した人口（なければデフォルト値）
         registeredUsers: hikoneUsers ?? 0,
         totalAppUsers: totalUsers ?? 0,
-        mascotName: hikoneData?.mascot_name ?? 'ひこにゃん',
-        populationUpdatedAt: hikoneData?.population_updated_at ?? null
+        mascotName: (hikoneData as any)?.mascot_name ?? 'ひこにゃん',
+        populationUpdatedAt: (hikoneData as any)?.population_updated_at ?? null
       }
     } catch (err) {
       console.error('📊 [Stats] デフォルトデータ取得エラー:', err)
@@ -145,45 +140,41 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     
     let municipality = null
     
-    // 方法1: city で完全一致（トリム済み）
-    console.log(`📊 [Stats] 検索1: city='${normalizedCity}'`)
+    // 方法1: name で完全一致（トリム済み）
+    console.log(`📊 [Stats] 検索1: name='${normalizedCity}'`)
     try {
-      /*
       const { data: exactMatch, error: exactError } = await supabase
         .from('municipalities')
-        .select('city, population, mascot_name, population_updated_at')
-        .eq('city', normalizedCity)
+        .select('name, population, mascot_name, population_updated_at')
+        .eq('name', normalizedCity)
         .maybeSingle()
       
       if (exactMatch) {
         municipality = exactMatch
-        console.log(`📊 [Stats] ✅ cityで完全一致で発見!`)
+        console.log(`📊 [Stats] ✅ nameで完全一致で発見!`)
       } else if (exactError) {
         console.error(`📊 [Stats] 検索1エラー: ${exactError.message}`)
       }
-      */
     } catch (e) {
       console.error(`📊 [Stats] 検索1で例外発生:`, e)
     }
     
     if (!municipality) {
-      // 方法2: ILIKE部分一致（city）
-      console.log(`📊 [Stats] 検索2: ilike('city', '%${cityBase}%')`)
+      // 方法2: ILIKE部分一致（name）
+      console.log(`📊 [Stats] 検索2: ilike('name', '%${cityBase}%')`)
       try {
-        /*
         const { data: likeMatches, error: likeError } = await supabase
           .from('municipalities')
-          .select('city, population, mascot_name, population_updated_at')
-          .ilike('city', `%${cityBase}%`)
+          .select('name, population, mascot_name, population_updated_at')
+          .ilike('name', `%${cityBase}%`)
           .limit(5)
         
         if (likeMatches && likeMatches.length > 0) {
           municipality = likeMatches[0]
-          console.log(`📊 [Stats] ✅ cityで部分一致で発見!`)
+          console.log(`📊 [Stats] ✅ nameで部分一致で発見!`)
         } else if (likeError) {
           console.error(`📊 [Stats] 検索2エラー: ${likeError.message}`)
         }
-        */
       } catch (e) {
         console.error(`📊 [Stats] 検索2で例外発生:`, e)
       }
@@ -191,14 +182,12 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     
     // municipalitiesテーブルの全データを確認（デバッグ用）
     try {
-      /*
       const { data: allMunis } = await supabase
         .from('municipalities')
-        .select('city, population')
-        .order('city')
+        .select('name, population')
+        .order('name')
         .limit(20)
-      console.log(`📊 [Stats] municipalitiesテーブルの内容 (先頭20件):`, allMunis?.map(m => `${m.city}:${m.population}`))
-      */
+      console.log(`📊 [Stats] municipalitiesテーブルの内容 (先頭20件):`, allMunis?.map((m: any) => `${m.name}:${m.population}`))
     } catch (e) {
       console.error(`📊 [Stats] municipalities一覧取得で例外発生:`, e)
     }
@@ -323,14 +312,14 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     }
     
     // ============ 最終結果 ============
-    const displayCity = municipality?.city || normalizedCity
+    const displayCity = (municipality as any)?.name || normalizedCity
     
     // 人口の取得優先順位:
     // 1. DBから取得した値
     // 2. デフォルト人口値（DEFAULT_POPULATIONS）
     // 3. フォールバック値（110489 = 彦根市）
-    let finalPopulation = municipality?.population
-    let finalMascot = municipality?.mascot_name
+    let finalPopulation = (municipality as any)?.population
+    let finalMascot = (municipality as any)?.mascot_name
     
     if (!finalPopulation || finalPopulation === 0) {
       // DBから取得できなかった場合、デフォルト値を使用
@@ -351,7 +340,7 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
       registeredUsers: registeredUsers,  // 町ごとの登録者数
       totalAppUsers: totalAppUsers,
       mascotName: finalMascot || null,
-      populationUpdatedAt: municipality?.population_updated_at || null
+      populationUpdatedAt: (municipality as any)?.population_updated_at || null
     }
     
     console.log(`\n📊 [Stats] ========== 最終結果 ==========`)
