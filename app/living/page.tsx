@@ -13,7 +13,7 @@ import {
   Heart
 } from 'lucide-react'
 import BottomNavigation from '@/components/BottomNavigation'
-import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/components/AuthProvider'
 
 // カテゴリーの定義
 const LIVING_CATEGORIES = [
@@ -87,31 +87,15 @@ const FEATURED_ITEMS = [
 
 export default function LivingPage() {
   const router = useRouter()
+  const { profile: authProfile } = useAuth()
   const [userCity, setUserCity] = useState<string | null>(null)
   
   // ユーザーの登録都市を取得
   useEffect(() => {
-    async function fetchUserCity() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('city')
-            .eq('id', user.id)
-            .single()
-          
-          if (profile?.city) {
-            setUserCity(profile.city)
-          }
-        }
-      } catch (error) {
-        console.error('プロフィール取得エラー:', error)
-      }
+    if (authProfile?.city) {
+      setUserCity(authProfile.city)
     }
-    
-    fetchUserCity()
-  }, [])
+  }, [authProfile])
 
   // カテゴリーカードをクリック
   const handleCategoryClick = (category: typeof LIVING_CATEGORIES[0]) => {

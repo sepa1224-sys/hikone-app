@@ -11,6 +11,7 @@ import {
   Heart, ShoppingCart, Bike, Upload, Award, MessageSquare, Activity, Footprints
 } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
+import ChatRegistration from '@/components/ChatRegistration'
 import BottomNavigation from '@/components/BottomNavigation'
 import WasteScheduleCard, { HikoneWasteMaster } from '@/components/home/WasteScheduleCard'
 import { useWasteSchedule, prefetchWasteSchedule } from '@/lib/hooks/useWasteSchedule'
@@ -19,6 +20,7 @@ import { useMunicipalityStats } from '@/lib/hooks/useMunicipalityStats'
 import { formatFullLocation, isSupportedCity, UNSUPPORTED_AREA_MESSAGE } from '@/lib/constants/shigaRegions'
 import { useAuth } from '@/components/AuthProvider'
 import { supabase } from '@/lib/supabase'
+import { HomeSkeleton } from '@/components/Skeleton'
 const HIKONYAN_IMAGE = "https://kawntunevmabyxqmhqnv.supabase.co/storage/v1/object/public/images/hikonyan.png"
 
 const cityData: Record<string, any> = {
@@ -139,17 +141,49 @@ export default function AppHome() {
   const router = useRouter()
   
   // AuthProviderから認証状態を取得（一本化）
-  const { session, user: authUser, loading: authLoading } = useAuth()
+  const { session, user: authUser, profile: authProfile, loading: authLoading, refreshProfile } = useAuth()
   
   const [view, setView] = useState<'main' | 'profile'>('main')
   
-  // デバッグログ：viewステートの変更を追跡
-  console.log("Current View State:", view)
-  
-  // viewが変更されたときのログ
+  // プロフィール情報
+  const [profile, setProfile] = useState<any>(null)
+
+  // authProfile があれば即座に反映
   useEffect(() => {
-    console.log("ビューが切り替わりました:", view)
-  }, [view])
+    if (authProfile) {
+      setProfile(authProfile)
+      setUserCity(authProfile.city || null)
+      setUserSelectedArea(authProfile.selected_area || authProfile.detail_area || null)
+      
+      if (authProfile.city && !isSupportedCity(authProfile.city)) {
+        setShowUnsupportedAreaModal(true)
+      } else {
+        setShowUnsupportedAreaModal(false)
+      }
+    } else if (!authLoading && !authUser) {
+      // 未ログインの場合
+      setProfile(null)
+      setUserCity(null)
+      setUserSelectedArea(null)
+      setShowUnsupportedAreaModal(false)
+    }
+  }, [authProfile, authLoading, authUser])
+
+  // ログイン済み かつ プロフィール未入力時: ホーム画面にのみ、登録を促すポップアップを表示
+  useEffect(() => {
+    if (authLoading) return
+    if (view !== 'main') return
+    
+    // プロフィールが取得済みで、不完全な場合
+    if (authUser && authProfile && (!authProfile.full_name || (!authProfile.birthday && !authProfile.location))) {
+      setShowProfileModal(true)
+    } 
+    // authUserはいるがauthProfileがない場合、新規ユーザーの可能性があるため表示
+    else if (authUser && !authProfile) {
+      setShowProfileModal(true)
+    }
+  }, [authLoading, authUser, authProfile, view])
+
   const [mode, setMode] = useState<'local' | 'tourist'>('local') 
   const [selectedCityId, setSelectedCityId] = useState<string>('hikone')
   const [isCitySelectorOpen, setIsCitySelectorOpen] = useState(false)
@@ -220,9 +254,7 @@ export default function AppHome() {
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [profileChecked, setProfileChecked] = useState(false)
   
-  // プロフィールページ用のステート
-  const [profile, setProfile] = useState<any>(null)
-  const [profileLoading, setProfileLoading] = useState(false) // 初期値をfalseにして、ゲストモードで即座に表示できるようにする
+  const [profileLoading, setProfileLoading] = useState(false)
   
   // ユーザーの登録都市（ホーム画面のパーソナライズ用）
   const [userCity, setUserCity] = useState<string | null>(null)
@@ -245,7 +277,7 @@ export default function AppHome() {
   const { wasteSchedule: swrWasteSchedule, isLoading: wasteLoading, refetch: refetchWaste } = useWasteSchedule(userSelectedArea)
   
   // SWRでポイント情報をキャッシュ付きで取得
-  const { points: userPoints, referralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(authUser?.id)
+  const { points: userPoints, referralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(authUser?.id ?? null)
   
   // SWRで自治体の人口・登録者数を取得（authUser?.idを渡して自分がカウントに含まれているか確認）
   // ※ userCity が変更されると、SWRのキーが変わり自動的に再フェッチされる
@@ -306,152 +338,24 @@ export default function AppHome() {
     'エジプト', 'トルコ', 'ロシア', 'その他'
   ]
 
-  // AuthProviderの状態が確定したらプロフィール情報を取得
-  useEffect(() => {
-    // AuthProviderがまだローディング中なら何もしない
-    if (authLoading) {
-      console.log('🔐 [Home] AuthProviderローディング中...')
-      return
-    }
-
-    // AbortControllerでリクエストをキャンセル可能にする
-    const abortController = new AbortController()
-    let isMounted = true
-
-    const fetchProfileData = async () => {
-      try {
-        // AbortSignalがキャンセルされている場合は処理を中断
-        if (abortController.signal.aborted || !isMounted) {
-          console.log('🔐 [Home] リクエストがキャンセルされました')
-          return
-        }
-
-        // AuthProviderから取得したuserを使用（supabase.auth.getSession()を直接呼ばない）
-        if (authUser) {
-          console.log('🔐 [Home] ユーザー確認:', `User: ${authUser.id}`)
-          
-          // ユーザーの登録都市・エリアを取得（ホーム画面のパーソナライズ用）
-          // ※ selected_area と detail_area の両方を取得（互換性のため）
-          const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('city, selected_area, detail_area')
-            .eq('id', authUser.id)
-            .single()
-          
-          // AbortSignalがキャンセルされている場合は処理を中断
-          if (abortController.signal.aborted || !isMounted) {
-            console.log('🔐 [Home] レスポンス取得後にキャンセルされました')
-            return
-          }
-          
-          console.log('📋 [Home] プロフィール取得結果:', profileData)
-          if (profileError) {
-            console.error('📋 [Home] プロフィール取得エラー:', profileError)
-          }
-          
-          // ===== 市区町村の設定（必ず実行） =====
-          const cityValue = profileData?.city || null
-          if (isMounted) {
-            setUserCity(cityValue)
-            console.log(`🏙️ [Home] ユーザーの市区町村を設定: ${cityValue || '(未設定)'}`)
-            console.log(`🏙️ [Home] city: ${profileData?.city || '(null)'}`)
-            
-            if (cityValue) {
-              // ===== 対応エリアチェック =====
-              if (!isSupportedCity(cityValue)) {
-                console.log(`⚠️ [Home] 未対応エリア: ${cityValue}`)
-                setShowUnsupportedAreaModal(true)
-              } else {
-                console.log(`✅ [Home] 対応エリア: ${cityValue}`)
-                setShowUnsupportedAreaModal(false)
-              }
-            } else {
-              setShowUnsupportedAreaModal(false)
-            }
-            
-            // ===== エリアの設定（必ず実行） =====
-            const areaValue = profileData?.selected_area || profileData?.detail_area || null
-            setUserSelectedArea(areaValue)
-            console.log('🗑️ [Home] 判定に使用しているエリア名:', areaValue || '(未設定)')
-            console.log('🗑️ [Home] selected_area:', profileData?.selected_area)
-            console.log('🗑️ [Home] detail_area:', profileData?.detail_area)
-            
-            if (areaValue) {
-              console.log(`✅ [Home] ゴミ収集エリア設定完了: ${areaValue}`)
-            } else {
-              console.log(`⚠️ [Home] ユーザーのエリアが未設定です（selected_area も detail_area も null）`)
-            }
-            
-            // ホーム画面にいる場合のみプロフィールチェックを実行（viewを変更しない）
-            if (view === 'main') {
-              checkProfileCompletion(abortController.signal)
-            }
-          }
-        } else {
-          // 未ログインの場合
-          console.log('🔐 [Home] 未ログイン状態')
-          if (isMounted) {
-            setProfileChecked(true)
-            setUserCity(null)
-            setUserSelectedArea(null)
-            // SWR は userSelectedArea が null になると自動的にフェッチを停止
-          }
-        }
-      } catch (error: any) {
-        // AbortErrorの場合は無視（コンポーネントのアンマウント時に発生する可能性がある）
-        if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
-          console.log('🔐 [Home] リクエストが中断されました（AbortError）')
-          return
-        }
-        console.error('Profile fetch error:', error)
-      } finally {
-        // AbortSignalがキャンセルされていない場合のみローディング状態を解除
-        if (!abortController.signal.aborted && isMounted) {
-          setProfileLoading(false)
-        }
-      }
-    }
-
-    fetchProfileData()
-
-    // クリーンアップ関数：コンポーネントのアンマウント時にリクエストをキャンセル
-    return () => {
-      console.log('🔐 [Home] クリーンアップ: リクエストをキャンセル')
-      isMounted = false
-      abortController.abort()
-    }
-  }, [authLoading, authUser, view]) // authUserが変更された時のみ再実行
-
   useEffect(() => {
     localStorage.setItem('app_mode', mode)
     localStorage.setItem('selected_city_id', selectedCityId)
   }, [mode, selectedCityId])
 
   // URLクエリパラメータまたはパスからviewを設定
-  // 注意: このuseEffectはpathnameが変更された時のみ実行される
-  // 他のページから「会員情報」タブを押して/?view=profileに遷移した場合、このuseEffectが実行される
   useEffect(() => {
-    // このページ（/）にいるときだけ実行
-    if (pathname !== '/') {
-      // 他のページにいる場合は何もしない（viewステートは変更しない）
-      return
-    }
-    
-    // クエリパラメータをチェック
+    if (pathname !== '/') return
     const viewParam = new URLSearchParams(window.location.search).get('view')
     if (viewParam === 'profile') {
-      // クエリパラメータがprofileの場合は、profileビューに設定
-      console.log("Setting view to 'profile' from URL param")
       setView('profile')
     }
-    // 注意: viewParamがnullまたは''の場合は何もしない（勝手にmainに戻さない）
-    // 初期ロード時の'main'はuseStateの初期値で設定されている
-  }, [pathname]) // routerを依存配列から削除、viewも削除（無限ループを防ぐ）
+  }, [pathname])
 
   // authUser がいない（ゲスト）の場合は、即座に profileLoading を false にする
   useEffect(() => {
-    if (!authUser && !authLoading) {
-      setProfileLoading(false)
+    if (!authLoading && !authUser) {
+      setProfileChecked(true)
     }
   }, [authUser, authLoading])
 
@@ -470,7 +374,6 @@ export default function AppHome() {
         if (data && !error) {
           setActiveEvent(data)
         } else {
-          // DBにイベントがない場合、デモ用のモックデータ
           setActiveEvent({
             id: 'demo-1',
             title: '彦根城 冬の絶景フォトコンテスト',
@@ -480,7 +383,6 @@ export default function AppHome() {
         }
       } catch (err) {
         console.error('イベント取得エラー:', err)
-        // エラー時もモックデータを表示
         setActiveEvent({
           id: 'demo-1',
           title: '彦根の冬景色フォトコンテスト',
@@ -492,466 +394,43 @@ export default function AppHome() {
     fetchActiveEvent()
   }, [])
 
+  // プロフィール編集用のデータ取得
+  const fetchProfileDataForEdit = async () => {
+    if (!authUser) return
+    setProfileLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single()
+      if (data) {
+        setProfile(data)
+        const areaValue = data.selected_area || data.detail_area || ''
+        setUsername(data.full_name || '')
+        setAvatarUrl(data.avatar_url || '')
+        setPrefecture(data.location || '')
+        setCity(data.city || '')
+        setSelectedArea(areaValue)
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setProfileLoading(false)
+    }
+  }
+
   // プロフィールページが表示されたときにデータを取得
   useEffect(() => {
     if (view === 'profile') {
-      // AuthProviderがまだローディング中なら何もしない
-      if (authLoading) {
-        console.log('🔐 [Home] AuthProviderローディング中、プロフィール取得をスキップ')
+      if (authLoading) return
+      if (!authUser) {
+        setView('main')
         return
       }
-
-      // AbortControllerでリクエストをキャンセル可能にする
-      const abortController = new AbortController()
-      let isMounted = true
-
-      const fetchData = async () => {
-        try {
-          // AbortSignalがキャンセルされている場合は処理を中断
-          if (abortController.signal.aborted || !isMounted) {
-            return
-          }
-
-          // AuthProviderから取得したuserを使用
-          if (authUser) {
-            console.log("DEBUG: authUser is", authUser.id)
-            console.log("View:", view, "User:", !!authUser, "ProfileLoading:", profileLoading)
-            
-            fetchProfileDataForEdit(abortController.signal)
-          } else {
-            // 未ログインの場合
-            console.log("DEBUG: 未ログイン状態")
-            if (isMounted) {
-              setProfileLoading(false)
-            }
-          }
-        } catch (error: any) {
-          // AbortErrorの場合は無視
-          if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
-            console.log('🔐 [Home] リクエストが中断されました（AbortError）')
-            return
-          }
-          console.error('Auth check error:', error)
-          if (isMounted) {
-            setProfileLoading(false)
-          }
-        }
-      }
-
-      fetchData()
-
-      // クリーンアップ関数
-      return () => {
-        isMounted = false
-        abortController.abort()
-      }
+      fetchProfileDataForEdit()
     }
   }, [view, authLoading, authUser])
-
-  // プロフィールの完了状況をチェック（ページ読み込み完了時に1回だけ実行）
-  const checkProfileCompletion = async (abortSignal?: AbortSignal) => {
-    try {
-      // まず、チェック完了前はモーダルを表示しない
-      setShowProfileModal(false)
-      
-      // AuthProviderから取得したuserを使用（supabase.auth.getSession()を直接呼ばない）
-      // ゲスト（未ログイン）時: ポップアップは絶対に表示しない
-      if (!authUser) {
-        setShowProfileModal(false)
-        setProfileChecked(true)
-        return
-      }
-
-      // AbortSignalがキャンセルされている場合は処理を中断
-      if (abortSignal?.aborted) {
-        console.log('🔐 [Home] プロフィールチェックがキャンセルされました')
-        return
-      }
-      
-      // プロフィール情報を取得
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('full_name, gender, birthday, location, city, interests')
-        .eq('id', authUser.id)
-        .single()
-
-      // AbortSignalがキャンセルされている場合は処理を中断
-      if (abortSignal?.aborted) {
-        console.log('🔐 [Home] プロフィール取得後にキャンセルされました')
-        return
-      }
-      
-      // デバッグ用ログ
-      console.log('=== プロフィールチェック開始 ===')
-      console.log('Current Profile Data:', profile)
-      console.log('Supabase Error:', error)
-      
-      // エラーハンドリング（データが存在しない場合のエラー PGRST116 などを処理）
-      if (error) {
-        // PGRST116 は「データが存在しない」エラー（これは正常なケース）
-        if (error.code === 'PGRST116') {
-          console.log('プロフィールが見つかりません（新規ユーザー）')
-          // ホーム画面にいる場合のみモーダルを表示
-          if (view === 'main') {
-            console.log('Should Show Modal?: true (プロフィール未登録、ホーム画面)')
-            setShowProfileModal(true)
-          } else {
-            console.log('Should Show Modal?: false (プロフィール未登録だが、ホーム画面ではない)')
-            setShowProfileModal(false)
-          }
-          return
-        } else {
-          // その他のエラー
-          console.error('プロフィール取得エラー:', error)
-          setShowProfileModal(false)
-          return
-        }
-      }
-      
-      // プロフィールが存在しない場合
-      if (!profile) {
-        console.log('プロフィールデータが null/undefined')
-        // ホーム画面にいる場合のみモーダルを表示
-        if (view === 'main') {
-          console.log('Should Show Modal?: true (プロフィール未登録、ホーム画面)')
-          setShowProfileModal(true)
-        } else {
-          console.log('Should Show Modal?: false (プロフィール未登録だが、ホーム画面ではない)')
-          setShowProfileModal(false)
-        }
-        return
-      }
-      
-      // プロフィールが存在する場合の判定
-      // full_name の厳密なチェック（空文字、null、undefined を除外）
-      const hasFullName = profile.full_name && 
-                         profile.full_name !== '' && 
-                         profile.full_name !== null && 
-                         profile.full_name !== undefined
-      
-      // birthday の厳密なチェック
-      const hasBirthday = profile.birthday && 
-                         profile.birthday !== '' && 
-                         profile.birthday !== null && 
-                         profile.birthday !== undefined
-      
-      // location の厳密なチェック（居住地：都道府県）
-      const hasLocation = profile.location && 
-                          profile.location !== '' && 
-                          profile.location !== null && 
-                          profile.location !== undefined
-      
-      // 詳細情報（生年月日、居住地のいずれか）が入力されているかチェック
-      const hasDetails = hasBirthday || hasLocation
-      
-      console.log('hasFullName:', hasFullName, '| value:', profile.full_name)
-      console.log('hasBirthday:', hasBirthday, '| value:', profile.birthday)
-      console.log('hasLocation:', hasLocation, '| value:', profile.location)
-      console.log('hasDetails:', hasDetails)
-      
-      // ログイン済み かつ プロフィール未入力時: ホーム画面にのみ、登録を促すポップアップを1回だけ表示
-      if (!hasFullName || !hasDetails) {
-        // プロフィールが未入力または不完全な場合
-        if (view === 'main') {
-          console.log('Should Show Modal?: true (プロフィール未入力、ホーム画面)')
-          setShowProfileModal(true)
-        } else {
-          console.log('Should Show Modal?: false (プロフィール未入力だが、ホーム画面ではない)')
-          setShowProfileModal(false)
-        }
-      } else {
-        // プロフィールが既に入力されている場合はモーダルを表示しない
-        console.log('Should Show Modal?: false (プロフィール入力済み)')
-        setShowProfileModal(false)
-      }
-      
-      console.log('=== プロフィールチェック完了 ===')
-    } catch (error: any) {
-      // AbortErrorの場合は無視
-      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
-        console.log('🔐 [Home] プロフィールチェックが中断されました（AbortError）')
-        return
-      }
-      // try-catch でキャッチされる予期しないエラー
-      console.error('Profile check error (catch):', error)
-      setShowProfileModal(false)
-    } finally {
-      // チェックが完了したことを示す（エラーが発生しても必ず実行される）
-      setProfileChecked(true)
-      console.log('Profile check completed. profileChecked = true')
-    }
-  }
-
-  // AuthProviderの状態変更を監視（onAuthStateChangeの代わり）
-  useEffect(() => {
-    // AuthProviderがまだローディング中なら何もしない
-    if (authLoading) {
-      return
-    }
-
-    // AbortControllerでリクエストをキャンセル可能にする
-    const abortController = new AbortController()
-    let isMounted = true
-
-    const handleAuthChange = async () => {
-      try {
-        // AbortSignalがキャンセルされている場合は処理を中断
-        if (abortController.signal.aborted || !isMounted) {
-          return
-        }
-
-        if (authUser) {
-          // ログイン済みの場合
-          console.log('🔄 [Home] AuthProvider状態変更: ログイン済み', authUser.id)
-          
-          // プロフィール作成処理（DBトリガーが動いていない場合の保険）
-          createProfileIfNotExists()
-          
-          // プロフィール情報を取得してStateにセット
-          const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('city, selected_area, detail_area')
-            .eq('id', authUser.id)
-            .maybeSingle()
-
-          // AbortSignalがキャンセルされている場合は処理を中断
-          if (abortController.signal.aborted || !isMounted) {
-            return
-          }
-
-          if (profileError) {
-            console.error('📋 [Home] AuthProvider状態変更: プロフィール取得エラー:', profileError)
-          } else if (profileData) {
-            console.log('📋 [Home] AuthProvider状態変更: プロフィール取得成功:', profileData)
-            
-            // 市区町村を設定
-            const cityValue = profileData?.city || null
-            if (isMounted) {
-              setUserCity(cityValue)
-              console.log(`🏙️ [Home] AuthProvider状態変更: 市区町村を設定: ${cityValue || '(未設定)'}`)
-              console.log(`🏙️ [Home] city: ${profileData?.city || '(null)'}`)
-              
-              // エリアを設定
-              const areaValue = profileData?.selected_area || profileData?.detail_area || null
-              setUserSelectedArea(areaValue)
-              console.log(`🗑️ [Home] AuthProvider状態変更: エリアを設定: ${areaValue || '(未設定)'}`)
-              
-              // 対応エリアチェック
-              if (cityValue && !isSupportedCity(cityValue)) {
-                setShowUnsupportedAreaModal(true)
-              } else {
-                setShowUnsupportedAreaModal(false)
-              }
-              
-              // ホーム画面にいる場合のみプロフィールチェックを実行
-              if (view === 'main') {
-                checkProfileCompletion(abortController.signal)
-              }
-            }
-          }
-        } else {
-          // 未ログインの場合
-          console.log('🔄 [Home] AuthProvider状態変更: 未ログイン')
-          if (isMounted) {
-            setProfile(null)
-            setShowProfileModal(false)
-            setProfileChecked(true)
-            setUserCity(null)
-            setUserSelectedArea(null)
-            setShowUnsupportedAreaModal(false)
-          }
-        }
-      } catch (error: any) {
-        // AbortErrorの場合は無視
-        if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
-          console.log('🔐 [Home] リクエストが中断されました（AbortError）')
-          return
-        }
-        console.error('Auth change handler error:', error)
-      }
-    }
-
-    handleAuthChange()
-
-    // クリーンアップ関数
-    return () => {
-      isMounted = false
-      abortController.abort()
-    }
-  }, [authLoading, authUser, view]) // authUserが変更された時のみ再実行
-
-  // プロフィールデータの取得
-  const fetchProfileData = async (abortSignal?: AbortSignal) => {
-    try {
-      setProfileLoading(true)
-      
-      // AuthProviderから取得したuserを使用
-      if (!authUser) {
-        setProfileLoading(false)
-        return
-      }
-
-      // AbortSignalがキャンセルされている場合は処理を中断
-      if (abortSignal?.aborted) {
-        console.log('🔐 [Home] プロフィール取得がキャンセルされました')
-        return
-      }
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single()
-
-      // AbortSignalがキャンセルされている場合は処理を中断
-      if (abortSignal?.aborted) {
-        console.log('🔐 [Home] プロフィール取得後にキャンセルされました')
-        return
-      }
-
-      if (data) {
-        setProfile(data)
-      } else {
-        // プロフィールがない場合でも、セッション情報を表示
-        setProfile({
-          id: authUser.id,
-          full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'ユーザー',
-          email: authUser.email,
-          avatar_url: authUser.user_metadata?.avatar_url || null
-        })
-      }
-    } catch (error: any) {
-      // AbortErrorの場合は無視
-      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
-        console.log('🔐 [Home] リクエストが中断されました（AbortError）')
-        return
-      }
-      console.error('Profile fetch error:', error)
-    } finally {
-      // AbortSignalがキャンセルされていない場合のみローディング状態を解除
-      if (!abortSignal?.aborted) {
-        setProfileLoading(false)
-      }
-    }
-  }
-
-  // 編集用のプロフィールデータ取得（Stateに反映）
-  const fetchProfileDataForEdit = async (abortSignal?: AbortSignal) => {
-    try {
-      setProfileLoading(true)
-      
-      // AuthProviderから取得したuserを使用
-      if (!authUser) {
-        setProfileLoading(false)
-        return
-      }
-
-      // AbortSignalがキャンセルされている場合は処理を中断
-      if (abortSignal?.aborted) {
-        console.log('🔐 [Home] プロフィール編集データ取得がキャンセルされました')
-        return
-      }
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single()
-
-      // AbortSignalがキャンセルされている場合は処理を中断
-      if (abortSignal?.aborted) {
-        console.log('🔐 [Home] プロフィール編集データ取得後にキャンセルされました')
-        return
-      }
-
-      if (data) {
-        setProfile(data)
-        // 編集フォームのStateに反映
-        // ※ selected_area と detail_area の両方を確認（互換性のため）
-        const areaValue = data.selected_area || data.detail_area || ''
-        console.log('📝 [fetchProfileDataForEdit] プロフィール読み込み:', {
-          location: data.location,
-          city: data.city,
-          selected_area: data.selected_area,
-          detail_area: data.detail_area,
-          使用するエリア: areaValue
-        })
-        setUsername(data.full_name || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'ユーザー')
-        setAvatarUrl(data.avatar_url || authUser.user_metadata?.avatar_url || '')
-        setPrefecture(data.location || data.prefecture || '')
-        setCity(data.city || '')
-        setSelectedArea(areaValue)
-        // ホーム画面のパーソナライズ用に登録都市とエリアを設定
-        setUserCity(data.city || null)
-        setUserSelectedArea(areaValue || null)
-        console.log('🗑️ [fetchProfileDataForEdit] 判定に使用しているエリア名:', areaValue || 'なし')
-      } else {
-        // プロフィールがない場合
-        const defaultName = authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'ユーザー'
-        setProfile({
-          id: authUser.id,
-          full_name: defaultName,
-          email: authUser.email,
-          avatar_url: authUser.user_metadata?.avatar_url || null
-        })
-        setUsername(defaultName)
-        setAvatarUrl(authUser.user_metadata?.avatar_url || '')
-        setPrefecture('')
-        setCity('')
-        setSelectedArea('')
-        setUserCity(null)
-        setUserSelectedArea(null)
-      }
-    } catch (error: any) {
-      // AbortErrorの場合は無視
-      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
-        console.log('🔐 [Home] リクエストが中断されました（AbortError）')
-        return
-      }
-      console.error('Profile fetch error:', error)
-    } finally {
-      // AbortSignalがキャンセルされていない場合のみローディング状態を解除
-      if (!abortSignal?.aborted) {
-        setProfileLoading(false)
-      }
-    }
-  }
-
-  // プロフィールが存在しない場合に作成する（DBトリガーの保険）
-  const createProfileIfNotExists = async () => {
-    if (!authUser) return
-    
-    try {
-      // 既存のプロフィールをチェック
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', authUser.id)
-        .maybeSingle()
-
-      if (!existingProfile) {
-        // プロフィールが存在しない場合、作成
-        console.log('プロフィールが存在しないため作成します:', authUser.id)
-        const { data, error } = await supabase
-          .from('profiles')
-          .insert({
-            id: authUser.id,
-            full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'ユーザー',
-            avatar_url: authUser.user_metadata?.avatar_url || null,
-            last_login: new Date().toISOString()
-          })
-          .select()
-
-        if (error) {
-          console.error('プロフィール作成エラー:', error)
-        } else {
-          console.log('プロフィールを作成しました:', data)
-        }
-      }
-    } catch (error) {
-      console.error('プロフィール作成チェックエラー:', error)
-    }
-  }
 
   // ポップアップをキャンセルする処理
   const handleCancelCitySelection = () => {
@@ -1191,6 +670,14 @@ export default function AppHome() {
   const remainingForGrandPrize = Math.max(0, 10 - completedCount) // 10個で豪華景品応募
 
   const currentCity = cityData[selectedCityId] || cityData['hikone']
+
+  // 認証中または読み込み中の表示
+  if (authLoading) {
+    return <HomeSkeleton />
+  }
+
+  // ログイン済みだがプロフィール取得中の場合（無限ロード防止のため、一定条件で表示を許可）
+  // 取得失敗時や未設定時でも、authLoading が false になればメイン画面を表示する
 
   return (
     <div className="h-screen bg-blue-50/30 font-sans flex flex-col text-gray-800 tracking-tight overflow-hidden">
@@ -1971,79 +1458,6 @@ export default function AppHome() {
 
       </main>
 
-
-      {/* --- チャット画面（下からスライドアニメーション） --- */}
-      {isChatOpen && (
-        <div className="fixed inset-0 z-[2000] flex flex-col bg-white animate-slide-up">
-          {/* ヘッダー */}
-          <div className="flex-shrink-0 p-4 border-b flex justify-between items-center bg-white">
-            <div className="flex items-center gap-3">
-              <img src={HIKONYAN_IMAGE} className="w-8 h-8 object-contain" alt="ひこにゃん" />
-              <p className="font-black text-gray-800 text-sm">ひこにゃんAI</p>
-            </div>
-            <button 
-              onClick={() => setIsChatOpen(false)} 
-              className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
-            >
-              <X size={20} />
-            </button>
-          </div>
-          
-          {/* メッセージエリア（スクロール可能） */}
-          <div className="flex-1 min-h-0 p-4 bg-gray-50 overflow-y-auto space-y-4 pb-10">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-3 rounded-2xl text-[13px] font-bold shadow-sm ${
-                  msg.role === 'user' 
-                    ? 'bg-red-500 text-white rounded-tr-none' 
-                    : 'bg-white border border-gray-100 text-gray-700 rounded-tl-none'
-                }`}>
-                  {msg.text}
-                </div>
-              </div>
-            ))}
-            {isChatLoading && (
-              <div className="flex justify-start">
-                <div className="bg-white border border-gray-100 text-gray-400 p-3 rounded-2xl rounded-tl-none text-[13px] font-bold animate-pulse shadow-sm">
-                  ひこにゃんが考えてるニャ...
-                </div>
-              </div>
-            )}
-            <div ref={scrollRef} />
-          </div>
-
-          {/* 入力エリア（固定、最下部に配置） */}
-          <div className="flex-shrink-0 p-4 border-t bg-white pb-safe">
-            <div className="max-w-2xl mx-auto flex items-center gap-2">
-              <div className="flex-1 bg-gray-100 rounded-full px-4 py-3 flex items-center gap-3 border border-gray-200 focus-within:border-red-300 focus-within:ring-2 focus-within:ring-red-100 transition-all">
-                <input 
-                  autoFocus
-                  value={chatInput} 
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                      handleSendMessage()
-                    }
-                  }}
-                  className="bg-transparent flex-1 outline-none font-bold text-sm text-gray-800" 
-                  placeholder="メッセージを入力ニャ..." 
-                  disabled={isChatLoading}
-                />
-                <button 
-                  onClick={handleSendMessage} 
-                  disabled={!chatInput.trim() || isChatLoading}
-                  className={`p-1 transition-colors ${
-                    !chatInput.trim() || isChatLoading ? 'text-gray-300' : 'text-red-500 hover:text-red-600'
-                  }`}
-                >
-                  <Send size={22} fill={chatInput.trim() && !isChatLoading ? "currentColor" : "none"} />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 街選択ポップアップ（全国対応） */}
       {isCitySelectorOpen && (
         <>
@@ -2236,52 +1650,8 @@ export default function AppHome() {
           userEmail={authUser.email}
           userFullName={authUser.user_metadata?.full_name || authUser.user_metadata?.name || profile?.full_name}
           onComplete={async () => {
-            // 保存成功後、モーダルを閉じてプロフィールを再チェック
             setShowProfileModal(false)
-            
-            // 最新のプロフィールデータを再取得（キャッシュクリア）
-            console.log('📋 [Profile] モーダル閉じ後、最新データを再取得')
-            
-            // ===== プロフィールの最新データを取得してStateにセット =====
-            if (authUser?.id) {
-              const { data: latestProfile, error: profileError } = await supabase
-                .from('profiles')
-                .select('city, selected_area, detail_area')
-                .eq('id', authUser.id)
-                .single()
-              
-              if (!profileError && latestProfile) {
-                console.log('📋 [Profile] 最新プロフィール:', latestProfile)
-                
-                // 市区町村を即座に更新
-                const newCity = latestProfile.city || null
-                setUserCity(newCity)
-                console.log(`🏙️ [Profile] 市区町村を更新: ${newCity || '(未設定)'}`)
-                console.log(`🏙️ [Profile] city: ${latestProfile.city || '(null)'}`)
-                
-                // エリアを即座に更新
-                const newArea = latestProfile.selected_area || latestProfile.detail_area || null
-                setUserSelectedArea(newArea)
-                console.log(`🗑️ [Profile] エリアを更新: ${newArea || '(未設定)'}`)
-                
-                // 対応エリアチェック
-                if (newCity && !isSupportedCity(newCity)) {
-                  setShowUnsupportedAreaModal(true)
-                } else {
-                  setShowUnsupportedAreaModal(false)
-                }
-              }
-            }
-            
-            await fetchProfileData()
-            
-            // ホーム画面にいる場合のみ再チェック（これにより、次回はモーダルが表示されない）
-            if (view === 'main') {
-              checkProfileCompletion()
-            }
-            
-            // SWRの再フェッチ（Stateが更新された後、SWRのキーも変わるので自動で再取得される）
-            // 念のため手動でも再取得をトリガー
+            await refreshProfile()
             refetchWaste()
             refetchStats()
           }}
@@ -2557,6 +1927,8 @@ export default function AppHome() {
           setIsChatOpen(false) // 他のページに遷移する時もチャットを閉じる
         }}
       />
+
+      {isChatOpen && <ChatRegistration onComplete={() => setIsChatOpen(false)} />}
     </div>
   )
 }

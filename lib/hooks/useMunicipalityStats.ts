@@ -143,49 +143,55 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     
     // 方法1: city で完全一致（トリム済み）
     console.log(`📊 [Stats] 検索1: city='${normalizedCity}'`)
-    const { data: exactMatch, error: exactError } = await supabase
-      .from('municipalities')
-      .select('city, population, mascot_name, population_updated_at')
-      .eq('city', normalizedCity)
-      .maybeSingle()
-    
-    if (exactMatch) {
-      municipality = exactMatch
-      console.log(`📊 [Stats] ✅ cityで完全一致で発見!`)
-      console.log(`📊 [Stats]    DBから取得した自治体名: "${municipality.city}"`)
-      console.log(`📊 [Stats]    DBから取得した人口: ${municipality.population}`)
-      console.log(`📊 [Stats]    マスコット: ${municipality.mascot_name}`)
-    } else {
-      console.log(`📊 [Stats] ❌ 完全一致なし (${exactError?.message || 'データなし'})`)
-      
-      // 方法2: ILIKE部分一致（city）
-      console.log(`📊 [Stats] 検索2: ilike('city', '%${cityBase}%')`)
-      const { data: likeMatches, error: likeError } = await supabase
+    try {
+      const { data: exactMatch, error: exactError } = await supabase
         .from('municipalities')
         .select('city, population, mascot_name, population_updated_at')
-        .ilike('city', `%${cityBase}%`)
-        .limit(5)
+        .eq('city', normalizedCity)
+        .maybeSingle()
       
-      if (likeMatches && likeMatches.length > 0) {
-        municipality = likeMatches[0]
-        console.log(`📊 [Stats] ✅ cityで部分一致で発見! (${likeMatches.length}件ヒット)`)
-        console.log(`📊 [Stats]    DBから取得した自治体名: "${municipality.city}"`)
-        console.log(`📊 [Stats]    DBから取得した人口: ${municipality.population}`)
-        if (likeMatches.length > 1) {
-          console.log(`📊 [Stats]    他の候補:`, likeMatches.slice(1).map(m => m.city))
+      if (exactMatch) {
+        municipality = exactMatch
+        console.log(`📊 [Stats] ✅ cityで完全一致で発見!`)
+      } else if (exactError) {
+        console.error(`📊 [Stats] 検索1エラー: ${exactError.message}`)
+      }
+    } catch (e) {
+      console.error(`📊 [Stats] 検索1で例外発生:`, e)
+    }
+    
+    if (!municipality) {
+      // 方法2: ILIKE部分一致（city）
+      console.log(`📊 [Stats] 検索2: ilike('city', '%${cityBase}%')`)
+      try {
+        const { data: likeMatches, error: likeError } = await supabase
+          .from('municipalities')
+          .select('city, population, mascot_name, population_updated_at')
+          .ilike('city', `%${cityBase}%`)
+          .limit(5)
+        
+        if (likeMatches && likeMatches.length > 0) {
+          municipality = likeMatches[0]
+          console.log(`📊 [Stats] ✅ cityで部分一致で発見!`)
+        } else if (likeError) {
+          console.error(`📊 [Stats] 検索2エラー: ${likeError.message}`)
         }
-      } else {
-        console.log(`📊 [Stats] ❌ 部分一致もなし (${likeError?.message || 'データなし'})`)
+      } catch (e) {
+        console.error(`📊 [Stats] 検索2で例外発生:`, e)
       }
     }
     
     // municipalitiesテーブルの全データを確認（デバッグ用）
-    const { data: allMunis } = await supabase
-      .from('municipalities')
-      .select('city, population')
-      .order('city')
-      .limit(20)
-    console.log(`📊 [Stats] municipalitiesテーブルの内容 (先頭20件):`, allMunis?.map(m => `${m.city}:${m.population}`))
+    try {
+      const { data: allMunis } = await supabase
+        .from('municipalities')
+        .select('city, population')
+        .order('city')
+        .limit(20)
+      console.log(`📊 [Stats] municipalitiesテーブルの内容 (先頭20件):`, allMunis?.map(m => `${m.city}:${m.population}`))
+    } catch (e) {
+      console.error(`📊 [Stats] municipalities一覧取得で例外発生:`, e)
+    }
     
     // ============ ステップ2: profilesテーブルから登録者数をカウント ============
     console.log(`\n📊 [Stats] === ステップ2: profiles テーブルから町ごとの登録者数カウント ===`)
@@ -195,44 +201,55 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     
     // 方法1: 正規化した市名で完全一致（最も正確）
     console.log(`📊 [Stats] カウント1: eq('city', '${normalizedCity}')`)
-    const { count: count1, error: err1 } = await supabase
-      .from('profiles')
-      .select('id', { count: 'exact', head: true })
-      .eq('city', normalizedCity)
-    console.log(`📊 [Stats]    結果: ${count1 ?? 0}人 ${err1 ? `(エラー: ${err1.message})` : ''}`)
-    
-    if (count1 !== null && count1 > 0) {
-      registeredUsers = count1
-      usedSearchPattern = `eq('city', '${normalizedCity}')`
+    try {
+      const { count: count1, error: err1 } = await supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('city', normalizedCity)
+      
+      if (count1 !== null && count1 > 0) {
+        registeredUsers = count1
+        usedSearchPattern = `eq('city', '${normalizedCity}')`
+      } else if (err1) {
+        console.error(`📊 [Stats] カウント1エラー: ${err1.message}`)
+      }
+    } catch (e) {
+      console.error(`📊 [Stats] カウント1で例外発生:`, e)
     }
     
     // 方法2: 元の入力値で検索（「彦根」など市なしパターン）
     if (registeredUsers === 0 && city !== normalizedCity) {
       console.log(`📊 [Stats] カウント2: eq('city', '${city}')`)
-      const { count: count2, error: err2 } = await supabase
-        .from('profiles')
-        .select('id', { count: 'exact', head: true })
-        .eq('city', city)
-      console.log(`📊 [Stats]    結果: ${count2 ?? 0}人 ${err2 ? `(エラー: ${err2.message})` : ''}`)
-      
-      if (count2 !== null && count2 > 0) {
-        registeredUsers = count2
-        usedSearchPattern = `eq('city', '${city}')`
+      try {
+        const { count: count2, error: err2 } = await supabase
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+          .eq('city', city)
+        
+        if (count2 !== null && count2 > 0) {
+          registeredUsers = count2
+          usedSearchPattern = `eq('city', '${city}')`
+        }
+      } catch (e) {
+        console.error(`📊 [Stats] カウント2で例外発生:`, e)
       }
     }
     
     // 方法3: ILIKE部分一致（「彦根」で「彦根市」もカウント）
     if (registeredUsers === 0) {
       console.log(`📊 [Stats] カウント3: ilike('city', '%${cityBase}%')`)
-      const { count: count3, error: err3 } = await supabase
-        .from('profiles')
-        .select('id', { count: 'exact', head: true })
-        .ilike('city', `%${cityBase}%`)
-      console.log(`📊 [Stats]    結果: ${count3 ?? 0}人 ${err3 ? `(エラー: ${err3.message})` : ''}`)
-      
-      if (count3 !== null && count3 > 0) {
-        registeredUsers = count3
-        usedSearchPattern = `ilike('city', '%${cityBase}%')`
+      try {
+        const { count: count3, error: err3 } = await supabase
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+          .ilike('city', `%${cityBase}%`)
+        
+        if (count3 !== null && count3 > 0) {
+          registeredUsers = count3
+          usedSearchPattern = `ilike('city', '%${cityBase}%')`
+        }
+      } catch (e) {
+        console.error(`📊 [Stats] カウント3で例外発生:`, e)
       }
     }
     
@@ -241,51 +258,59 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     // ============ 自分自身がカウントに含まれているか確認 ============
     if (currentUserId) {
       console.log(`\n📊 [Stats] === 自分自身の確認 ===`)
-      const { data: myProfile, error: myError } = await supabase
-        .from('profiles')
-        .select('id, city')
-        .eq('id', currentUserId)
-        .maybeSingle()
-      
-      if (myProfile) {
-        console.log(`📊 [Stats] 自分のプロフィール: city="${myProfile.city}"`)
+      try {
+        const { data: myProfile, error: myError } = await supabase
+          .from('profiles')
+          .select('id, city')
+          .eq('id', currentUserId)
+          .maybeSingle()
         
-        // 自分の city が検索条件に一致するか確認
-        const myCity = myProfile.city?.trim() || ''
-        const myCityMatches = 
-          myCity === normalizedCity ||
-          myCity === city ||
-          myCity.includes(cityBase) ||
-          cityBase && myCity.includes(cityBase)
-        
-        if (myCityMatches) {
-          console.log(`📊 [Stats] ✅ 自分は「${normalizedCity}」のカウントに含まれています`)
-        } else {
-          console.log(`📊 [Stats] ⚠️ 自分の city (${myCity}) は検索条件 (${normalizedCity}) と一致しません`)
-          console.log(`📊 [Stats]    プロフィールの city を確認してください`)
+        if (myProfile) {
+          console.log(`📊 [Stats] 自分のプロフィール: city="${myProfile.city}"`)
+          
+          // 自分の city が検索条件に一致するか確認
+          const myCity = myProfile.city?.trim() || ''
+          const myCityMatches = 
+            myCity === normalizedCity ||
+            myCity === city ||
+            myCity.includes(cityBase) ||
+            (cityBase && myCity.includes(cityBase))
+          
+          if (myCityMatches) {
+            console.log(`📊 [Stats] ✅ 自分は「${normalizedCity}」のカウントに含まれています`)
+          } else {
+            console.log(`📊 [Stats] ⚠️ 自分の city (${myCity}) は検索条件 (${normalizedCity}) と一致しません`)
+          }
         }
-      } else {
-        console.log(`📊 [Stats] ⚠️ 自分のプロフィールが見つかりません`, myError?.message)
+      } catch (e) {
+        console.error(`📊 [Stats] 自己プロフィール確認で例外発生:`, e)
       }
     }
     
     // profilesテーブルのcity一覧を確認（デバッグ用）
-    const { data: profileCities } = await supabase
-      .from('profiles')
-      .select('city')
-      .not('city', 'is', null)
-      .limit(50)
-    const uniqueCities = [...new Set(profileCities?.map(p => p.city).filter(Boolean))]
-    console.log(`📊 [Stats] profilesテーブルのcity一覧:`, uniqueCities)
+    try {
+      const { data: profileCities } = await supabase
+        .from('profiles')
+        .select('city')
+        .not('city', 'is', null)
+        .limit(50)
+      const uniqueCities = [...new Set(profileCities?.map(p => p.city).filter(Boolean))]
+      console.log(`📊 [Stats] profilesテーブルのcity一覧:`, uniqueCities)
+    } catch (e) {
+      console.error(`📊 [Stats] profiles city一覧取得で例外発生:`, e)
+    }
     
     // ============ ステップ3: アプリ全体の登録者数（参考用） ============
     console.log(`\n📊 [Stats] === ステップ3: アプリ全体の登録者数 ===`)
-    const { count: totalUsers } = await supabase
-      .from('profiles')
-      .select('id', { count: 'exact', head: true })
-    
-    const totalAppUsers = totalUsers ?? 0
-    console.log(`📊 [Stats] アプリ全体の登録者数: ${totalAppUsers}人`)
+    let totalAppUsers = 0
+    try {
+      const { count: totalUsers } = await supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+      totalAppUsers = totalUsers ?? 0
+    } catch (e) {
+      console.error(`📊 [Stats] 全体登録者数カウントで例外発生:`, e)
+    }
     
     // ============ 最終結果 ============
     const displayCity = municipality?.city || normalizedCity

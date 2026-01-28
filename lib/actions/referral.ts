@@ -41,7 +41,33 @@ export async function applyReferralCode(
     
     const code = referralCode.trim().toUpperCase()
     
-    // 1. 招待された人（自分）の情報を取得
+    console.log(`🎫 [Referral] 招待コード適用開始: ${currentUserId} -> ${code}`)
+
+    // 1. RPCを試行（推奨される方法）
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('apply_referral_bonus', {
+        invitee_id: currentUserId,
+        referral_code_to_use: code,
+        bonus_amount: REFERRAL_BONUS_POINTS
+      })
+
+      if (!rpcError && rpcData) {
+        console.log('🎫 [Referral] RPC結果:', rpcData)
+        if (typeof rpcData === 'object' && 'success' in rpcData) {
+          return rpcData as ApplyReferralResult
+        }
+      }
+      
+      // RPCが未定義などのエラーの場合は、フォールバックロジックへ
+      if (rpcError) {
+        console.warn('🎫 [Referral] RPC失敗、フォールバックロジックを実行します:', rpcError)
+      }
+    } catch (e) {
+      console.warn('🎫 [Referral] RPC例外、フォールバックロジックを実行します:', e)
+    }
+
+    // 2. フォールバックロジック（RPCが使えない場合）
+    // 招待された人（自分）の情報を取得
     const { data: currentUser, error: currentUserError } = await supabase
       .from('profiles')
       .select('id, full_name, referral_code, has_used_referral')

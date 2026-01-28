@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History } from 'lucide-react'
+import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History, Camera } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
 import { usePoints, usePointHistory, getPointHistoryStyle, PointHistory } from '@/lib/hooks/usePoints'
@@ -12,16 +12,28 @@ import { useFriends, addFriend, removeFriend, searchUserByCode, Friend } from '@
 import { sendHikopo } from '@/lib/actions/transfer'
 import QRCode from 'react-qr-code'
 import { formatFullLocation, formatShortLocation } from '@/lib/constants/shigaRegions'
+import { ProfileSkeleton } from '@/components/Skeleton'
 import { useAuth } from '@/components/AuthProvider'
+import QRScanner from '@/components/QRScanner'
 
 export default function ProfilePage() {
   const router = useRouter()
   
   // AuthProvider から認証状態を取得
-  const { session, user: authUser, loading: authLoading, signOut } = useAuth()
+  const { session, user: authUser, profile: authProfile, loading: authLoading, signOut } = useAuth()
   
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [profile, setProfile] = useState<any>(null)
+  
+  // QRスキャナー用のステート
+  const [showScanner, setShowScanner] = useState(false)
+  
+  // profile を取得または authProfile を使用
+  useEffect(() => {
+    if (authProfile) {
+      setProfile(authProfile)
+    }
+  }, [authProfile])
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [copied, setCopied] = useState(false)
   const [generatingCode, setGeneratingCode] = useState(false)
@@ -189,38 +201,29 @@ export default function ProfilePage() {
 
   // AuthProvider の状態が確定したらプロフィールを取得
   useEffect(() => {
-    console.log('📋 [Profile] AuthProvider状態:', { 
-      authLoading, 
-      hasSession: !!session,
-      userId: authUser?.id 
-    })
-    
     // AuthProvider がまだローディング中なら何もしない
-    if (authLoading) {
-      console.log('📋 [Profile] 認証状態確認中...')
-      return
-    }
+    if (authLoading) return
     
     // セッションがない場合はログインページへ
     if (!session || !authUser) {
-      console.log('📋 [Profile] セッションなし → ログインページへリダイレクト')
       router.push('/login')
       return
     }
+
+    // すでにコンテキストにプロフィールがある場合はそれを使用
+    if (authProfile) {
+      setProfile(authProfile)
+      return
+    }
     
-    // セッションがある場合はプロフィールを取得
-    // AbortControllerを使用して、コンポーネントのアンマウント時にリクエストをキャンセル
+    // コンテキストにない場合のみ取得
     const abortController = new AbortController()
-    
-    console.log('📋 [Profile] セッション確認OK → プロフィール取得')
     fetchProfileData(abortController.signal)
     
-    // クリーンアップ関数：コンポーネントのアンマウント時にリクエストをキャンセル
     return () => {
-      console.log('📋 [Profile] クリーンアップ: リクエストをキャンセル')
       abortController.abort()
     }
-  }, [authLoading, session, authUser])
+  }, [authLoading, session, authUser, authProfile])
 
   // 生年月日を読みやすい形式に整形する関数
   const formatBirthday = (birthday: string | null | undefined): string => {
@@ -350,6 +353,13 @@ export default function ProfilePage() {
       setProfile(null)
       router.push('/')
     }
+  }
+
+  // QRスキャン成功時の処理
+  const handleScanSuccess = (code: string) => {
+    setShowScanner(false)
+    // 送金画面へコードを渡して遷移
+    router.push(`/transfer?code=${code}`)
   }
   
   // 招待コードをコピー
@@ -564,55 +574,78 @@ export default function ProfilePage() {
   
   // 招待コードを適用
   const handleApplyReferralCode = async () => {
-    if (!authUser?.id || !inputReferralCode.trim()) return
+    if (!authUser?.id) {
+      alert('ログインが必要です')
+      return
+    }
+    
+    if (!inputReferralCode.trim()) {
+      alert('招待コードを入力してください')
+      return
+    }
     
     setApplyingCode(true)
     setApplyResult(null)
     
     try {
+      console.log('🎫 [Profile] 招待コード適用開始:', inputReferralCode.trim())
       const result = await applyReferralCode(authUser.id, inputReferralCode.trim())
+      console.log('🎫 [Profile] 招待コード適用結果:', result)
       setApplyResult(result)
       
       if (result.success) {
+        alert('🎉 招待コードを適用しました！500ポイントを獲得しました。')
         // 成功時：プロフィール、ポイント、履歴を再取得
         await fetchProfileData()
         refetchPoints()
         refetchHistory()
         setInputReferralCode('')
+      } else {
+        alert(`❌ エラー: ${result.message}`)
       }
     } catch (error) {
       console.error('招待コード適用エラー:', error)
+      alert('⚠️ 予期しないエラーが発生しました。通信状況を確認してください。')
       setApplyResult({ success: false, message: '予期しないエラーが発生しました' })
     } finally {
       setApplyingCode(false)
     }
   }
 
-  // AuthProvider がローディング中、またはプロフィール取得中
-  if (authLoading || loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 min-h-screen">
-        <div className="animate-spin text-4xl mb-4">🐱</div>
-        <p className="font-black text-gray-400">
-          {authLoading ? '認証状態を確認中...' : '読み込み中...'}
-        </p>
-      </div>
-    )
+  // AuthProvider がローディング中
+  if (authLoading) {
+    return <ProfileSkeleton />
+  }
+  
+  // プロフィール取得中（セッションはあるがプロフィールデータがまだない場合）
+  // ただし、無限ロードを防ぐため authLoading が false の場合は表示を許可する
+  if (session && !profile && !authProfile) {
+    // コンテキストにもプロフィールがなく、ローカルでも取得中の場合のみスケルトン
+    // すでに取得試行が終わっている（authLoading=false）なら、空のプロフィールとして表示
+    return <ProfileSkeleton />
   }
   
   // セッションがない場合（リダイレクト前の表示）
   if (!session) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 min-h-screen">
-        <div className="animate-spin text-4xl mb-4">🔐</div>
-        <p className="font-black text-gray-400">ログインページへ移動中...</p>
-      </div>
-    )
+    return <ProfileSkeleton />
   }
 
   return (
-    <div className="max-w-xl mx-auto p-6 pb-24 animate-in fade-in duration-500">
+    <div className="max-w-xl mx-auto p-6 pb-32 animate-in fade-in duration-500">
       <div className="space-y-6">
+        {/* PayPay風のアクションボタンセクション */}
+        <div className="grid grid-cols-1 gap-4">
+          <button
+            onClick={() => setShowScanner(true)}
+            className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white py-6 rounded-[2rem] font-black text-xl shadow-xl shadow-red-200/50 active:scale-95 transition-all flex flex-col items-center justify-center gap-2 border-b-4 border-red-800"
+          >
+            <div className="bg-white/20 p-3 rounded-full">
+              <Camera size={32} />
+            </div>
+            <span>ひこポで払う（QR読み取り）</span>
+          </button>
+        </div>
+
         {/* プロフィールヘッダー */}
         <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden">
           <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full" />
@@ -663,6 +696,17 @@ export default function ProfilePage() {
                   <span className="text-sm font-bold ml-1">pt</span>
                 </div>
               </div>
+            </div>
+
+            {/* 送金ボタン */}
+            <div className="mt-4">
+              <button
+                onClick={() => router.push('/transfer')}
+                className="w-full bg-white/20 hover:bg-white/30 text-white py-4 rounded-2xl font-black text-base backdrop-blur-md transition-all flex items-center justify-center gap-2 border border-white/30 active:scale-95"
+              >
+                <Send size={20} />
+                <span>ひこポを送る（友達へ）</span>
+              </button>
             </div>
             
             {/* ポイント交換・履歴ボタン */}
@@ -825,7 +869,7 @@ export default function ProfilePage() {
         
         {/* 招待コード入力フォーム（未使用の場合のみ表示） */}
         {profile && !profile.has_used_referral && (
-          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-[2.5rem] p-6 text-white shadow-xl relative overflow-hidden">
+          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-[2.5rem] p-6 text-white shadow-xl relative overflow-hidden z-30">
             <div className="absolute -top-8 -right-8 w-24 h-24 bg-white/10 rounded-full" />
             <div className="relative z-10">
               <div className="flex items-center gap-3 mb-4">
@@ -1512,6 +1556,14 @@ export default function ProfilePage() {
       
       {/* 下部ナビゲーション */}
       <BottomNavigation />
+
+      {/* QRスキャナーモーダル */}
+      {showScanner && (
+        <QRScanner
+          onScanSuccess={handleScanSuccess}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
     </div>
   )
 }

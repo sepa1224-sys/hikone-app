@@ -12,6 +12,7 @@ import {
   isSupportedCity,
   UNSUPPORTED_AREA_MESSAGE
 } from '@/lib/constants/shigaRegions'
+import { useAuth } from '@/components/AuthProvider'
 
 interface ProfileRegistrationModalProps {
   userId: string
@@ -103,6 +104,7 @@ export default function ProfileRegistrationModal({
   userFullName,
   onComplete
 }: ProfileRegistrationModalProps) {
+  const { refreshProfile } = useAuth()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
@@ -194,17 +196,13 @@ export default function ProfileRegistrationModal({
 
   const checkProfileStatus = async () => {
     try {
-      // 現在ログインしているユーザーのIDを確実に取得
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      
-      if (userError || !user) {
-        console.error('User fetch error:', userError)
-        setErrorMsg('ユーザー情報の取得に失敗しました')
+      if (!userId) {
+        setErrorMsg('ユーザーIDが見つかりません')
         setLoading(false)
         return
       }
 
-      const currentUserId = user.id
+      const currentUserId = userId
       console.log('📋 [Profile] プロフィール取得開始 - User ID:', currentUserId)
 
       // DBから既存プロフィールを取得
@@ -330,21 +328,16 @@ export default function ProfileRegistrationModal({
     setErrorMsg('')
 
     try {
-      // 現在ログインしているユーザーのIDを確実に取得
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      
-      if (userError || !user) {
-        console.error('User fetch error:', userError)
-        alert(`ユーザー情報の取得に失敗しました: ${userError?.message || 'ユーザーが見つかりません'}`)
-        setErrorMsg('ユーザー情報の取得に失敗しました')
-        setTimeout(() => setErrorMsg(''), 3000)
+      if (!userId) {
+        setErrorMsg('ユーザーIDが見つかりません')
+        setSaving(false)
         return
       }
 
       // 年・月・日からYYYY-MM-DD形式の文字列を生成
       const birthdayString = formatBirthday(birthYear, birthMonth, birthDay)
 
-      console.log('保存開始 - User ID:', user.id, 'Form Data:', formData, 'Birthday:', birthdayString)
+      console.log('保存開始 - User ID:', userId, 'Form Data:', formData, 'Birthday:', birthdayString)
 
       // 保存するデータを準備（すべてTEXT型で保存）
       // 注意: selected_area はゴミ収集判定に使用、detail_area は詳細エリア表示用
@@ -355,7 +348,7 @@ export default function ProfileRegistrationModal({
       const selectedAreaValue = formData.selected_area || formData.detail_area || null
       
       const profileData: Record<string, any> = {
-        id: user.id,
+        id: userId,
         full_name: formData.full_name || null,
         gender: formData.gender || null,
         birthday: birthdayString || null, // YYYY-MM-DD形式の日付文字列
@@ -376,7 +369,7 @@ export default function ProfileRegistrationModal({
       }
       
       console.log('📋 [Profile] 保存データ:', profileData)
-      console.log('📋 [Profile] ユーザーID:', user.id)
+      console.log('📋 [Profile] ユーザーID:', userId)
 
       // profilesテーブルにupsert（更新または挿入）
       // onConflict: 'id' を明示的に指定して、既存レコードがある場合は確実に更新
@@ -408,22 +401,6 @@ export default function ProfileRegistrationModal({
         console.error('📋 [Profile] 保存失敗の理由:', error.message)
         console.error('📋 [Profile] エラー詳細:', JSON.stringify(error, null, 2))
         console.error('📋 [Profile] エラーコード:', error.code)
-        console.error('📋 [Profile] ヒント:', error.hint)
-        console.error('📋 [Profile] エラー詳細（オブジェクト）:', error)
-        
-        // RLS権限エラーの場合の詳細ログ
-        if (error.code === '42501' || error.message.includes('permission') || error.message.includes('policy')) {
-          console.error('📋 [Profile] ⚠️ RLS権限エラーの可能性があります')
-          console.error('📋 [Profile] 現在のユーザーID:', user.id)
-          console.error('📋 [Profile] 保存しようとしたデータのID:', profileData.id)
-          console.error('📋 [Profile] ユーザーIDの一致:', user.id === profileData.id)
-        }
-        
-        // 一意制約エラーの場合の詳細ログ
-        if (error.code === '23505' || error.message.includes('unique') || error.message.includes('duplicate')) {
-          console.error('📋 [Profile] ⚠️ 一意制約エラーの可能性があります')
-          console.error('📋 [Profile] 保存しようとしたデータのID:', profileData.id)
-        }
         
         setErrorMsg(`保存に失敗しました: ${error.message}`)
         setTimeout(() => setErrorMsg(''), 5000)
@@ -431,6 +408,9 @@ export default function ProfileRegistrationModal({
         console.log('📋 [Profile] 保存成功:', data)
         setShowSuccess(true)
         setErrorMsg('')
+        
+        // コンテキストのプロフィールを更新
+        await refreshProfile()
         
         // 保存成功通知を表示してからモーダルを閉じる
         // onComplete を呼び出して親コンポーネントに通知（状態の即時更新をトリガー）
@@ -440,8 +420,6 @@ export default function ProfileRegistrationModal({
       }
     } catch (error: any) {
       console.error('Unexpected error:', error)
-      console.error('Error stack:', error?.stack)
-      alert(`予期しないエラーが発生しました: ${error?.message || '不明なエラー'}\n詳細はコンソールを確認してください`)
       setErrorMsg(`予期しないエラー: ${error?.message || '不明なエラー'}`)
       setTimeout(() => setErrorMsg(''), 5000)
     } finally {

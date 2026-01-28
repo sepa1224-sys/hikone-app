@@ -25,7 +25,7 @@ interface GiftExchangeRequest {
 
 export default function AdminDashboard() {
   const router = useRouter()
-  const { user: authUser, loading: authLoading } = useAuth()
+  const { user: authUser, profile: authProfile, loading: authLoading } = useAuth()
   const { settings, loading: settingsLoading, updateBasePointRate } = useSystemSettings()
   const [monthlyPoints, setMonthlyPoints] = useState<number>(0)
   const [loadingPoints, setLoadingPoints] = useState(true)
@@ -44,45 +44,24 @@ export default function AdminDashboard() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
   const [checkingAdmin, setCheckingAdmin] = useState(true)
 
-  // 管理者権限をチェック
+  // 管理者権限チェック
   useEffect(() => {
-    async function checkAdminAccess() {
-      if (authLoading) return
-      
-      if (!authUser) {
-        console.log('🚫 [Admin] 未ログイン - リダイレクト')
+    if (authLoading) return
+    
+    if (!authUser) {
+      router.push('/')
+      return
+    }
+
+    if (authProfile) {
+      if (authProfile.is_admin !== true) {
         router.push('/')
         return
       }
-
-      try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('is_admin')
-          .eq('id', authUser.id)
-          .single()
-
-        if (error) throw error
-
-        const hasAdminAccess = data?.is_admin === true
-
-        if (!hasAdminAccess) {
-          console.log('🚫 [Admin] 管理者権限なし - リダイレクト')
-          router.push('/')
-          return
-        }
-
-        setIsAdmin(true)
-      } catch (err) {
-        console.error('❌ [Admin] 権限チェックエラー:', err)
-        router.push('/')
-      } finally {
-        setCheckingAdmin(false)
-      }
+      setIsAdmin(true)
+      setCheckingAdmin(false)
     }
-
-    checkAdminAccess()
-  }, [authUser, authLoading, router])
+  }, [authUser, authProfile, authLoading, router])
 
   // 今月発行された合計ポイントを取得
   useEffect(() => {
