@@ -143,6 +143,12 @@ export default function AppHome() {
   // AuthProviderから認証状態を取得（一本化）
   const { session, user: authUser, profile: authProfile, loading: authLoading, refreshProfile } = useAuth()
   
+  // マウント済みフラグ（ハイドレーションエラー防止）
+  const [isMounted, setIsMounted] = useState(false)
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
   const [view, setView] = useState<'main' | 'profile'>('main')
   
   // プロフィール情報
@@ -672,7 +678,8 @@ export default function AppHome() {
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
   // 認証中または読み込み中の表示
-  if (authLoading) {
+  // ただし、モバイル環境でのハングを防ぐため、マウントされていない場合はスケルトンを表示しない
+  if (!isMounted || authLoading) {
     return <HomeSkeleton />
   }
 

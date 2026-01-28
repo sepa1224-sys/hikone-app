@@ -74,8 +74,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const initAuth = async () => {
       console.log('🔐 [AuthProvider] 初期化開始...')
+      
+      // モバイル環境などで getSession がハングする場合があるため、タイムアウトを設ける
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Auth Timeout')), 5000)
+      )
+
       try {
-        const { data: { session: initialSession }, error } = await supabase.auth.getSession()
+        const { data: { session: initialSession }, error } = await Promise.race([
+          supabase.auth.getSession(),
+          timeoutPromise
+        ]) as any
         
         if (error) console.error('🔐 [AuthProvider] セッション取得エラー:', error)
 

@@ -22,6 +22,12 @@ export default function ProfilePage() {
   // AuthProvider から認証状態を取得
   const { session, user: authUser, profile: authProfile, loading: authLoading, signOut } = useAuth()
   
+  // マウント済みフラグ（ハイドレーションエラー防止）
+  const [isMounted, setIsMounted] = useState(false)
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
   const [loading, setLoading] = useState(false)
   const [profile, setProfile] = useState<any>(null)
   
@@ -358,8 +364,8 @@ export default function ProfilePage() {
   // QRスキャン成功時の処理
   const handleScanSuccess = (code: string) => {
     setShowScanner(false)
-    // 送金画面へコードを渡して遷移
-    router.push(`/transfer?code=${code}`)
+    // 支払い画面へコードを渡して遷移
+    router.push(`/pay?code=${code}`)
   }
   
   // 招待コードをコピー
@@ -613,7 +619,7 @@ export default function ProfilePage() {
   }
 
   // AuthProvider がローディング中
-  if (authLoading) {
+  if (!isMounted || authLoading) {
     return <ProfileSkeleton />
   }
   
@@ -636,7 +642,7 @@ export default function ProfilePage() {
         {/* PayPay風のアクションボタンセクション */}
         <div className="grid grid-cols-1 gap-4">
           <button
-            onClick={() => setShowScanner(true)}
+            onClick={() => router.push('/pay')}
             className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white py-6 rounded-[2rem] font-black text-xl shadow-xl shadow-red-200/50 active:scale-95 transition-all flex flex-col items-center justify-center gap-2 border-b-4 border-red-800"
           >
             <div className="bg-white/20 p-3 rounded-full">
