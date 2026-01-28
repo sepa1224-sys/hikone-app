@@ -149,13 +149,14 @@ export default function AppHome() {
 
   useEffect(() => {
     setIsMounted(true)
-    // 安全装置: 5秒後に強制的にローディングを終了
+    // 安全装置: 3秒後に強制的にローディングを終了し、画面を表示させる
     const timer = setTimeout(() => {
       if (loading) {
-        console.log('🕒 [Home] 5秒経過: 安全装置によりロードを終了します')
+        console.log('🕒 [Home] 安全装置によりロードを強制終了します')
         setLoading(false)
+        setProfileChecked(true)
       }
-    }, 5000)
+    }, 3000)
     return () => clearTimeout(timer)
   }, [loading])
 
@@ -176,12 +177,14 @@ export default function AppHome() {
       } else {
         setShowUnsupportedAreaModal(false)
       }
+      setProfileChecked(true) // プロフィール確認完了
     } else if (!authLoading && !authUser) {
       // 未ログインの場合
       setProfile(null)
       setUserCity(null)
       setUserSelectedArea(null)
       setShowUnsupportedAreaModal(false)
+      setProfileChecked(true) // 未ログインでも完了扱い
     }
   }, [authProfile, authLoading, authUser])
 
@@ -299,6 +302,13 @@ export default function AppHome() {
   // ※ userCity が変更されると、SWRのキーが変わり自動的に再フェッチされる
   const { stats: municipalityStats, isLoading: statsLoading, refetch: refetchStats } = useMunicipalityStats(userCity, authUser?.id)
   
+  // 全てのデータ読み込みが完了したらローディングを終了
+  useEffect(() => {
+    if (!authLoading && !statsLoading && !wasteLoading && !pointsLoading) {
+      setLoading(false)
+    }
+  }, [authLoading, statsLoading, wasteLoading, pointsLoading])
+
   // フォトコンテストイベント（events テーブルから取得）
   const [activeEvent, setActiveEvent] = useState<{
     id: string
@@ -691,8 +701,10 @@ export default function AppHome() {
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
   // 認証中または読み込み中の表示
-  // ただし、モバイル環境でのハングを防ぐため、マウントされていない場合はスケルトンを表示しない
-  if (!isMounted || authLoading || loading) {
+  // 3秒経過して loading が false になれば、強制的にスケルトンを解除して画面を表示させる
+  const isActuallyLoading = !isMounted || (loading && (authLoading || statsLoading || wasteLoading || pointsLoading))
+  
+  if (isActuallyLoading) {
     return <HomeSkeleton />
   }
 
@@ -757,8 +769,8 @@ export default function AppHome() {
             {/* 0. 市民カウンター（町ごとの登録者数 / その町の人口） + 会員番号 */}
             {/* 表示する自治体名: userCity（ログインユーザーの居住地）を優先、なければ municipalityStats.municipalityName、最終フォールバックは「彦根市」 */}
             {(() => {
-              const displayCityName = userCity || municipalityStats.municipalityName || '彦根市'
-              console.log('🏙️ [Home UI] 表示する自治体名:', displayCityName, '(userCity:', userCity, ', stats:', municipalityStats.municipalityName, ')')
+              const displayCityName = userCity || municipalityStats?.municipalityName || '彦根市'
+              console.log('🏙️ [Home UI] 表示する自治体名:', displayCityName, '(userCity:', userCity, ', stats:', municipalityStats?.municipalityName, ')')
               return (
                 <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-4 shadow-lg">
                   {/* 上段：町ごとの登録者数 / その町の人口 */}
@@ -779,14 +791,14 @@ export default function AppHome() {
                             <>
                               {/* 町ごとの登録者数 / その町の人口 */}
                               <span className="text-yellow-300">
-                                {municipalityStats.registeredUsers.toLocaleString()}
+                                {municipalityStats?.registeredUsers?.toLocaleString() || '0'}
                               </span>
                               <span className="text-sm font-bold opacity-80">人</span>
                               <span className="mx-1 opacity-50">/</span>
                               {/* 人口が0の場合は「取得中」と表示、それ以外は人口を表示 */}
-                              {municipalityStats.population > 0 ? (
+                              {(municipalityStats?.population || 0) > 0 ? (
                                 <>
-                                  <span>{municipalityStats.population.toLocaleString()}</span>
+                                  <span>{municipalityStats?.population?.toLocaleString()}</span>
                                   <span className="text-sm font-bold opacity-80">人</span>
                                 </>
                               ) : (
@@ -803,10 +815,12 @@ export default function AppHome() {
                         {displayCityName}
                       </p>
                       {/* 普及率：その町の登録人数 ÷ その町の人口 */}
-                      {!statsLoading && municipalityStats.population > 0 && (
+                      {!statsLoading && municipalityStats && (municipalityStats?.population || 0) > 0 && (
                         <p className="text-[10px] font-bold text-yellow-300">
                           {(() => {
-                            const rate = (municipalityStats.registeredUsers / municipalityStats.population) * 100
+                            const registered = municipalityStats?.registeredUsers || 0
+                            const population = municipalityStats?.population || 1
+                            const rate = (registered / population) * 100
                             return `普及率 ${rate.toFixed(3)}%`
                           })()}
                         </p>
