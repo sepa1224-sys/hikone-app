@@ -146,18 +146,23 @@ export default function AppHome() {
   // マウント済みフラグ（ハイドレーションエラー防止）
   const [isMounted, setIsMounted] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [debugLogs, setDebugLogs] = useState<string[]>([])
+
+  const addDebugLog = (msg: string) => {
+    console.log(msg)
+    setDebugLogs(prev => [...prev.slice(-10), `${new Date().toLocaleTimeString()}: ${msg}`])
+  }
 
   useEffect(() => {
     setIsMounted(true)
-    console.log('📱 [Home] マウント完了')
+    addDebugLog('📱 [Home] マウント完了')
     
-    // 【最優先】安全装置: 1秒後に強制的にローディングを終了し、画面を表示させる
-    // どんな理由があっても、この時間が経過すればスケルトンを消す
+    // 安全装置: 2秒後に強制的にローディングを終了し、画面を表示させる
     const timer = setTimeout(() => {
       setLoading(false)
       setProfileChecked(true)
-      console.log('🕒 [Home] 1秒経過: 安全装置によりロードを強制終了しました')
-    }, 1000)
+      console.log('🕒 [Home] 安全装置によりロードを強制終了しました')
+    }, 2000)
     
     return () => clearTimeout(timer)
   }, [])
@@ -295,22 +300,38 @@ export default function AppHome() {
   
   // SWRでゴミ収集スケジュールをキャッシュ付きで取得
   // ※ userSelectedArea が変更されると、SWRのキーが変わり自動的に再フェッチされる
-  const { wasteSchedule: swrWasteSchedule, isLoading: wasteLoading, refetch: refetchWaste } = useWasteSchedule(userSelectedArea)
+  const { wasteSchedule: swrWasteSchedule, isLoading: wasteLoading, error: wasteError, refetch: refetchWaste } = useWasteSchedule(userSelectedArea)
+  useEffect(() => {
+    addDebugLog(`🗑️ Waste: loading=${wasteLoading}, error=${!!wasteError}, data=${!!swrWasteSchedule}`)
+  }, [wasteLoading, wasteError, swrWasteSchedule])
   
   // SWRでポイント情報をキャッシュ付きで取得
-  const { points: userPoints, referralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(authUser?.id ?? null)
+  const { points: userPoints, referralCode, isLoading: pointsLoading, error: pointsError, refetch: refetchPoints } = usePoints(authUser?.id ?? null)
+  useEffect(() => {
+    addDebugLog(`💰 Points: loading=${pointsLoading}, error=${!!pointsError}, data=${userPoints !== null}`)
+  }, [pointsLoading, pointsError, userPoints])
   
   // SWRで自治体の人口・登録者数を取得（authUser?.idを渡して自分がカウントに含まれているか確認）
   // ※ userCity が変更されると、SWRのキーが変わり自動的に再フェッチされる
-  const { stats: municipalityStats, isLoading: statsLoading, refetch: refetchStats } = useMunicipalityStats(userCity, authUser?.id)
+  const { stats: municipalityStats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useMunicipalityStats(userCity, authUser?.id)
+  useEffect(() => {
+    addDebugLog(`📊 Stats: loading=${statsLoading}, error=${!!statsError}, data=${!!municipalityStats}`)
+  }, [statsLoading, statsError, municipalityStats])
   
   // 全てのデータ読み込みが完了したらローディングを終了
-  // 【超安全モード】authLoading のみ監視し、他は非同期で表示させる
   useEffect(() => {
-    if (!authLoading) {
+    if (!authLoading && !statsLoading && !wasteLoading && !pointsLoading) {
       setLoading(false)
+      addDebugLog('✅ 全データロード完了')
     }
-  }, [authLoading])
+  }, [authLoading, statsLoading, wasteLoading, pointsLoading])
+
+  // デバッグログの出力
+  useEffect(() => {
+    if (wasteError) addDebugLog(`❌ Waste Error: ${wasteError.message || JSON.stringify(wasteError)}`)
+    if (pointsError) addDebugLog(`❌ Points Error: ${pointsError.message || JSON.stringify(pointsError)}`)
+    if (statsError) addDebugLog(`❌ Stats Error: ${statsError.message || JSON.stringify(statsError)}`)
+  }, [wasteError, pointsError, statsError])
 
   // フォトコンテストイベント（events テーブルから取得）
   const [activeEvent, setActiveEvent] = useState<{
@@ -704,10 +725,74 @@ export default function AppHome() {
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
   // 認証中または読み込み中の表示
-  // 【超安全モード】スケルトン画面を完全にスキップして即座にUIを表示させる
-  // どんな理由があっても、マウントさえ完了すればメイン画面を出す
-  if (!isMounted) {
-    return null // スケルトンすら出さない（真っ白な画面から即座にUIが出るようにする）
+  // 2秒経過して loading が false になれば、強制的にスケルトンを解除して画面を表示させる
+  // モバイルでのハング防止のため、loading ステートを最優先する
+  const isActuallyLoading = !isMounted || (loading && (authLoading || statsLoading || wasteLoading || pointsLoading))
+  
+  if (isActuallyLoading && loading) {
+    return (
+      <div className="relative h-screen w-screen bg-white">
+        {/* スケルトン画面 */}
+        <div className="absolute inset-0 z-0">
+          <HomeSkeleton />
+        </div>
+
+        {/* デバッグ用オーバーレイ（最前面） */}
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-4 pointer-events-none">
+          <div className="bg-black/90 text-white p-6 rounded-[2rem] w-full max-w-md pointer-events-auto shadow-2xl border-2 border-white/20 backdrop-blur-xl">
+            <h3 className="text-lg font-black mb-4 flex items-center gap-2">
+              <Activity size={20} className="text-yellow-400 animate-pulse" />
+              システム起動ログ
+            </h3>
+            
+            <div className="space-y-3 mb-6">
+              <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-white/10 p-3 rounded-xl">
+                <div className="flex justify-between px-2"><span>loading:</span> <span className={loading ? 'text-yellow-400' : 'text-green-400'}>{String(loading)}</span></div>
+                <div className="flex justify-between px-2"><span>auth:</span> <span className={authLoading ? 'text-yellow-400' : 'text-green-400'}>{String(authLoading)}</span></div>
+                <div className="flex justify-between px-2"><span>stats:</span> <span className={statsLoading ? 'text-yellow-400' : 'text-green-400'}>{String(statsLoading)}</span></div>
+                <div className="flex justify-between px-2"><span>waste:</span> <span className={wasteLoading ? 'text-yellow-400' : 'text-green-400'}>{String(wasteLoading)}</span></div>
+                <div className="flex justify-between px-2"><span>points:</span> <span className={pointsLoading ? 'text-yellow-400' : 'text-green-400'}>{String(pointsLoading)}</span></div>
+                <div className="flex justify-between px-2"><span>mounted:</span> <span className={isMounted ? 'text-green-400' : 'text-red-400'}>{String(isMounted)}</span></div>
+              </div>
+
+              {/* エラーがあったら赤字で表示 */}
+              {(statsError || wasteError || pointsError) && (
+                <div className="bg-red-500/20 border-2 border-red-500 p-3 rounded-xl text-[10px] text-red-400 font-bold animate-pulse">
+                  {statsError && <p>❌ Stats: {statsError.message || 'Error'}</p>}
+                  {wasteError && <p>❌ Waste: {wasteError.message || 'Error'}</p>}
+                  {pointsError && <p>❌ Points: {pointsError.message || 'Error'}</p>}
+                </div>
+              )}
+
+              {/* 最新のログを表示 */}
+              <div className="bg-white/5 p-3 rounded-xl text-[9px] font-mono h-32 overflow-y-auto border border-white/10">
+                {debugLogs.length > 0 ? (
+                  debugLogs.map((log, i) => (
+                    <div key={i} className="border-b border-white/5 py-1 last:border-0">{log}</div>
+                  ))
+                ) : (
+                  <p className="opacity-40 italic">ログ待機中...</p>
+                )}
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                setLoading(false)
+                addDebugLog('🔘 強制表示ボタンが押されました')
+              }}
+              className="w-full bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white py-4 rounded-2xl font-black text-sm transition-all active:scale-95 shadow-xl border-b-4 border-red-800"
+            >
+              強制的に画面を表示する
+            </button>
+            
+            <p className="text-[10px] text-center mt-4 text-white/40 font-bold">
+              ※ ロードが10秒以上終わらない場合は、上のボタンを押してニャ！
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // 統計データの存在チェックを強化
@@ -726,6 +811,35 @@ export default function AppHome() {
   return (
     <div className="h-screen bg-blue-50/30 font-sans flex flex-col text-gray-800 tracking-tight overflow-hidden">
       
+      {/* デバッグ情報とエラー表示 */}
+      <div className="fixed top-0 left-0 right-0 z-[9999] pointer-events-none">
+        <div className="max-w-xl mx-auto p-2">
+          {/* ローディング状態のデバッグ表示 */}
+          <div className="bg-black/80 text-white text-[10px] p-2 rounded-lg mb-2 flex flex-wrap gap-2 pointer-events-auto">
+            <span className={loading ? 'text-yellow-400' : 'text-green-400'}>loading: {loading ? 'true' : 'false'}</span>
+            <span className={authLoading ? 'text-yellow-400' : 'text-green-400'}>auth: {authLoading ? 'true' : 'false'}</span>
+            <span className={statsLoading ? 'text-yellow-400' : 'text-green-400'}>stats: {statsLoading ? 'true' : 'false'}</span>
+            <span className={wasteLoading ? 'text-yellow-400' : 'text-green-400'}>waste: {wasteLoading ? 'true' : 'false'}</span>
+            <span className={pointsLoading ? 'text-yellow-400' : 'text-green-400'}>points: {pointsLoading ? 'true' : 'false'}</span>
+          </div>
+
+          {/* エラー表示 */}
+          {(statsError || wasteError || pointsError) && (
+            <div className="bg-red-600 text-white p-4 rounded-xl shadow-2xl border-4 border-white animate-bounce pointer-events-auto">
+              <h3 className="font-black text-lg mb-2 flex items-center gap-2">
+                <X className="bg-white text-red-600 rounded-full" size={20} />
+                エラーが発生したニャ！
+              </h3>
+              <div className="text-xs font-bold space-y-1 overflow-auto max-h-40">
+                {statsError && <p>📊 Stats: {statsError.message || JSON.stringify(statsError)}</p>}
+                {wasteError && <p>🗑️ Waste: {wasteError.message || JSON.stringify(wasteError)}</p>}
+                {pointsError && <p>💰 Points: {pointsError.message || JSON.stringify(pointsError)}</p>}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* --- ヘッダー：コンパクト化したスイッチ --- */}
       <div className="bg-white/90 backdrop-blur-md px-4 py-2 border-b border-gray-100 shadow-sm z-[110]">
         <div className="max-w-xl mx-auto flex items-center gap-3">
@@ -745,7 +859,7 @@ export default function AppHome() {
             >
               <span className="text-sm">💰</span>
               <span className="text-xs font-black text-white">
-                {pointsLoading ? '...' : (userPoints || 0).toLocaleString()}
+                {pointsLoading ? '...' : userPoints.toLocaleString()}
               </span>
               <span className="text-[10px] font-bold text-white/80">pt</span>
             </div>
@@ -779,13 +893,11 @@ export default function AppHome() {
           <div className="max-w-xl mx-auto animate-in fade-in duration-500 space-y-4">
             
             {/* 0. 市民カウンター（町ごとの登録者数 / その町の人口） + 会員番号 */}
-            {/* 表示する自治体名: userCity（ログインユーザーの居住地）を優先、なければ safeStats.municipalityName、最終フォールバックは「彦根市」 */}
+            {/* 表示する自治体名: userCity（ログインユーザーの居住地）を優先、なければ municipalityStats.municipalityName、最終フォールバックは「彦根市」 */}
             {(() => {
-              if (!safeStats) return null
               const displayCityName = userCity || safeStats.municipalityName || '彦根市'
               return (
                 <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-4 shadow-lg">
-                  {/* ... */}
                   {/* 上段：町ごとの登録者数 / その町の人口 */}
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
@@ -804,14 +916,14 @@ export default function AppHome() {
                             <div className="flex items-baseline gap-1">
                               {/* 町ごとの登録者数 / その町の人口 */}
                               <span className="text-yellow-300">
-                                {Number(safeStats?.registeredUsers || 0).toLocaleString()}
+                                {(safeStats?.registeredUsers || 0).toLocaleString()}
                               </span>
                               <span className="text-sm font-bold opacity-80">人</span>
                               <span className="mx-1 opacity-50">/</span>
                               {/* 人口が0の場合は「取得中」と表示、それ以外は人口を表示 */}
-                              {Number(safeStats?.population || 0) > 0 ? (
+                              {(safeStats?.population || 0) > 0 ? (
                                 <>
-                                  <span>{Number(safeStats?.population || 0).toLocaleString()}</span>
+                                  <span>{(safeStats?.population || 0).toLocaleString()}</span>
                                   <span className="text-sm font-bold opacity-80">人</span>
                                 </>
                               ) : (
@@ -865,17 +977,12 @@ export default function AppHome() {
             </div>
 
             {/* 1. ゴミ収集情報カード（独立コンポーネント） */}
-            {(() => {
-              if (!swrWasteSchedule) return null
-              return (
-                <WasteScheduleCard
-                  userCity={userCity}
-                  userSelectedArea={userSelectedArea}
-                  userWasteSchedule={swrWasteSchedule}
-                  onSetupClick={() => setView('profile')}
-                />
-              )
-            })()}
+            <WasteScheduleCard
+              userCity={userCity}
+              userSelectedArea={userSelectedArea}
+              userWasteSchedule={swrWasteSchedule}
+              onSetupClick={() => setView('profile')}
+            />
 
             {/* 1.5. 暮らしセクション：ランニング・ウォーキングアクションカード */}
             {mode === 'local' && (
@@ -1718,9 +1825,9 @@ export default function AppHome() {
       */}
       {profileChecked && showProfileModal && authUser && view === 'main' && (
         <ProfileRegistrationModal
-          userId={authUser.id}
-          userEmail={authUser.email}
-          userFullName={authUser.user_metadata?.full_name || authUser.user_metadata?.name || profile?.full_name}
+          userId={authUser?.id}
+          userEmail={authUser?.email}
+          userFullName={authUser?.user_metadata?.full_name || authUser?.user_metadata?.name || profile?.full_name}
           onComplete={async () => {
             setShowProfileModal(false)
             await refreshProfile()
