@@ -146,15 +146,32 @@ export default function AppHome() {
   // マウント済みフラグ（ハイドレーションエラー防止）
   const [isMounted, setIsMounted] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [debugLogs, setDebugLogs] = useState<string[]>([])
+
+  const addDebugLog = (msg: string) => {
+    console.log(msg)
+    setDebugLogs(prev => [...prev.slice(-10), `${new Date().toLocaleTimeString()}: ${msg}`])
+  }
 
   useEffect(() => {
     setIsMounted(true)
+<<<<<<< HEAD
     
     // 安全装置: 1.5秒後に強制的にローディングを終了し、画面を表示させる
     const timer = setTimeout(() => {
       setLoading(false)
       setProfileChecked(true)
     }, 1500)
+=======
+    addDebugLog('📱 [Home] マウント完了')
+    
+    // 安全装置: 2秒後に強制的にローディングを終了し、画面を表示させる
+    const timer = setTimeout(() => {
+      setLoading(false)
+      setProfileChecked(true)
+      console.log('🕒 [Home] 安全装置によりロードを強制終了しました')
+    }, 2000)
+>>>>>>> db6bdc0eb01bc8ade8f65751f74520defb09f696
     
     return () => clearTimeout(timer)
   }, [])
@@ -321,19 +338,38 @@ export default function AppHome() {
   // SWRでゴミ収集スケジュールをキャッシュ付きで取得
   // ※ userSelectedArea が変更されると、SWRのキーが変わり自動的に再フェッチされる
   const { wasteSchedule: swrWasteSchedule, isLoading: wasteLoading, error: wasteError, refetch: refetchWaste } = useWasteSchedule(userSelectedArea)
+<<<<<<< HEAD
   
   // SWRでポイント情報をキャッシュ付きで取得
   const { points: userPoints, referralCode, isLoading: pointsLoading, error: pointsError, refetch: refetchPoints } = usePoints(authUser?.id ?? null)
+=======
+  useEffect(() => {
+    addDebugLog(`🗑️ Waste: loading=${wasteLoading}, error=${!!wasteError}, data=${!!swrWasteSchedule}`)
+  }, [wasteLoading, wasteError, swrWasteSchedule])
+  
+  // SWRでポイント情報をキャッシュ付きで取得
+  const { points: userPoints, referralCode, isLoading: pointsLoading, error: pointsError, refetch: refetchPoints } = usePoints(authUser?.id ?? null)
+  useEffect(() => {
+    addDebugLog(`💰 Points: loading=${pointsLoading}, error=${!!pointsError}, data=${userPoints !== null}`)
+  }, [pointsLoading, pointsError, userPoints])
+>>>>>>> db6bdc0eb01bc8ade8f65751f74520defb09f696
   
   // SWRで自治体の人口・登録者数を取得（authUser?.idを渡して自分がカウントに含まれているか確認）
   // ※ userCity が変更されると、SWRのキーが変わり自動的に再フェッチされる
   const { stats: municipalityStats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useMunicipalityStats(userCity, authUser?.id)
+<<<<<<< HEAD
+=======
+  useEffect(() => {
+    addDebugLog(`📊 Stats: loading=${statsLoading}, error=${!!statsError}, data=${!!municipalityStats}`)
+  }, [statsLoading, statsError, municipalityStats])
+>>>>>>> db6bdc0eb01bc8ade8f65751f74520defb09f696
   
   // 全てのデータ読み込みが完了したらローディングを終了
   // ★ 全ての SWR フックが isLoading: false を返すようになったため、authLoading のみをチェック
   useEffect(() => {
     if (!authLoading) {
       setLoading(false)
+      addDebugLog('✅ 全データロード完了')
     }
   }, [authLoading])
 
@@ -342,6 +378,13 @@ export default function AppHome() {
     if (wasteError) console.error(`❌ Waste Error: ${wasteError.message || JSON.stringify(wasteError)}`)
     if (pointsError) console.error(`❌ Points Error: ${pointsError.message || JSON.stringify(pointsError)}`)
     if (statsError) console.error(`❌ Stats Error: ${statsError.message || JSON.stringify(statsError)}`)
+  }, [wasteError, pointsError, statsError])
+
+  // デバッグログの出力
+  useEffect(() => {
+    if (wasteError) addDebugLog(`❌ Waste Error: ${wasteError.message || JSON.stringify(wasteError)}`)
+    if (pointsError) addDebugLog(`❌ Points Error: ${pointsError.message || JSON.stringify(pointsError)}`)
+    if (statsError) addDebugLog(`❌ Stats Error: ${statsError.message || JSON.stringify(statsError)}`)
   }, [wasteError, pointsError, statsError])
 
   // フォトコンテストイベント（events テーブルから取得）
@@ -736,13 +779,79 @@ export default function AppHome() {
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
   // 認証中または読み込み中の表示
+<<<<<<< HEAD
   if (!isMounted) {
+=======
+  // 2秒経過して loading が false になれば、強制的にスケルトンを解除して画面を表示させる
+  // モバイルでのハング防止のため、loading ステートを最優先する
+  const isActuallyLoading = !isMounted || (loading && (authLoading || statsLoading || wasteLoading || pointsLoading))
+  
+  if (isActuallyLoading && loading) {
+>>>>>>> db6bdc0eb01bc8ade8f65751f74520defb09f696
     return (
       <div className="relative h-screen w-screen bg-white">
         {/* スケルトン画面 */}
         <div className="absolute inset-0 z-0">
           <HomeSkeleton />
         </div>
+<<<<<<< HEAD
+=======
+
+        {/* デバッグ用オーバーレイ（最前面） */}
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-4 pointer-events-none">
+          <div className="bg-black/90 text-white p-6 rounded-[2rem] w-full max-w-md pointer-events-auto shadow-2xl border-2 border-white/20 backdrop-blur-xl">
+            <h3 className="text-lg font-black mb-4 flex items-center gap-2">
+              <Activity size={20} className="text-yellow-400 animate-pulse" />
+              システム起動ログ
+            </h3>
+            
+            <div className="space-y-3 mb-6">
+              <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-white/10 p-3 rounded-xl">
+                <div className="flex justify-between px-2"><span>loading:</span> <span className={loading ? 'text-yellow-400' : 'text-green-400'}>{String(loading)}</span></div>
+                <div className="flex justify-between px-2"><span>auth:</span> <span className={authLoading ? 'text-yellow-400' : 'text-green-400'}>{String(authLoading)}</span></div>
+                <div className="flex justify-between px-2"><span>stats:</span> <span className={statsLoading ? 'text-yellow-400' : 'text-green-400'}>{String(statsLoading)}</span></div>
+                <div className="flex justify-between px-2"><span>waste:</span> <span className={wasteLoading ? 'text-yellow-400' : 'text-green-400'}>{String(wasteLoading)}</span></div>
+                <div className="flex justify-between px-2"><span>points:</span> <span className={pointsLoading ? 'text-yellow-400' : 'text-green-400'}>{String(pointsLoading)}</span></div>
+                <div className="flex justify-between px-2"><span>mounted:</span> <span className={isMounted ? 'text-green-400' : 'text-red-400'}>{String(isMounted)}</span></div>
+              </div>
+
+              {/* エラーがあったら赤字で表示 */}
+              {(statsError || wasteError || pointsError) && (
+                <div className="bg-red-500/20 border-2 border-red-500 p-3 rounded-xl text-[10px] text-red-400 font-bold animate-pulse">
+                  {statsError && <p>❌ Stats: {statsError.message || 'Error'}</p>}
+                  {wasteError && <p>❌ Waste: {wasteError.message || 'Error'}</p>}
+                  {pointsError && <p>❌ Points: {pointsError.message || 'Error'}</p>}
+                </div>
+              )}
+
+              {/* 最新のログを表示 */}
+              <div className="bg-white/5 p-3 rounded-xl text-[9px] font-mono h-32 overflow-y-auto border border-white/10">
+                {debugLogs.length > 0 ? (
+                  debugLogs.map((log, i) => (
+                    <div key={i} className="border-b border-white/5 py-1 last:border-0">{log}</div>
+                  ))
+                ) : (
+                  <p className="opacity-40 italic">ログ待機中...</p>
+                )}
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                setLoading(false)
+                addDebugLog('🔘 強制表示ボタンが押されました')
+              }}
+              className="w-full bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white py-4 rounded-2xl font-black text-sm transition-all active:scale-95 shadow-xl border-b-4 border-red-800"
+            >
+              強制的に画面を表示する
+            </button>
+            
+            <p className="text-[10px] text-center mt-4 text-white/40 font-bold">
+              ※ ロードが10秒以上終わらない場合は、上のボタンを押してニャ！
+            </p>
+          </div>
+        </div>
+>>>>>>> db6bdc0eb01bc8ade8f65751f74520defb09f696
       </div>
     )
   }
@@ -763,9 +872,25 @@ export default function AppHome() {
   return (
     <div className="h-screen bg-blue-50/30 font-sans flex flex-col text-gray-800 tracking-tight overflow-hidden">
       
+<<<<<<< HEAD
       {/* エラー表示 */}
       <div className="fixed top-0 left-0 right-0 z-[9999] pointer-events-none">
         <div className="max-w-xl mx-auto p-2">
+=======
+      {/* デバッグ情報とエラー表示 */}
+      <div className="fixed top-0 left-0 right-0 z-[9999] pointer-events-none">
+        <div className="max-w-xl mx-auto p-2">
+          {/* ローディング状態のデバッグ表示 */}
+          <div className="bg-black/80 text-white text-[10px] p-2 rounded-lg mb-2 flex flex-wrap gap-2 pointer-events-auto">
+            <span className={loading ? 'text-yellow-400' : 'text-green-400'}>loading: {loading ? 'true' : 'false'}</span>
+            <span className={authLoading ? 'text-yellow-400' : 'text-green-400'}>auth: {authLoading ? 'true' : 'false'}</span>
+            <span className={statsLoading ? 'text-yellow-400' : 'text-green-400'}>stats: {statsLoading ? 'true' : 'false'}</span>
+            <span className={wasteLoading ? 'text-yellow-400' : 'text-green-400'}>waste: {wasteLoading ? 'true' : 'false'}</span>
+            <span className={pointsLoading ? 'text-yellow-400' : 'text-green-400'}>points: {pointsLoading ? 'true' : 'false'}</span>
+          </div>
+
+          {/* エラー表示 */}
+>>>>>>> db6bdc0eb01bc8ade8f65751f74520defb09f696
           {(statsError || wasteError || pointsError) && (
             <div className="bg-red-600 text-white p-4 rounded-xl shadow-2xl border-4 border-white animate-bounce pointer-events-auto">
               <h3 className="font-black text-lg mb-2 flex items-center gap-2">
@@ -897,6 +1022,26 @@ export default function AppHome() {
                 </div>
               )
             })()}
+
+            {/* 学生情報（学生の場合のみ表示） */}
+            {authProfile?.is_student && (
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 shadow-sm border border-blue-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                    <Award size={18} className="text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">所属</p>
+                    <p className="text-sm font-black text-gray-800">
+                      {authProfile?.school_name} {authProfile?.grade ? `${authProfile.grade}年` : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="bg-blue-500 text-white text-[10px] font-black px-2 py-1 rounded-lg">
+                  学生会員
+                </div>
+              </div>
+            )}
             
             {/* 0.5 支払いボタン（QR決済） */}
             <div className="grid grid-cols-1 gap-3">

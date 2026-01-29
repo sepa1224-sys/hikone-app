@@ -77,7 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('🔐 [AuthProvider] 初期化開始...')
       
       // モバイル環境などで getSession がハングする場合があるため、タイムアウトを設ける
+<<<<<<< HEAD
       // ★ 1.5秒に短縮してスマホでの体感速度を改善
+=======
+      // タイムアウトを2秒に短縮し、より早くホーム画面へ移行させる
+>>>>>>> db6bdc0eb01bc8ade8f65751f74520defb09f696
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Auth Timeout')), 1500)
       )

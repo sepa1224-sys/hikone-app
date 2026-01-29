@@ -397,11 +397,14 @@ export default function ProfileRegistrationModal({
         })
         .select()
 
-      // detail_area カラムが存在しないエラーの場合、detail_area を除いて再試行
-      if (error && error.message.includes('detail_area')) {
-        console.warn('📋 [Profile] detail_area カラムが存在しないため、除外して再試行')
+      // detail_area や学生関連のカラムが存在しないエラーの場合、それらを除いて再試行
+      if (error && (error.message.includes('detail_area') || error.message.includes('is_student') || error.message.includes('school_name') || error.message.includes('grade'))) {
+        console.warn('📋 [Profile] 新しいカラムが存在しないため、除外して再試行')
         const retryProfileData = { ...profileData }
         delete retryProfileData.detail_area
+        delete retryProfileData.is_student
+        delete retryProfileData.school_name
+        delete retryProfileData.grade
         const retryResult = await supabase
           .from('profiles')
           .upsert(retryProfileData, { 
