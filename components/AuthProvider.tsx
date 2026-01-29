@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('*, is_student, school_name, is_official_student, grade')
         .eq('id', userId)
         .single()
       
@@ -53,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return null
       }
+      console.log('Fetched Data:', data)
       return data
     } catch (err) {
       console.error('🔐 [AuthProvider] プロフィール取得例外:', err)
@@ -76,8 +77,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('🔐 [AuthProvider] 初期化開始...')
       
       // モバイル環境などで getSession がハングする場合があるため、タイムアウトを設ける
+      // ★ 1.5秒に短縮してスマホでの体感速度を改善
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Auth Timeout')), 5000)
+        setTimeout(() => reject(new Error('Auth Timeout')), 1500)
       )
 
       try {

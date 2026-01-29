@@ -49,6 +49,17 @@ const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | 
   
   console.log(`🗑️ [SWR] ゴミ収集スケジュール取得開始: ${areaKey}`)
   
+  // ★ 3秒でタイムアウト（モバイルでのハング防止）
+  const timeoutPromise = new Promise<null>((resolve) =>
+    setTimeout(() => {
+      console.log(`🗑️ [SWR] タイムアウト発生 - フォールバック使用`)
+      resolve(null)
+    }, 3000)
+  )
+  
+  const fetchPromise = (async (): Promise<HikoneWasteMaster | null> => {
+    try {
+  
   // 検索キーワードを生成
   const searchKeywords = generateSearchKeywords(areaKey)
   console.log(`🗑️ [SWR] 生成された検索キーワード:`, searchKeywords)
@@ -156,8 +167,16 @@ const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | 
     console.log(`🗑️ [SWR] フォールバック検索も失敗:`, e)
   }
   
-  console.error(`🗑️ [SWR] スケジュールが見つかりません（area_key: ${areaKey}）`)
-  return null
+      console.error(`🗑️ [SWR] スケジュールが見つかりません（area_key: ${areaKey}）`)
+      return null
+    } catch (error) {
+      console.error(`🗑️ [SWR] フェッチ中にエラー発生:`, error)
+      return null
+    }
+  })()
+  
+  // タイムアウトかフェッチの早い方を返す
+  return Promise.race([fetchPromise, timeoutPromise])
 }
 
 /**
@@ -201,7 +220,9 @@ export function useWasteSchedule(areaKey: string | null) {
   return {
     wasteSchedule: data ?? null,
     error,
-    isLoading,
+    // ★ 重要: スケルトンをブロックしないよう、常に false を返す
+    // 実際のロード状態は内部で管理し、データがない場合は null を返す
+    isLoading: false,
     // 手動で再取得したい場合に使用
     refetch: () => mutate()
   }

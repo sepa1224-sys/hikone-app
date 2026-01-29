@@ -149,14 +149,12 @@ export default function AppHome() {
 
   useEffect(() => {
     setIsMounted(true)
-    console.log('📱 [Home] マウント完了')
     
-    // 安全装置: 2秒後に強制的にローディングを終了し、画面を表示させる
+    // 安全装置: 1.5秒後に強制的にローディングを終了し、画面を表示させる
     const timer = setTimeout(() => {
       setLoading(false)
       setProfileChecked(true)
-      console.log('🕒 [Home] 安全装置によりロードを強制終了しました')
-    }, 2000)
+    }, 1500)
     
     return () => clearTimeout(timer)
   }, [])
@@ -189,20 +187,48 @@ export default function AppHome() {
     }
   }, [authProfile, authLoading, authUser])
 
-  // ログイン済み かつ プロフィール未入力時: ホーム画面にのみ、登録を促すポップアップを表示
+  // ★★★ 最優先判定: is_student が null なら即座にポップアップ ★★★
+  // この判定は他のどのロジックよりも先に発火させる
   useEffect(() => {
+    // ローディング中は何もしない
     if (authLoading) return
+    // ホーム画面でない場合はスキップ
     if (view !== 'main') return
     
-    // プロフィールが取得済みで、不完全な場合
+    console.log('🎯 [Home] Profile check:', {
+      hasUser: !!authUser,
+      hasProfile: !!authProfile,
+      is_student: authProfile?.is_student
+    })
+
+    // ★ 最もシンプルな判定: ログイン済みで is_student が null/undefined なら即ポップアップ
+    if (authUser && authProfile && (authProfile.is_student === null || authProfile.is_student === undefined)) {
+      setShowProfileModal(true)
+      return
+    }
+    
+    // プロフィールが取得済みで、不完全な場合（名前や住所が未設定）
     if (authUser && authProfile && (!authProfile.full_name || (!authProfile.birthday && !authProfile.location))) {
       setShowProfileModal(true)
+      return
     } 
     // authUserはいるがauthProfileがない場合、新規ユーザーの可能性があるため表示
-    else if (authUser && !authProfile) {
+    if (authUser && !authProfile) {
       setShowProfileModal(true)
+      return
     }
   }, [authLoading, authUser, authProfile, view])
+  
+  // ★ 安全装置のフォローアップ: ローディング終了後にも is_student をチェック
+  useEffect(() => {
+    // loading が false になった後（安全装置発動後）に再度チェック
+    if (!loading && isMounted && authUser) {
+      // authProfile が取得できていない、または is_student が未設定
+      if (!authProfile || authProfile.is_student === null || authProfile.is_student === undefined) {
+        setShowProfileModal(true)
+      }
+    }
+  }, [loading, isMounted, authUser, authProfile])
 
   const [mode, setMode] = useState<'local' | 'tourist'>('local') 
   const [selectedCityId, setSelectedCityId] = useState<string>('hikone')
@@ -304,11 +330,19 @@ export default function AppHome() {
   const { stats: municipalityStats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useMunicipalityStats(userCity, authUser?.id)
   
   // 全てのデータ読み込みが完了したらローディングを終了
+  // ★ 全ての SWR フックが isLoading: false を返すようになったため、authLoading のみをチェック
   useEffect(() => {
-    if (!authLoading && !statsLoading && !wasteLoading && !pointsLoading) {
+    if (!authLoading) {
       setLoading(false)
     }
-  }, [authLoading, statsLoading, wasteLoading, pointsLoading])
+  }, [authLoading])
+
+  // デバッグログの出力
+  useEffect(() => {
+    if (wasteError) console.error(`❌ Waste Error: ${wasteError.message || JSON.stringify(wasteError)}`)
+    if (pointsError) console.error(`❌ Points Error: ${pointsError.message || JSON.stringify(pointsError)}`)
+    if (statsError) console.error(`❌ Stats Error: ${statsError.message || JSON.stringify(statsError)}`)
+  }, [wasteError, pointsError, statsError])
 
   // フォトコンテストイベント（events テーブルから取得）
   const [activeEvent, setActiveEvent] = useState<{
@@ -702,18 +736,15 @@ export default function AppHome() {
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
   // 認証中または読み込み中の表示
-  // 2秒経過して loading が false になれば、強制的にスケルトンを解除して画面を表示させる
-  // モバイルでのハング防止のため、loading ステートを最優先する
-  const isActuallyLoading = !isMounted || (loading && (authLoading || statsLoading || wasteLoading || pointsLoading))
-  
-  // 【超重要】安全装置：2秒経過してもスケルトンが消えない場合は、強制的に表示を許可する
-  // loading が false になれば、他の状態に関わらずスケルトンを表示しない
-  if (isMounted && !loading) {
-    // ここでは何もしない（isActuallyLoading が false になっているはず）
-  }
-
-  if (isActuallyLoading && loading) {
-    return <HomeSkeleton />
+  if (!isMounted) {
+    return (
+      <div className="relative h-screen w-screen bg-white">
+        {/* スケルトン画面 */}
+        <div className="absolute inset-0 z-0">
+          <HomeSkeleton />
+        </div>
+      </div>
+    )
   }
 
   // 統計データの存在チェックを強化
@@ -732,19 +763,9 @@ export default function AppHome() {
   return (
     <div className="h-screen bg-blue-50/30 font-sans flex flex-col text-gray-800 tracking-tight overflow-hidden">
       
-      {/* デバッグ情報とエラー表示 */}
+      {/* エラー表示 */}
       <div className="fixed top-0 left-0 right-0 z-[9999] pointer-events-none">
         <div className="max-w-xl mx-auto p-2">
-          {/* ローディング状態のデバッグ表示 */}
-          <div className="bg-black/80 text-white text-[10px] p-2 rounded-lg mb-2 flex flex-wrap gap-2 pointer-events-auto">
-            <span className={loading ? 'text-yellow-400' : 'text-green-400'}>loading: {loading ? 'true' : 'false'}</span>
-            <span className={authLoading ? 'text-yellow-400' : 'text-green-400'}>auth: {authLoading ? 'true' : 'false'}</span>
-            <span className={statsLoading ? 'text-yellow-400' : 'text-green-400'}>stats: {statsLoading ? 'true' : 'false'}</span>
-            <span className={wasteLoading ? 'text-yellow-400' : 'text-green-400'}>waste: {wasteLoading ? 'true' : 'false'}</span>
-            <span className={pointsLoading ? 'text-yellow-400' : 'text-green-400'}>points: {pointsLoading ? 'true' : 'false'}</span>
-          </div>
-
-          {/* エラー表示 */}
           {(statsError || wasteError || pointsError) && (
             <div className="bg-red-600 text-white p-4 rounded-xl shadow-2xl border-4 border-white animate-bounce pointer-events-auto">
               <h3 className="font-black text-lg mb-2 flex items-center gap-2">

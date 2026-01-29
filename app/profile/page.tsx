@@ -294,7 +294,7 @@ export default function ProfilePage() {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('*, is_student, school_name, is_official_student, grade')
         .eq('id', authUser.id)
         .single()
 

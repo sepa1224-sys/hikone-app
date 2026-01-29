@@ -4,7 +4,7 @@ import useSWR from 'swr'
 import { supabase } from '@/lib/supabase'
 
 // ポイント関連のカラムのみを指定
-const POINTS_COLUMNS = 'points, referral_code'
+const POINTS_COLUMNS = 'points, referral_code, is_student, school_name, is_official_student, grade'
 
 // ポイント履歴の型定義
 export interface PointHistory {
@@ -30,30 +30,47 @@ const fetchPoints = async (userId: string): Promise<PointsData | null> => {
   
   console.log(`💰 [SWR] ポイント情報取得開始: ${userId}`)
   
-  const { data, error } = await supabase
-    .from('profiles')
-    .select(POINTS_COLUMNS)
-    .eq('id', userId)
-    .single()
+  // ★ 3秒でタイムアウト（モバイルでのハング防止）
+  const timeoutPromise = new Promise<PointsData>((resolve) =>
+    setTimeout(() => {
+      console.log(`💰 [SWR] タイムアウト発生 - デフォルト値を使用`)
+      resolve({ points: 0, referral_code: null })
+    }, 3000)
+  )
   
-  if (error) {
-    console.error(`💰 [SWR] ポイント取得エラー:`, error)
-    return null
-  }
-  
-  if (data) {
-    console.log(`💰 [SWR] ポイント取得成功:`, data)
-    // pointsがnullやundefinedの場合でも、数値として扱う（0ではなく実際の値を取得）
-    const pointsValue = data.points != null ? Number(data.points) : 0
-    console.log(`💰 [SWR] ポイント値（変換後）:`, pointsValue, '(元の値:', data.points, ')')
-    return {
-      points: pointsValue,
-      referral_code: data.referral_code || null
+  const fetchPromise = (async (): Promise<PointsData> => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select(POINTS_COLUMNS)
+        .eq('id', userId)
+        .single()
+      
+      if (error) {
+        console.error(`💰 [SWR] ポイント取得エラー:`, error)
+        return { points: 0, referral_code: null }
+      }
+      
+      if (data) {
+        console.log(`💰 [SWR] ポイント取得成功:`, data)
+        const pointsValue = data.points != null ? Number(data.points) : 0
+        console.log(`💰 [SWR] ポイント値（変換後）:`, pointsValue, '(元の値:', data.points, ')')
+        return {
+          points: pointsValue,
+          referral_code: data.referral_code || null
+        }
+      }
+      
+      console.log(`💰 [SWR] データなし、デフォルト値を返す`)
+      return { points: 0, referral_code: null }
+    } catch (error) {
+      console.error(`💰 [SWR] フェッチ中にエラー発生:`, error)
+      return { points: 0, referral_code: null }
     }
-  }
+  })()
   
-  console.log(`💰 [SWR] データなし、デフォルト値を返す`)
-  return { points: 0, referral_code: null }
+  // タイムアウトかフェッチの早い方を返す
+  return Promise.race([fetchPromise, timeoutPromise])
 }
 
 // SWR用のフェッチャー関数（ポイント履歴）
@@ -137,7 +154,8 @@ export function usePoints(userId: string | null) {
     points: data?.points ?? 0,
     referralCode: data?.referral_code ?? null,
     error,
-    isLoading,
+    // ★ 重要: スケルトンをブロックしないよう、常に false を返す
+    isLoading: false,
     refetch: () => mutate()
   }
 }

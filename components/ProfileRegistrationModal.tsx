@@ -119,7 +119,10 @@ export default function ProfileRegistrationModal({
     city: '', // 市区町村
     selected_area: '', // ゴミ収集エリア名（hikone_waste_master.area_name）
     detail_area: '', // 詳細エリア（自由入力または選択）
-    interests: [] as string[]
+    interests: [] as string[],
+    is_student: null as boolean | null,
+    school_name: '',
+    grade: '' as string | number
   })
 
   // 生年月日を年・月・日に分解して管理
@@ -191,109 +194,107 @@ export default function ProfileRegistrationModal({
 
 
   useEffect(() => {
-    checkProfileStatus()
-  }, [])
+    console.log('📋 [ProfileModal] Current is_student state:', formData.is_student)
+  }, [formData.is_student])
 
   const checkProfileStatus = async () => {
     try {
       if (!userId) {
-        setErrorMsg('ユーザーIDが見つかりません')
+        console.error('📋 [ProfileModal] No userId provided')
         setLoading(false)
         return
       }
 
-      const currentUserId = userId
-      console.log('📋 [Profile] プロフィール取得開始 - User ID:', currentUserId)
+      console.log('📋 [ProfileModal] Fetching profile for:', userId)
 
-      // DBから既存プロフィールを取得
-      // まず基本カラムのみで取得を試みる（detail_area がない場合のエラーを回避）
-      let data: any = null
-      let fetchError: any = null
-      
-      // detail_area を含めて取得を試みる
-      const fullResult = await supabase
+      const { data, error } = await supabase
         .from('profiles')
-        .select('full_name, gender, birthday, prefecture, location, region, city, selected_area, detail_area, interests')
-        .eq('id', currentUserId)
+        .select('full_name, gender, birthday, prefecture, location, region, city, selected_area, detail_area, interests, is_student, school_name, grade')
+        .eq('id', userId)
         .single()
-      
-      if (fullResult.error && fullResult.error.message.includes('detail_area')) {
-        // detail_area カラムがない場合は除外して再取得
-        console.warn('📋 [Profile] detail_area カラムが存在しないため、除外して取得')
-        const basicResult = await supabase
-          .from('profiles')
-          .select('full_name, gender, birthday, prefecture, location, region, city, selected_area, interests')
-          .eq('id', currentUserId)
-          .single()
-        data = basicResult.data
-        fetchError = basicResult.error
-      } else {
-        data = fullResult.data
-        fetchError = fullResult.error
-      }
 
-      if (fetchError) {
-        console.error('Profile fetch error:', fetchError.message)
+      if (error && error.code !== 'PGRST116') {
+        console.error('📋 [ProfileModal] Fetch error:', error.message)
       }
 
       if (data) {
-        // 既存データをフォームに反映
-        // birthdayはYYYY-MM-DD形式で取得される（date型）
+        console.log('Fetched Data:', data)
+        console.log('📋 [ProfileModal] Data received from DB:', data)
+        
         const birthday = data.birthday || ''
         let year = '', month = '', day = ''
-        
         if (birthday) {
           const parts = birthday.split('-')
           if (parts.length === 3) {
-            year = parts[0]
-            month = parts[1]
-            day = parts[2]
+            year = parts[0]; month = parts[1]; day = parts[2]
           }
         }
-        
-        // 都道府県：prefecture を優先、なければ location を使用（後方互換性）
-        const prefectureValue = data.prefecture || data.location || ''
-        
-        // 地方区分を自動検出（DBにない場合）
-        let region = data.region || ''
-        if (!region && data.city && prefectureValue === '滋賀県') {
-          region = getRegionByCity(data.city) || ''
-        }
-        
-        // 詳細エリア：detail_area を優先、なければ selected_area を使用
-        const detailAreaValue = data.detail_area || ''
-        const selectedAreaValue = data.selected_area || ''
-        
-        console.log('📋 [Profile] 取得データ:', {
-          prefecture: prefectureValue,
-          region: region,
-          city: data.city,
-          selected_area: selectedAreaValue,
-          detail_area: detailAreaValue
+
+        // is_student: null を明示的に扱う（undefined で止まらない）
+        const isStudentFromDB = data.is_student
+        const schoolNameFromDB = data.school_name ?? ''
+        const isStudentValue: boolean | null =
+          isStudentFromDB === true || isStudentFromDB === false
+            ? isStudentFromDB
+            : schoolNameFromDB
+              ? true
+              : null
+
+        console.log('📋 [ProfileModal] Initializing form with:', {
+          isStudentFromDB,
+          schoolNameFromDB,
+          isStudentValue
         })
-        
+
         setFormData({
           full_name: data.full_name || userFullName || '',
           gender: data.gender || '',
           birthday: birthday,
-          prefecture: prefectureValue, // 都道府県
-          region: region, // 地方区分
-          city: data.city || '', // 市区町村
-          selected_area: selectedAreaValue, // ゴミ収集エリア
-          detail_area: detailAreaValue, // 詳細エリア
-          interests: data.interests || []
+          prefecture: data.prefecture || data.location || '',
+          region: data.region || '',
+          city: data.city || '',
+          selected_area: data.selected_area || '',
+          detail_area: data.detail_area || '',
+          interests: data.interests || [],
+          is_student: isStudentValue ?? null,
+          school_name: schoolNameFromDB,
+          grade: data.grade ?? ''
         })
-        
         setBirthYear(year)
         setBirthMonth(month)
         setBirthDay(day)
+      } else {
+        console.log('📋 [ProfileModal] No data found for user, using defaults')
       }
-    } catch (error) {
-      console.error('Profile fetch error:', error)
+    } catch (err) {
+      console.error('📋 [ProfileModal] Unexpected fetch error:', err)
     } finally {
+      console.log('📋 [ProfileModal] Setting loading to false')
       setLoading(false)
     }
   }
+
+  // マウント時にプロフィール取得 + 3秒で強制ロード解除の安全装置
+  useEffect(() => {
+    if (!userId) {
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    const safetyTimer = setTimeout(() => {
+      if (!cancelled) {
+        console.log('📋 [ProfileModal] 3秒タイムアウト: 強制的に setLoading(false)')
+        setLoading(false)
+      }
+    }, 3000)
+    checkProfileStatus().finally(() => {
+      if (!cancelled) setLoading(false)
+    })
+    return () => {
+      cancelled = true
+      clearTimeout(safetyTimer)
+    }
+  }, [userId])
 
   const handleInterestToggle = (interest: string) => {
     setFormData(prev => {
@@ -306,9 +307,21 @@ export default function ProfileRegistrationModal({
   }
 
   const handleSubmit = async () => {
-    // 必須項目のチェック（full_nameは必須）
+    // 必須項目のチェック
     if (!formData.full_name.trim()) {
       setErrorMsg('お名前を入力してください')
+      setTimeout(() => setErrorMsg(''), 3000)
+      return
+    }
+
+    if (formData.is_student === null) {
+      setErrorMsg('学生か社会人かを選択してください')
+      setTimeout(() => setErrorMsg(''), 3000)
+      return
+    }
+
+    if (formData.is_student === true && (!formData.school_name || !formData.grade)) {
+      setErrorMsg('学校名と学年を選択してください')
       setTimeout(() => setErrorMsg(''), 3000)
       return
     }
@@ -359,6 +372,9 @@ export default function ProfileRegistrationModal({
         city: formData.city || null, // 市区町村
         selected_area: selectedAreaValue, // ゴミ収集エリア（detail_area と統合）
         interests: formData.interests.length > 0 ? formData.interests : null,
+        is_student: formData.is_student,
+        school_name: formData.is_student ? formData.school_name : null,
+        grade: formData.is_student ? (formData.grade || null) : null,
         updated_at: new Date().toISOString()
       }
       
@@ -403,6 +419,7 @@ export default function ProfileRegistrationModal({
         console.error('📋 [Profile] エラーコード:', error.code)
         
         setErrorMsg(`保存に失敗しました: ${error.message}`)
+        setSaving(false) // エラー時も確実に解除
         setTimeout(() => setErrorMsg(''), 5000)
       } else {
         console.log('📋 [Profile] 保存成功:', data)
@@ -411,19 +428,21 @@ export default function ProfileRegistrationModal({
         
         // コンテキストのプロフィールを更新
         await refreshProfile()
+        // モーダル内のステートも最新化（DBから再取得）
+        console.log('📋 [Profile] 保存完了、最新データを再取得します')
+        await checkProfileStatus()
         
         // 保存成功通知を表示してからモーダルを閉じる
-        // onComplete を呼び出して親コンポーネントに通知（状態の即時更新をトリガー）
         setTimeout(() => {
+          setSaving(false) // 閉じる直前に解除
           onComplete()
         }, 1500)
       }
     } catch (error: any) {
       console.error('Unexpected error:', error)
       setErrorMsg(`予期しないエラー: ${error?.message || '不明なエラー'}`)
+      setSaving(false) // 例外時も確実に解除
       setTimeout(() => setErrorMsg(''), 5000)
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -499,6 +518,82 @@ export default function ProfileRegistrationModal({
 
           {/* スクロール可能なコンテンツ */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {/* 学生・社会人選択（最優先） */}
+            <div className="bg-orange-50 p-5 rounded-[2rem] border-2 border-orange-200 space-y-4">
+              <label className="flex items-center gap-2 ml-2">
+                <Sparkles className="text-orange-500" size={18} />
+                <span className="text-sm font-black text-gray-700">学生ですか？それとも社会人ですか？</span>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setFormData({ ...formData, is_student: true })}
+                  className={`py-4 rounded-2xl font-black text-base transition-all flex flex-col items-center justify-center gap-1 ${
+                    formData.is_student === true
+                      ? 'bg-orange-500 text-white shadow-lg scale-105 border-b-4 border-orange-700'
+                      : 'bg-white text-gray-600 border-2 border-orange-100 hover:border-orange-300'
+                  }`}
+                >
+                  <span>学生です</span>
+                  <span className="text-[10px] opacity-80">大学・専門・高校など</span>
+                </button>
+                <button
+                  onClick={() => setFormData({ ...formData, is_student: false, school_name: '', grade: '' })}
+                  className={`py-4 rounded-2xl font-black text-base transition-all flex flex-col items-center justify-center gap-1 ${
+                    formData.is_student === false
+                      ? 'bg-blue-500 text-white shadow-lg scale-105 border-b-4 border-blue-700'
+                      : 'bg-white text-gray-600 border-2 border-blue-100 hover:border-blue-300'
+                  }`}
+                >
+                  <span>社会人です</span>
+                  <span className="text-[10px] opacity-80">学生以外の方</span>
+                </button>
+              </div>
+
+              {/* 学生の場合の追加項目 */}
+              {formData.is_student === true && (
+                <div className="space-y-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-gray-500 ml-2">学校名</label>
+                    <select
+                      value={formData.school_name}
+                      onChange={(e) => setFormData({ ...formData, school_name: e.target.value })}
+                      className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm"
+                    >
+                      <option value="">学校名を選択してください</option>
+                      <option value="滋賀大学">滋賀大学</option>
+                      <option value="滋賀県立大学">滋賀県立大学</option>
+                      <option value="聖泉大学">聖泉大学</option>
+                      <option value="近江高校">近江高校</option>
+                      <option value="彦根東高校">彦根東高校</option>
+                      <option value="その他">その他（自由入力）</option>
+                    </select>
+                    {formData.school_name === 'その他' && (
+                      <input
+                        type="text"
+                        placeholder="学校名を入力してください"
+                        className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm mt-2"
+                        onChange={(e) => setFormData({ ...formData, school_name: e.target.value })}
+                      />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-gray-500 ml-2">学年</label>
+                    <select
+                      value={formData.grade}
+                      onChange={(e) => setFormData({ ...formData, grade: e.target.value })}
+                      className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm"
+                    >
+                      <option value="">学年を選択してください</option>
+                      {[1, 2, 3, 4, 5, 6].map(g => (
+                        <option key={g} value={g}>{g}年生</option>
+                      ))}
+                      <option value="院生・その他">院生・その他</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* 通知エリア */}
             {showSuccess && (
               <div className="bg-green-500 text-white px-6 py-3 rounded-full flex items-center gap-2 shadow-lg animate-in zoom-in duration-300">
@@ -538,7 +633,7 @@ export default function ProfileRegistrationModal({
                 <span className="text-xs font-black text-gray-400 uppercase tracking-widest">性別</span>
               </label>
               <div className="grid grid-cols-2 gap-3">
-                {GENDERS.map((gender) => (
+                {GENDERS?.map((gender) => (
                   <button
                     key={gender}
                     onClick={() => setFormData({ ...formData, gender })}
@@ -613,7 +708,7 @@ export default function ProfileRegistrationModal({
                   className="w-full bg-white border-2 border-gray-200 rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-black focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                 >
                   <option value="">① 都道府県を選択</option>
-                  {PREFECTURES.map((pref) => (
+                  {PREFECTURES?.map((pref) => (
                     <option key={pref} value={pref}>{pref}</option>
                   ))}
                 </select>
@@ -648,7 +743,7 @@ export default function ProfileRegistrationModal({
                       className="w-full bg-white border-2 border-gray-200 rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-black focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                     >
                       <option value="">{formData.prefecture === '滋賀県' ? '③' : '②'} 市区町村を選択</option>
-                      {availableCities.map((city) => (
+                      {availableCities?.map((city) => (
                         <option key={city} value={city}>{city}</option>
                       ))}
                     </select>
@@ -667,7 +762,7 @@ export default function ProfileRegistrationModal({
                       className="w-full bg-blue-50 border-2 border-blue-200 rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-black focus:border-blue-400 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                     >
                       <option value="">{formData.prefecture === '滋賀県' ? '④' : '③'} お住まいのエリアを選択</option>
-                      {availableDetailAreas.map((area) => (
+                      {availableDetailAreas?.map((area) => (
                         <option key={area} value={area}>{area}</option>
                       ))}
                     </select>
@@ -721,8 +816,8 @@ export default function ProfileRegistrationModal({
                 <span className="text-xs font-black text-gray-400 uppercase tracking-widest">興味関心（複数選択可）</span>
               </label>
               <div className="flex flex-wrap gap-2">
-                {INTERESTS_OPTIONS.map((interest) => {
-                  const isSelected = formData.interests.includes(interest)
+                {INTERESTS_OPTIONS?.map((interest) => {
+                  const isSelected = formData.interests?.includes(interest)
                   return (
                     <button
                       key={interest}
@@ -745,7 +840,7 @@ export default function ProfileRegistrationModal({
           <div className="flex-shrink-0 p-6 border-t bg-white space-y-3">
             <button
               onClick={handleSubmit}
-              disabled={saving || !formData.full_name.trim()}
+              disabled={saving || !formData.full_name.trim() || formData.is_student === null}
               className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-4 rounded-[1.5rem] font-black shadow-xl shadow-orange-200 active:scale-95 transition-all flex items-center justify-center gap-3"
             >
               {saving ? (
