@@ -42,19 +42,11 @@ const generateSearchKeywords = (areaName: string): string[] => {
 // SWR用のフェッチャー関数
 // プロフィールの selected_area や detail_area から正しい area_key を導き出す
 const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | null> => {
-  if (!areaKey) {
-    console.log(`🗑️ [SWR] エリアキーが空のためスキップ`)
-    return null
-  }
-  
-  console.log(`🗑️ [SWR] ゴミ収集スケジュール取得開始: ${areaKey}`)
+  if (!areaKey) return null
   
   // ★ 3秒でタイムアウト（モバイルでのハング防止）
   const timeoutPromise = new Promise<null>((resolve) =>
-    setTimeout(() => {
-      console.log(`🗑️ [SWR] タイムアウト発生 - フォールバック使用`)
-      resolve(null)
-    }, 3000)
+    setTimeout(() => resolve(null), 3000)
   )
   
   const fetchPromise = (async (): Promise<HikoneWasteMaster | null> => {
@@ -62,7 +54,6 @@ const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | 
   
   // 検索キーワードを生成
   const searchKeywords = generateSearchKeywords(areaKey)
-  console.log(`🗑️ [SWR] 生成された検索キーワード:`, searchKeywords)
   
   // 1. area_key で完全一致検索（正規化後の文字列で検索）
   const normalizedAreaKey = normalizeAreaName(areaKey)
@@ -72,16 +63,12 @@ const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | 
     .eq('area_key', normalizedAreaKey)
     .single()
   
-  if (exactMatch && !exactError) {
-    console.log(`🗑️ [SWR] area_key 完全一致でヒット:`, exactMatch)
-    return exactMatch as HikoneWasteMaster
-  }
+  if (exactMatch && !exactError) return exactMatch as HikoneWasteMaster
   
   // 2. area_key で部分一致検索（各キーワードで検索）
   for (const keyword of searchKeywords) {
     if (!keyword || keyword.trim() === '') continue
     
-    console.log(`🗑️ [SWR] 部分一致検索を試行: "${keyword}"`)
     const { data: partialMatch, error: partialError } = await supabase
       .from('hikone_waste_master')
       .select(WASTE_SCHEDULE_COLUMNS)
@@ -89,10 +76,7 @@ const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | 
       .limit(1)
       .maybeSingle()
     
-    if (partialMatch && !partialError) {
-      console.log(`🗑️ [SWR] area_key 部分一致でヒット（キーワード: "${keyword}"）:`, partialMatch)
-      return partialMatch as HikoneWasteMaster
-    }
+    if (partialMatch && !partialError) return partialMatch as HikoneWasteMaster
   }
   
   // 3. area_key で逆方向の部分一致検索（DBのarea_keyがプロフィールのエリア名を含むかチェック）
@@ -100,7 +84,6 @@ const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | 
   for (const keyword of searchKeywords) {
     if (!keyword || keyword.trim() === '') continue
     
-    console.log(`🗑️ [SWR] 逆方向部分一致検索を試行: "${keyword}"`)
     // DBのarea_keyがプロフィールのキーワードを含むかチェック
     const { data: reverseMatch, error: reverseError } = await supabase
       .from('hikone_waste_master')
@@ -109,14 +92,10 @@ const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | 
       .limit(1)
       .maybeSingle()
     
-    if (reverseMatch && !reverseError) {
-      console.log(`🗑️ [SWR] 逆方向部分一致でヒット（キーワード: "${keyword}"）:`, reverseMatch)
-      return reverseMatch as HikoneWasteMaster
-    }
+    if (reverseMatch && !reverseError) return reverseMatch as HikoneWasteMaster
   }
   
   // 4. 全件取得して、手動でマッチング（最後の手段）
-  console.log(`🗑️ [SWR] 全件取得して手動マッチングを試行`)
   const { data: allAreas, error: allError } = await supabase
     .from('hikone_waste_master')
     .select(WASTE_SCHEDULE_COLUMNS)
@@ -129,29 +108,19 @@ const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | 
       const profileAreaKey = normalizedAreaKey
       
       // 完全一致
-      if (dbAreaKey === profileAreaKey) {
-        console.log(`🗑️ [SWR] 手動マッチング（完全一致）でヒット:`, area)
-        return area as HikoneWasteMaster
-      }
+      if (dbAreaKey === profileAreaKey) return area as HikoneWasteMaster
       
       // 相互に含まれるかチェック
-      if (dbAreaKey.includes(profileAreaKey) || profileAreaKey.includes(dbAreaKey)) {
-        console.log(`🗑️ [SWR] 手動マッチング（相互包含）でヒット:`, area)
-        return area as HikoneWasteMaster
-      }
+      if (dbAreaKey.includes(profileAreaKey) || profileAreaKey.includes(dbAreaKey)) return area as HikoneWasteMaster
       
       // キーワードのいずれかが含まれるかチェック
       for (const keyword of searchKeywords) {
-        if (dbAreaKey.includes(keyword) || keyword.includes(dbAreaKey)) {
-          console.log(`🗑️ [SWR] 手動マッチング（キーワード包含）でヒット:`, area)
-          return area as HikoneWasteMaster
-        }
+        if (dbAreaKey.includes(keyword) || keyword.includes(dbAreaKey)) return area as HikoneWasteMaster
       }
     }
   }
   
   // 5. 最終フォールバック: 彦根市のデフォルトエリアを返す
-  console.log(`🗑️ [SWR] フォールバック検索を試行`)
   try {
     const { data: fallbackMatch, error: fallbackError } = await supabase
       .from('hikone_waste_master')
@@ -159,18 +128,13 @@ const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | 
       .limit(1)
       .maybeSingle()
     
-    if (fallbackMatch && !fallbackError) {
-      console.log(`🗑️ [SWR] フォールバック（最初のエリア）でヒット:`, fallbackMatch)
-      return fallbackMatch as HikoneWasteMaster
-    }
-  } catch (e) {
-    console.log(`🗑️ [SWR] フォールバック検索も失敗:`, e)
+    if (fallbackMatch && !fallbackError) return fallbackMatch as HikoneWasteMaster
+  } catch {
+    // フォールバック検索失敗時は null を返す
   }
   
-      console.error(`🗑️ [SWR] スケジュールが見つかりません（area_key: ${areaKey}）`)
-      return null
-    } catch (error) {
-      console.error(`🗑️ [SWR] フェッチ中にエラー発生:`, error)
+  return null
+    } catch {
       return null
     }
   })()
@@ -204,16 +168,7 @@ export function useWasteSchedule(areaKey: string | null) {
       revalidateIfStale: false,      // staleデータでも自動再取得しない
       // エラー時のリトライ
       errorRetryCount: 2,
-      errorRetryInterval: 3000,
-      // ログ
-      onSuccess: (data) => {
-        if (data) {
-          console.log(`🗑️ [SWR] キャッシュ保存成功: ${areaKey}`)
-        }
-      },
-      onError: (err) => {
-        console.error(`🗑️ [SWR] 取得エラー:`, err)
-      }
+      errorRetryInterval: 3000
     }
   )
   

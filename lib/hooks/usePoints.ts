@@ -28,14 +28,9 @@ export interface PointsData {
 const fetchPoints = async (userId: string): Promise<PointsData | null> => {
   if (!userId) return null
   
-  console.log(`💰 [SWR] ポイント情報取得開始: ${userId}`)
-  
   // ★ 3秒でタイムアウト（モバイルでのハング防止）
   const timeoutPromise = new Promise<PointsData>((resolve) =>
-    setTimeout(() => {
-      console.log(`💰 [SWR] タイムアウト発生 - デフォルト値を使用`)
-      resolve({ points: 0, referral_code: null })
-    }, 3000)
+    setTimeout(() => resolve({ points: 0, referral_code: null }), 3000)
   )
   
   const fetchPromise = (async (): Promise<PointsData> => {
@@ -46,25 +41,18 @@ const fetchPoints = async (userId: string): Promise<PointsData | null> => {
         .eq('id', userId)
         .single()
       
-      if (error) {
-        console.error(`💰 [SWR] ポイント取得エラー:`, error)
-        return { points: 0, referral_code: null }
-      }
+      if (error) return { points: 0, referral_code: null }
       
       if (data) {
-        console.log(`💰 [SWR] ポイント取得成功:`, data)
         const pointsValue = data.points != null ? Number(data.points) : 0
-        console.log(`💰 [SWR] ポイント値（変換後）:`, pointsValue, '(元の値:', data.points, ')')
         return {
           points: pointsValue,
           referral_code: data.referral_code || null
         }
       }
       
-      console.log(`💰 [SWR] データなし、デフォルト値を返す`)
       return { points: 0, referral_code: null }
-    } catch (error) {
-      console.error(`💰 [SWR] フェッチ中にエラー発生:`, error)
+    } catch {
       return { points: 0, referral_code: null }
     }
   })()
@@ -75,19 +63,7 @@ const fetchPoints = async (userId: string): Promise<PointsData | null> => {
 
 // SWR用のフェッチャー関数（ポイント履歴）
 const fetchPointHistory = async (userId: string): Promise<PointHistory[]> => {
-  if (!userId) {
-    console.log(`📜 [HistoryFetch] userIdが空のためスキップ`)
-    return []
-  }
-  
-  console.log(`📜 [HistoryFetch] 取得開始`)
-  console.log(`📜 [HistoryFetch] ユーザーID: ${userId}`)
-  console.log(`📜 [HistoryFetch] ユーザーID型確認:`, {
-    userId,
-    userIdType: typeof userId,
-    userIdLength: userId?.length,
-    isString: typeof userId === 'string'
-  })
+  if (!userId) return []
   
   // キャッシュを無効化して強制的に最新データを取得
   // activity_typeに関係なく全ての履歴を取得（runningタイプも含む）
@@ -96,37 +72,9 @@ const fetchPointHistory = async (userId: string): Promise<PointHistory[]> => {
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
-    .limit(10) // テスト用に10件まで取得
+    .limit(10)
   
-  console.log(`📜 [HistoryFetch] 結果:`, data, 'エラー:', error)
-  
-  if (error) {
-    console.error(`📜 [HistoryFetch] エラー詳細:`, {
-      code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint
-    })
-    return []
-  }
-  
-  console.log(`📜 [HistoryFetch] 取得成功: ${data?.length || 0}件`)
-  if (data && data.length > 0) {
-    console.log(`📜 [HistoryFetch] 履歴サンプル（最初の3件）:`, data.slice(0, 3).map(item => ({
-      id: item.id,
-      user_id: item.user_id,
-      amount: item.amount,
-      type: item.type,
-      activity_type: (item as any).activity_type,
-      description: item.description,
-      created_at: item.created_at
-    })))
-    // runningタイプの履歴が含まれているか確認
-    const runningHistory = data.filter((item: any) => item.activity_type === 'running')
-    console.log(`📜 [HistoryFetch] runningタイプの履歴: ${runningHistory.length}件`)
-  } else {
-    console.log(`📜 [HistoryFetch] 履歴が0件です`)
-  }
+  if (error) return []
   return data || []
 }
 

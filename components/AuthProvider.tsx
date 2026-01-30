@@ -38,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   const initialized = useRef(false)
   const isMountedRef = useRef(true)
+  const sessionCacheRef = useRef<Session | null>(null)
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -53,7 +54,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return null
       }
-      console.log('Fetched Data:', data)
       return data
     } catch (err) {
       console.error('🔐 [AuthProvider] プロフィール取得例外:', err)
@@ -74,16 +74,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initialized.current = true
 
     const initAuth = async () => {
-      console.log('🔐 [AuthProvider] 初期化開始...')
-      
       // モバイル環境などで getSession がハングする場合があるため、タイムアウトを設ける
-<<<<<<< HEAD
-      // ★ 1.5秒に短縮してスマホでの体感速度を改善
-=======
-      // タイムアウトを2秒に短縮し、より早くホーム画面へ移行させる
->>>>>>> db6bdc0eb01bc8ade8f65751f74520defb09f696
+      // ★ 1.2秒でタイムアウト、切れた場合はキャッシュされた以前のセッションを優先表示
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Auth Timeout')), 1500)
+        setTimeout(() => reject(new Error('Auth Timeout')), 1200)
       )
 
       try {
@@ -95,17 +89,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) console.error('🔐 [AuthProvider] セッション取得エラー:', error)
 
         if (initialSession && isMountedRef.current) {
+          sessionCacheRef.current = initialSession
           setSession(initialSession)
           setUser(initialSession.user)
           const profileData = await fetchProfile(initialSession.user.id)
           if (isMountedRef.current) setProfile(profileData)
         }
       } catch (err) {
-        console.error('🔐 [AuthProvider] 初期化例外:', err)
+        // タイムアウト時: キャッシュされた以前のセッションを優先して表示
+        const cached = sessionCacheRef.current
+        if (cached && isMountedRef.current) {
+          setSession(cached)
+          setUser(cached.user)
+          const profileData = await fetchProfile(cached.user.id)
+          if (isMountedRef.current) setProfile(profileData)
+        }
       } finally {
         // 何があってもここでロードを終わらせる
         if (isMountedRef.current) {
-          console.log('🔐 [AuthProvider] ロード完了')
           setLoading(false)
         }
       }
@@ -113,6 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
         if (!isMountedRef.current) return
 
+        if (newSession) sessionCacheRef.current = newSession
+        else sessionCacheRef.current = null
         setSession(newSession)
         setUser(newSession?.user ?? null)
         

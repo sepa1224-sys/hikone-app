@@ -156,10 +156,7 @@ const getWasteForDayOfWeek = (wasteData: HikoneWasteMaster | null, dayIndex: num
 // 今日・明日のゴミ出しを取得する関数
 const getTodayTomorrowWaste = (wasteData: HikoneWasteMaster | null): { today: string[], tomorrow: string[] } => {
   // データがない場合は空を返す
-  if (!wasteData) {
-    console.log('🗑️ ゴミ収集データがありません（wasteData is null）')
-    return { today: [], tomorrow: [] }
-  }
+  if (!wasteData) return { today: [], tomorrow: [] }
   
   const today = new Date()
   const tomorrow = new Date(today)
@@ -170,12 +167,7 @@ const getTodayTomorrowWaste = (wasteData: HikoneWasteMaster | null): { today: st
   const tomorrowDow = tomorrow.getDay()
   const todayDayName = DAY_NAMES[todayDow] // 日本語の曜日（1文字）
   const tomorrowDayName = DAY_NAMES[tomorrowDow]
-  const todayDayNameFull = DAY_NAMES_FULL[todayDow] // 日本語の曜日（フルネーム）
-  
-  console.log(`🗑️ 今日: ${todayDayNameFull} (getDay=${todayDow})`)
-  console.log(`🗑️ 明日: ${DAY_NAMES_FULL[tomorrowDow]} (getDay=${tomorrowDow})`)
-  console.log(`🗑️ エリア: ${wasteData.area_key || wasteData.area_name}`)
-  
+
   const wasteTypesData = [
     { key: 'burnable', name: '燃やせるごみ', schedule: wasteData.burnable },
     { key: 'landfill_waste', name: '埋立ごみ', schedule: wasteData.landfill_waste },
@@ -191,12 +183,7 @@ const getTodayTomorrowWaste = (wasteData: HikoneWasteMaster | null): { today: st
     // ===== 曜日の照合: parseScheduleString で部分一致（includes）を使用 =====
     const isTodayMatch = parseScheduleString(wt.schedule, today)
     const isTomorrowMatch = parseScheduleString(wt.schedule, tomorrow)
-    
-    // デバッグログ: スケジュール文字列と照合結果
-    if (wt.schedule) {
-      console.log(`   ${wt.name}: "${wt.schedule}" → 今日(${todayDayName}):${isTodayMatch ? '✅' : '❌'}, 明日(${tomorrowDayName}):${isTomorrowMatch ? '✅' : '❌'}`)
-    }
-    
+
     if (isTodayMatch) {
       todayWaste.push(wt.name)
     }
@@ -204,9 +191,7 @@ const getTodayTomorrowWaste = (wasteData: HikoneWasteMaster | null): { today: st
       tomorrowWaste.push(wt.name)
     }
   }
-  
-  console.log(`🗑️ 結果 - 今日: [${todayWaste.join(', ') || 'なし'}], 明日: [${tomorrowWaste.join(', ') || 'なし'}]`)
-  
+
   return { today: todayWaste, tomorrow: tomorrowWaste }
 }
 
@@ -238,15 +223,12 @@ export default function WasteScheduleCard({
   const [showMonthlyModal, setShowMonthlyModal] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [currentMonth, setCurrentMonth] = useState(new Date()) // 月間カレンダー用の表示月
-  
-  // 【超安全モード】データがない場合は何も表示しない
-  if (!userWasteSchedule) return null
 
-  // クライアントサイドでのみ実行（Portal用）
+  // クライアントサイドでのみ実行（Portal用）- フックは常に呼ぶ必要がある
   useEffect(() => {
     setMounted(true)
   }, [])
-  
+
   // モーダル表示時に背後のスクロールを禁止
   useEffect(() => {
     if (showWeeklyModal || showMonthlyModal) {
@@ -254,11 +236,13 @@ export default function WasteScheduleCard({
     } else {
       document.body.style.overflow = ''
     }
-    // クリーンアップ
     return () => {
       document.body.style.overflow = ''
     }
   }, [showWeeklyModal, showMonthlyModal])
+
+  // 【超安全モード】データがない場合は何も表示しない（フックの後に配置）
+  if (!userWasteSchedule) return null
   
   // 月間カレンダー用: 指定月の全日付のゴミ収集情報を取得
   const getMonthlyWasteData = (year: number, month: number) => {
