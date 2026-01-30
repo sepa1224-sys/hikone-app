@@ -91,7 +91,7 @@ export function usePoints(userId: string | null) {
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
-      dedupingInterval: 60000, // 1分間は同じリクエストを重複排除
+      dedupingInterval: 5000,
       revalidateIfStale: false,
       errorRetryCount: 2,
       errorRetryInterval: 3000,
@@ -102,8 +102,7 @@ export function usePoints(userId: string | null) {
     points: data?.points ?? 0,
     referralCode: data?.referral_code ?? null,
     error,
-    // ★ 重要: スケルトンをブロックしないよう、常に false を返す
-    isLoading: false,
+    isLoading,
     refetch: () => mutate()
   }
 }

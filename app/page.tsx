@@ -20,7 +20,7 @@ import { useMunicipalityStats } from '@/lib/hooks/useMunicipalityStats'
 import { formatFullLocation, isSupportedCity, UNSUPPORTED_AREA_MESSAGE } from '@/lib/constants/shigaRegions'
 import { useAuth } from '@/components/AuthProvider'
 import { supabase } from '@/lib/supabase'
-import { HomeSkeleton } from '@/components/Skeleton'
+import { HomeSkeleton, Skeleton } from '@/components/Skeleton'
 const HIKONYAN_IMAGE = "https://kawntunevmabyxqmhqnv.supabase.co/storage/v1/object/public/images/hikonyan.png"
 
 const cityData: Record<string, any> = {
@@ -141,7 +141,7 @@ export default function AppHome() {
   const router = useRouter()
   
   // AuthProviderから認証状態を取得（一本化）
-  const { session, user: authUser, profile: authProfile, loading: authLoading, refreshProfile } = useAuth()
+  const { session, user: authUser, profile: authProfile, refreshProfile } = useAuth()
   
   // マウント済みフラグ（ハイドレーションエラー防止）
   const [isMounted, setIsMounted] = useState(false)
@@ -149,11 +149,10 @@ export default function AppHome() {
 
   useEffect(() => {
     setIsMounted(true)
-    // スケルトン強制介入: 0.8秒経過したら「データなし」状態でメイン画面を描画し、裏でデータをロード
     const timer = setTimeout(() => {
       setLoading(false)
       setProfileChecked(true)
-    }, 800)
+    }, 400)
     return () => clearTimeout(timer)
   }, [])
 
@@ -162,65 +161,34 @@ export default function AppHome() {
   // プロフィール情報
   const [profile, setProfile] = useState<any>(null)
 
-  // authProfile があれば即座に反映
+  // authProfile 監視を1つの useEffect に統合（ステート更新回数を削減）
   useEffect(() => {
+    // 1. authProfile の同期
     if (authProfile) {
       setProfile(authProfile)
       setUserCity(authProfile.city || null)
       setUserSelectedArea(authProfile.selected_area || authProfile.detail_area || null)
-      
-      if (authProfile.city && !isSupportedCity(authProfile.city)) {
-        setShowUnsupportedAreaModal(true)
-      } else {
-        setShowUnsupportedAreaModal(false)
-      }
-      setProfileChecked(true) // プロフィール確認完了
-    } else if (!authLoading && !authUser) {
-      // 未ログインの場合
+      setShowUnsupportedAreaModal(authProfile.city ? !isSupportedCity(authProfile.city) : false)
+      setProfileChecked(true)
+    } else if (!authUser) {
       setProfile(null)
       setUserCity(null)
       setUserSelectedArea(null)
       setShowUnsupportedAreaModal(false)
-      setProfileChecked(true) // 未ログインでも完了扱い
+      setProfileChecked(true)
     }
-  }, [authProfile, authLoading, authUser])
 
-  // ★★★ 最優先判定: is_student が null なら即座にポップアップ ★★★
-  // この判定は他のどのロジックよりも先に発火させる
-  useEffect(() => {
-    // ローディング中は何もしない
-    if (authLoading) return
-    // ホーム画面でない場合はスキップ
-    if (view !== 'main') return
-    
-    // ★ 最もシンプルな判定: ログイン済みで is_student が null/undefined なら即ポップアップ
-    if (authUser && authProfile && (authProfile.is_student === null || authProfile.is_student === undefined)) {
-      setShowProfileModal(true)
-      return
+    // 2. プロフィールモーダル判定（is_student 等）
+    if (view === 'main' && authUser) {
+      const needsModal =
+        !authProfile ||
+        authProfile.is_student === null ||
+        authProfile.is_student === undefined ||
+        !authProfile.full_name ||
+        (!authProfile.birthday && !authProfile.location)
+      if (needsModal) setShowProfileModal(true)
     }
-    
-    // プロフィールが取得済みで、不完全な場合（名前や住所が未設定）
-    if (authUser && authProfile && (!authProfile.full_name || (!authProfile.birthday && !authProfile.location))) {
-      setShowProfileModal(true)
-      return
-    } 
-    // authUserはいるがauthProfileがない場合、新規ユーザーの可能性があるため表示
-    if (authUser && !authProfile) {
-      setShowProfileModal(true)
-      return
-    }
-  }, [authLoading, authUser, authProfile, view])
-  
-  // ★ 安全装置のフォローアップ: ローディング終了後にも is_student をチェック
-  useEffect(() => {
-    // loading が false になった後（安全装置発動後）に再度チェック
-    if (!loading && isMounted && authUser) {
-      // authProfile が取得できていない、または is_student が未設定
-      if (!authProfile || authProfile.is_student === null || authProfile.is_student === undefined) {
-        setShowProfileModal(true)
-      }
-    }
-  }, [loading, isMounted, authUser, authProfile])
+  }, [authProfile, authUser, view])
 
   const [mode, setMode] = useState<'local' | 'tourist'>('local') 
   const [selectedCityId, setSelectedCityId] = useState<string>('hikone')
@@ -258,8 +226,7 @@ export default function AppHome() {
       } else {
         setMessages(prev => [...prev, { role: 'ai', text: 'ごめんニャ、うまく聞き取れなかったニャ...' }])
       }
-    } catch (error) {
-      console.error('Chat Error:', error)
+    } catch {
       setMessages(prev => [...prev, { role: 'ai', text: 'エラーが発生したニャ。少し時間を置いてまた送ってニャ！' }])
     } finally {
       setIsChatLoading(false)
@@ -312,13 +279,6 @@ export default function AppHome() {
   // ※ userCity が変更されると、SWRのキーが変わり自動的に再フェッチされる
   const { stats: municipalityStats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useMunicipalityStats(userCity, authUser?.id)
   
-  // 全てのデータ読み込みが完了したらローディングを終了
-  // ★ 全ての SWR フックが isLoading: false を返すようになったため、authLoading のみをチェック
-  useEffect(() => {
-    if (!authLoading) {
-      setLoading(false)
-    }
-  }, [authLoading])
 
 
   // フォトコンテストイベント（events テーブルから取得）
@@ -390,12 +350,6 @@ export default function AppHome() {
     }
   }, [pathname])
 
-  // authUser がいない（ゲスト）の場合は、即座に profileLoading を false にする
-  useEffect(() => {
-    if (!authLoading && !authUser) {
-      setProfileChecked(true)
-    }
-  }, [authUser, authLoading])
 
   // フォトコンテストイベントを取得
   useEffect(() => {
@@ -419,8 +373,7 @@ export default function AppHome() {
             end_date: '2026-02-28'
           })
         }
-      } catch (err) {
-        console.error('イベント取得エラー:', err)
+      } catch {
         setActiveEvent({
           id: 'demo-1',
           title: '彦根の冬景色フォトコンテスト',
@@ -454,8 +407,7 @@ export default function AppHome() {
         setCity(data.city || '')
         setSelectedArea(areaValue)
       }
-    } catch (err) {
-      console.error(err)
+    } catch {
     } finally {
       setProfileLoading(false)
     }
@@ -464,14 +416,13 @@ export default function AppHome() {
   // プロフィールページが表示されたときにデータを取得
   useEffect(() => {
     if (view === 'profile') {
-      if (authLoading) return
       if (!authUser) {
         setView('main')
         return
       }
       fetchProfileDataForEdit()
     }
-  }, [view, authLoading, authUser])
+  }, [view, authUser])
 
   // ポップアップをキャンセルする処理
   const handleCancelCitySelection = () => {
@@ -519,8 +470,7 @@ export default function AppHome() {
       } else {
         setRoutes([])
       }
-    } catch (e) {
-      console.error('経路検索エラー:', e)
+    } catch {
       setRoutes([])
     } finally {
       setIsSearching(false)
@@ -535,7 +485,6 @@ export default function AppHome() {
       },
     })
     if (error) {
-      console.error('Googleログインエラー:', error)
       alert('ログインに失敗しました。もう一度お試しください。')
     }
   }
@@ -608,9 +557,7 @@ export default function AppHome() {
         .select()
 
       if (error) {
-        console.error('Profile upsert error:', error)
-        console.error('Error details:', JSON.stringify(error, null, 2))
-        alert(`保存に失敗しました: ${error.message}\n詳細はコンソールを確認してください。\nprefectureとcityカラムが存在するか確認してください。`)
+        alert(`保存に失敗しました: ${error.message}`)
       } else {
         alert('保存したニャ！')
         // 画面上の名前を即座に更新
@@ -638,9 +585,7 @@ export default function AppHome() {
         await fetchProfileDataForEdit()
       }
     } catch (error: any) {
-      console.error('Unexpected error:', error)
-      console.error('Error stack:', error?.stack)
-      alert(`予期しないエラーが発生しました: ${error?.message || '不明なエラー'}\n詳細はコンソールを確認してください。`)
+      alert(`予期しないエラーが発生しました: ${error?.message || '不明なエラー'}`)
     } finally {
       setSaving(false)
     }
@@ -724,9 +669,6 @@ export default function AppHome() {
     populationUpdatedAt: null
   }
 
-  // ログイン済みだがプロフィール取得中の場合（無限ロード防止のため、一定条件で表示を許可）
-  // 取得失敗時や未設定時でも、authLoading が false になればメイン画面を表示する
-
   return (
     <div className="h-screen bg-blue-50/30 font-sans flex flex-col text-gray-800 tracking-tight overflow-hidden">
       
@@ -760,15 +702,19 @@ export default function AppHome() {
             <span className="text-[11px] font-bold text-gray-400">ひこにゃんAIに質問...</span>
           </div>
           
-          {/* ポイントバッジ */}
+          {/* ポイントバッジ（読み込み中は個別スケルトン） */}
           {authUser && (
             <div 
               onClick={() => router.push('/profile')}
               className="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-yellow-500 px-3 py-1.5 rounded-full cursor-pointer hover:from-amber-500 hover:to-yellow-600 transition-all shadow-sm active:scale-95"
             >
               <span className="text-sm">💰</span>
-              <span className="text-xs font-black text-white">
-                {pointsLoading ? '...' : userPoints.toLocaleString()}
+              <span className="text-xs font-black text-white min-w-[2rem]">
+                {pointsLoading ? (
+                  <span className="inline-block w-6 h-3.5 bg-white/30 rounded animate-pulse" />
+                ) : (
+                  userPoints.toLocaleString()
+                )}
               </span>
               <span className="text-[10px] font-bold text-white/80">pt</span>
             </div>
@@ -820,7 +766,7 @@ export default function AppHome() {
                         </p>
                         <div className="text-lg font-black text-white">
                           {statsLoading ? (
-                            <span className="opacity-70 animate-pulse">読み込み中...</span>
+                            <Skeleton width={80} height={24} className="bg-white/30 rounded" />
                           ) : (
                             <div className="flex items-baseline gap-1">
                               {/* 町ごとの登録者数 / その町の人口 */}

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { Trash2, Recycle, Leaf, Calendar, X, ChevronRight, Home, Clock, ChevronLeft } from 'lucide-react'
+import { Skeleton } from '@/components/Skeleton'
 
 // hikone_waste_master テーブルから取得するデータの型
 export interface HikoneWasteMaster {
@@ -241,8 +242,45 @@ export default function WasteScheduleCard({
     }
   }, [showWeeklyModal, showMonthlyModal])
 
-  // 【超安全モード】データがない場合は何も表示しない（フックの後に配置）
-  if (!userWasteSchedule) return null
+  // エリア設定済みだがデータ読み込み中 → 個別スケルトン表示
+  if (userSelectedArea && userSelectedArea.trim() !== '' && !userWasteSchedule) {
+    return (
+      <div className="bg-white rounded-[2rem] p-4 shadow-sm border border-gray-100">
+        <div className="flex items-center gap-2 mb-3">
+          <Skeleton width={16} height={16} className="rounded" />
+          <Skeleton width={60} height={14} />
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <Skeleton width="100%" height={48} className="rounded-xl" />
+          <Skeleton width="100%" height={48} className="rounded-xl" />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Skeleton width="100%" height={32} className="rounded-lg" />
+          <Skeleton width="100%" height={32} className="rounded-lg" />
+        </div>
+      </div>
+    )
+  }
+  
+  // エリア未設定
+  if (!userSelectedArea || userSelectedArea.trim() === '') {
+    return (
+      <div className="bg-white rounded-[2rem] p-4 shadow-sm border border-gray-100">
+        <div className="flex items-center gap-2 mb-3">
+          <Trash2 size={16} className="text-red-500" />
+          <h2 className="text-xs font-black text-gray-800">ゴミ収集</h2>
+        </div>
+        <div 
+          className="bg-blue-50 border border-blue-200 rounded-xl p-3 cursor-pointer hover:bg-blue-100 transition-colors"
+          onClick={onSetupClick}
+        >
+          <p className="text-[11px] text-blue-700 font-bold text-center">
+            💡 エリアを設定して収集日を表示
+          </p>
+        </div>
+      </div>
+    )
+  }
   
   // 月間カレンダー用: 指定月の全日付のゴミ収集情報を取得
   const getMonthlyWasteData = (year: number, month: number) => {
@@ -349,18 +387,7 @@ export default function WasteScheduleCard({
           )}
         </div>
         
-        {/* エリア未設定の場合 */}
-        {(!userSelectedArea || userSelectedArea.trim() === '') ? (
-          <div 
-            className="bg-blue-50 border border-blue-200 rounded-xl p-3 cursor-pointer hover:bg-blue-100 transition-colors"
-            onClick={onSetupClick}
-          >
-            <p className="text-[11px] text-blue-700 font-bold text-center">
-              💡 エリアを設定して収集日を表示
-            </p>
-          </div>
-        ) : (
-          <>
+        <>
             {/* 今日・明日の2カラムレイアウト（高さを大幅に圧縮） */}
             <div className="grid grid-cols-2 gap-2 mb-2">
               {/* 今日のパネル */}
@@ -426,8 +453,7 @@ export default function WasteScheduleCard({
                 <span className="text-[9px] font-bold text-gray-500">月間</span>
               </button>
             </div>
-          </>
-        )}
+        </>
       </div>
       
       {/* 週間カレンダーモーダル - Portal で body 直下にレンダリング */}

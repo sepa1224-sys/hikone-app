@@ -161,10 +161,10 @@ export function useWasteSchedule(areaKey: string | null) {
     areaKey ? `waste-schedule:${areaKey}` : null,
     () => fetchWasteSchedule(areaKey!),
     {
-      // キャッシュ最適化オプション
-      revalidateOnFocus: false,      // タブフォーカス時の再取得を無効化
-      revalidateOnReconnect: false,  // 再接続時の再取得を無効化
-      dedupingInterval: 3600000,     // 1時間は同じリクエストを重複排除
+      // キャッシュ最適化オプション（スマホで画面切り替え時の再ロード防止）
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 5000,
       revalidateIfStale: false,      // staleデータでも自動再取得しない
       // エラー時のリトライ
       errorRetryCount: 2,
@@ -175,9 +175,7 @@ export function useWasteSchedule(areaKey: string | null) {
   return {
     wasteSchedule: data ?? null,
     error,
-    // ★ 重要: スケルトンをブロックしないよう、常に false を返す
-    // 実際のロード状態は内部で管理し、データがない場合は null を返す
-    isLoading: false,
+    isLoading,
     // 手動で再取得したい場合に使用
     refetch: () => mutate()
   }

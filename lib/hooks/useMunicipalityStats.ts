@@ -123,9 +123,7 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
     // タイムアウトかデータ取得の早い方を返す
     return await Promise.race([fetchPromise, timeoutPromise]);
 
-  } catch (error) {
-    // タイムアウトやDBエラーが起きたら、即座にフォールバックデータを返して画面を表示させる
-    console.error('Stats fetch failed or timed out, using fallback:', error);
+  } catch {
     return FALLBACK_STATS;
   }
 }
@@ -135,16 +133,17 @@ export function useMunicipalityStats(city: string | null, currentUserId?: string
     `municipality-stats:${city || 'default'}`,
     () => fetchMunicipalityStats(city, currentUserId),
     {
-      revalidateOnFocus: false, // スマホでの負荷軽減のため一旦OFF
+      revalidateOnFocus: false,
       revalidateOnReconnect: true,
-      refreshInterval: 0,       // 自動更新も一旦OFF
-      fallbackData: FALLBACK_STATS, // ★重要: SWRがロード中でも即座にこのデータを返す
+      dedupingInterval: 5000,
+      refreshInterval: 0,
+      fallbackData: FALLBACK_STATS,
     }
   );
 
   return {
     stats: data || FALLBACK_STATS,
-    isLoading: false, // ★重要: 常にロード完了状態として振る舞い、スケルトンを出させない
+    isLoading,
     error,
     refetch: mutate
   }
