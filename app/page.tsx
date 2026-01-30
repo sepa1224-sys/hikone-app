@@ -145,15 +145,12 @@ export default function AppHome() {
   
   // マウント済みフラグ（ハイドレーションエラー防止）
   const [isMounted, setIsMounted] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     setIsMounted(true)
-    const timer = setTimeout(() => {
-      setLoading(false)
-      setProfileChecked(true)
-    }, 400)
-    return () => clearTimeout(timer)
+    setLoading(false)
+    setProfileChecked(true)
   }, [])
 
   const [view, setView] = useState<'main' | 'profile'>('main')
@@ -648,7 +645,7 @@ export default function AppHome() {
 
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
-  // 認証中または読み込み中の表示（isMounted が false の間は確実にスケルトンを表示）
+  // レンダリング条件の完全開放: isMounted が false の間のみスケルトン。認証中・データ取得中でもメインUIを表示
   if (!isMounted) {
     return (
       <div className="relative h-screen w-screen bg-white">
