@@ -242,22 +242,11 @@ export default function WasteScheduleCard({
     }
   }, [showWeeklyModal, showMonthlyModal])
 
-  // エリア設定済みだがデータ読み込み中 → 個別スケルトン表示
+  // エリア設定済みだがデータ読み込み中 → 個別スケルトン表示ではなく「読み込み中...」
   if (userSelectedArea && userSelectedArea.trim() !== '' && !userWasteSchedule) {
     return (
-      <div className="bg-white rounded-[2rem] p-4 shadow-sm border border-gray-100">
-        <div className="flex items-center gap-2 mb-3">
-          <Skeleton width={16} height={16} className="rounded" />
-          <Skeleton width={60} height={14} />
-        </div>
-        <div className="grid grid-cols-2 gap-2 mb-2">
-          <Skeleton width="100%" height={48} className="rounded-xl" />
-          <Skeleton width="100%" height={48} className="rounded-xl" />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <Skeleton width="100%" height={32} className="rounded-lg" />
-          <Skeleton width="100%" height={32} className="rounded-lg" />
-        </div>
+      <div className="bg-white rounded-[2rem] p-4 shadow-sm border border-gray-100 flex items-center justify-center min-h-[120px]">
+        <p className="text-sm font-bold text-gray-400 animate-pulse">読み込み中...</p>
       </div>
     )
   }

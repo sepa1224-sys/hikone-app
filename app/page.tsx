@@ -44,11 +44,20 @@ export default function AppHome() {
   // マウント済みフラグ（ハイドレーションエラー防止）
   const [isMounted, setIsMounted] = useState(false)
   const [loading, setLoading] = useState(false)
+  // 強制表示フラグ（0.5秒後に強制的に表示）
+  const [forceShow, setForceShow] = useState(false)
 
   useEffect(() => {
     setIsMounted(true)
     setLoading(false)
     setProfileChecked(true)
+    
+    // 0.5秒後に強制表示
+    const timer = setTimeout(() => {
+      setForceShow(true)
+    }, 500)
+    
+    return () => clearTimeout(timer)
   }, [])
 
   const [view, setView] = useState<'main' | 'profile'>('main')
@@ -514,7 +523,8 @@ export default function AppHome() {
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
   // レンダリング条件の完全開放: isMounted が false の間のみスケルトン。認証中・データ取得中でもメインUIを表示
-  if (!isMounted) {
+  // ただし forceShow が true になったら強制的に表示（ハイドレーションエラーのリスクはあるが、真っ白よりはマシ）
+  if (!isMounted && !forceShow) {
     return (
       <div className="relative h-screen w-screen bg-white">
         <div className="absolute inset-0 z-0">
@@ -576,7 +586,7 @@ export default function AppHome() {
               <span className="text-sm">💰</span>
               <span className="text-xs font-black text-white min-w-[2rem]">
                 {pointsLoading ? (
-                  <span className="inline-block w-6 h-3.5 bg-white/30 rounded animate-pulse" />
+                  <span>読込中..</span>
                 ) : (
                   userPoints.toLocaleString()
                 )}
