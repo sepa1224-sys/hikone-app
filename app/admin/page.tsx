@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings'
 import { supabase } from '@/lib/supabase'
-import { Settings, TrendingUp, Save, AlertCircle, CheckCircle, Gift, Package, XCircle, CheckCircle2, Clock } from 'lucide-react'
+import { Settings, TrendingUp, Save, AlertCircle, CheckCircle, Gift, Package, XCircle, CheckCircle2, Clock, Target, ChevronRight, Home } from 'lucide-react'
+import Link from 'next/link'
 import { GIFT_EXCHANGE_TYPES, getGiftExchangeType } from '@/lib/constants/giftExchangeTypes'
 import { useAuth } from '@/components/AuthProvider'
 
@@ -242,12 +243,21 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-8 px-4">
       <div className="max-w-4xl mx-auto">
         {/* ヘッダー */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-black text-gray-900 mb-2 flex items-center gap-3">
-            <Settings size={40} className="text-blue-600" />
-            管理者ダッシュボード
-          </h1>
-          <p className="text-gray-600">システム設定とポイント発行状況を管理します</p>
+        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-black text-gray-900 mb-2 flex items-center gap-3">
+              <Settings size={40} className="text-blue-600" />
+              管理者ダッシュボード
+            </h1>
+            <p className="text-gray-600">システム設定とポイント発行状況を管理します</p>
+          </div>
+          <button
+            onClick={() => router.push('/')}
+            className="flex items-center gap-2 bg-white text-gray-600 px-4 py-2 rounded-xl font-bold hover:bg-gray-50 transition-colors shadow-sm border border-gray-200 self-start md:self-auto"
+          >
+            <Home size={20} />
+            アプリに戻る
+          </button>
         </div>
 
         {/* ローディング状態 */}
@@ -323,6 +333,28 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* マンスリーミッション管理へのリンク */}
+            <div className="bg-white rounded-2xl p-6 shadow-lg mb-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="bg-orange-100 p-3 rounded-xl">
+                    <Target size={28} className="text-orange-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-gray-900">マンスリーミッション管理</h2>
+                    <p className="text-sm text-gray-500 font-bold">月ごとのミッションを設定・編集します</p>
+                  </div>
+                </div>
+                <Link 
+                  href="/admin/missions" 
+                  className="flex items-center gap-2 bg-gray-900 text-white px-5 py-3 rounded-xl font-bold hover:bg-gray-800 transition-colors"
+                >
+                  設定画面へ
+                  <ChevronRight size={18} />
+                </Link>
+              </div>
             </div>
 
             {/* 設定変更フォーム */}

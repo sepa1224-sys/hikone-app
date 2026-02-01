@@ -191,6 +191,11 @@ function TransferPageContent() {
       if (transferResult.success) {
         // 成功時：ポイントを再取得、フォームをリセット
         refetchPoints()
+
+        // 音声再生
+        const audio = new Audio('/cat-meow.mp3')
+        audio.play().catch(e => console.log('音声再生に失敗しました:', e))
+
         setReceiverCode('')
         setAmount('')
         setReceiverPreview(null)

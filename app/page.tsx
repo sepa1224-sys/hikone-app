@@ -23,7 +23,7 @@ import { supabase } from '@/lib/supabase'
 import { HomeSkeleton, Skeleton } from '@/components/Skeleton'
 import { HIKONYAN_IMAGE } from '@/lib/constants/images'
 import { 
-  cityData, HOURLY_WEATHER, COUPONS, EVENTS, MONTHLY_MISSIONS, 
+  cityData, HOURLY_WEATHER, COUPONS, EVENTS,
   ALL_PREFECTURES, PREFECTURE_CITIES, HIKONE_AREAS, PREFECTURES, COUNTRIES 
 } from '@/lib/constants/appData'
 
@@ -34,12 +34,26 @@ import {
 
 
 
+import { getMissions, Mission } from '@/lib/actions/missions'
+import MissionStampCard from '@/components/mission/MissionStampCard'
+import MissionCard from '@/components/mission/MissionCard'
+
 export default function AppHome() {
   const pathname = usePathname()
   const router = useRouter()
   
-  // AuthProviderから認証状態を取得（一本化）
-  const { session, user: authUser, profile: authProfile, refreshProfile } = useAuth()
+  // マンスリーミッション
+  const [missions, setMissions] = useState<Mission[]>([])
+
+  useEffect(() => {
+    // ミッション取得
+    getMissions().then(result => {
+      if (result.success && result.data) {
+        setMissions(result.data)
+      }
+    })
+  }, [])
+  const { session, user: authUser, profile: authProfile, refreshProfile, loading: authLoading } = useAuth()
   
   // マウント済みフラグ（ハイドレーションエラー防止）
   const [isMounted, setIsMounted] = useState(false)
@@ -67,6 +81,9 @@ export default function AppHome() {
 
   // authProfile 監視を1つの useEffect に統合（ステート更新回数を削減）
   useEffect(() => {
+    // ロード中は判定しない
+    if (authLoading) return
+
     // 1. authProfile の同期
     if (authProfile) {
       setProfile(authProfile)
@@ -83,16 +100,23 @@ export default function AppHome() {
     }
 
     // 2. プロフィールモーダル判定（is_student 等）
-    if (view === 'main' && authUser) {
-      const needsModal =
-        !authProfile ||
-        authProfile.is_student === null ||
-        authProfile.is_student === undefined ||
+    // authLoadingがfalseで、authUserが存在し、かつauthProfileが完全に取得できていない場合のみ表示
+    if (view === 'main' && authUser && !authLoading) {
+      // プロフィールが存在しない、または必須項目が欠けている場合
+      const isProfileIncomplete = !authProfile || 
+        (authProfile.is_student === null || authProfile.is_student === undefined) ||
         !authProfile.full_name ||
         (!authProfile.birthday && !authProfile.location)
-      if (needsModal) setShowProfileModal(true)
+      
+      if (isProfileIncomplete) {
+        // 少し遅延させてから表示判定を行う（非同期データ整合のため）
+        const timer = setTimeout(() => {
+          setShowProfileModal(true)
+        }, 1000)
+        return () => clearTimeout(timer)
+      }
     }
-  }, [authProfile, authUser, view])
+  }, [authProfile, authUser, view, authLoading])
 
   const [mode, setMode] = useState<'local' | 'tourist'>('local') 
   const [selectedCityId, setSelectedCityId] = useState<string>('hikone')
@@ -195,7 +219,7 @@ export default function AppHome() {
   
   // マンスリーチャレンジ用のステート
   const [completedMissions, setCompletedMissions] = useState<number[]>([1, 3, 6]) // デモ用：いくつかクリア済み
-  const [selectedMission, setSelectedMission] = useState<typeof MONTHLY_MISSIONS[0] | null>(null)
+  const [selectedMission, setSelectedMission] = useState<Mission | null>(null)
   const [missionModalOpen, setMissionModalOpen] = useState(false)
   const [missionPhoto, setMissionPhoto] = useState<File | null>(null)
   const [missionPhotoPreview, setMissionPhotoPreview] = useState<string | null>(null)
@@ -477,44 +501,6 @@ export default function AppHome() {
     }
   }
 
-  // ミッション写真選択
-  const handleMissionPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        alert('ファイルサイズは10MB以下にしてください')
-        return
-      }
-      if (!file.type.startsWith('image/')) {
-        alert('画像ファイルを選択してください')
-        return
-      }
-      setMissionPhoto(file)
-      setMissionPhotoPreview(URL.createObjectURL(file))
-    }
-  }
-
-  // ミッション完了
-  const handleCompleteMission = async () => {
-    if (!selectedMission || !missionPhoto || !authUser) {
-      alert('写真をアップロードしてください')
-      return
-    }
-    
-    setUploadingMission(true)
-    
-    // 実際のアップロード処理（デモでは省略してタイマーで完了させる）
-    setTimeout(() => {
-      setCompletedMissions(prev => [...prev, selectedMission.id])
-      setMissionModalOpen(false)
-      setSelectedMission(null)
-      setMissionPhoto(null)
-      setMissionPhotoPreview(null)
-      setUploadingMission(false)
-      alert('ミッションクリア！おめでとうございます！')
-    }, 1500)
-  }
-
   // ミッション達成数の計算
   const completedCount = completedMissions.length
   const remainingFor500Yen = Math.max(0, 5 - completedCount) // 5つで500円商品券
@@ -522,17 +508,8 @@ export default function AppHome() {
 
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
-  // レンダリング条件の完全開放: isMounted が false の間のみスケルトン。認証中・データ取得中でもメインUIを表示
-  // ただし forceShow が true になったら強制的に表示（ハイドレーションエラーのリスクはあるが、真っ白よりはマシ）
-  if (!isMounted && !forceShow) {
-    return (
-      <div className="relative h-screen w-screen bg-white">
-        <div className="absolute inset-0 z-0">
-          <HomeSkeleton />
-        </div>
-      </div>
-    )
-  }
+  // レンダリング条件の緩和：isMountedのみチェックし、スケルトン表示を廃止して即座に表示
+  if (!isMounted) return null
 
   // 統計データの存在チェックを強化
   const safeStats = municipalityStats || {
@@ -828,110 +805,30 @@ export default function AppHome() {
               </div>
             )}
 
-            {/* 3. マンスリー・チャレンジセクション */}
-            <div className="bg-white rounded-[2rem] p-5 shadow-lg border border-gray-100 overflow-hidden">
-              {/* ヘッダー：豪華景品 */}
-              <div className="bg-gradient-to-r from-amber-500 via-yellow-400 to-orange-500 -mx-5 -mt-5 px-5 py-4 mb-5 relative overflow-hidden">
-                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIxIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMikiLz48L3N2Zz4=')] opacity-50" />
-                <div className="relative z-10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Award size={20} className="text-white" />
-                    <span className="text-xs font-black text-white/80 uppercase tracking-wider">1月のマンスリー・チャレンジ</span>
+            {/* 3. マンスリー・チャレンジセクション（新デザイン） */}
+            {missions.length > 0 && (
+              <div className="bg-white rounded-[2rem] p-5 shadow-lg border border-gray-100 overflow-hidden">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Target className="w-5 h-5 text-orange-500" />
+                    <h3 className="font-bold text-gray-800">今月のミッション</h3>
                   </div>
-                  <h3 className="text-lg font-black text-white drop-shadow-sm leading-tight">
-                    豪華景品：近江牛食べ比べセット
-                  </h3>
-                  <p className="text-sm font-bold text-white/90 mt-1">（抽選で1名様）</p>
+                  <Link href="/missions" className="text-xs text-blue-600 font-bold hover:underline flex items-center gap-1">
+                    すべて見る <ChevronRight size={12} />
+                  </Link>
                 </div>
-                <Star size={60} className="absolute -right-2 -top-2 text-white/20 rotate-12" />
-              </div>
-
-              {/* 達成ステータス */}
-              <div className="mb-5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-black text-gray-500">達成数</span>
-                  <span className="text-sm font-black text-orange-500">{completedCount} / 10</span>
-                </div>
-                <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-orange-400 to-amber-400 rounded-full transition-all duration-500 ease-out"
-                    style={{ width: `${(completedCount / 10) * 100}%` }}
+                <div className="space-y-4">
+                  <MissionStampCard 
+                    missions={missions} 
+                    userId={authUser?.id || ''} 
+                    onMissionSelect={(mission) => {
+                      setSelectedMission(mission)
+                      setMissionModalOpen(true)
+                    }}
                   />
                 </div>
-                {remainingFor500Yen > 0 ? (
-                  <p className="text-xs font-black text-orange-600 mt-2 flex items-center gap-1">
-                    <Gift size={14} />
-                    あと{remainingFor500Yen}つクリアで500円商品券ゲット！
-                  </p>
-                ) : remainingForGrandPrize > 0 ? (
-                  <p className="text-xs font-black text-amber-600 mt-2 flex items-center gap-1">
-                    <Trophy size={14} />
-                    あと{remainingForGrandPrize}つで豪華景品の抽選に応募できます！
-                  </p>
-                ) : (
-                  <p className="text-xs font-black text-green-600 mt-2 flex items-center gap-1">
-                    <CheckCircle size={14} />
-                    全ミッションクリア！豪華景品の抽選に参加中！
-                  </p>
-                )}
               </div>
-
-              {/* ミッショングリッド（2x5） */}
-              <div className="grid grid-cols-5 gap-2">
-                {MONTHLY_MISSIONS.map((mission) => {
-                  const MissionIcon = mission.icon
-                  const isCompleted = completedMissions.includes(mission.id)
-                  
-                  return (
-                    <button
-                      key={mission.id}
-                      onClick={() => {
-                        setSelectedMission(mission)
-                        setMissionModalOpen(true)
-                      }}
-                      className={`relative aspect-square rounded-xl flex flex-col items-center justify-center p-1 transition-all active:scale-95 ${
-                        isCompleted 
-                          ? 'bg-green-100 border-2 border-green-400' 
-                          : 'bg-gray-50 border-2 border-gray-200 hover:border-orange-300 hover:bg-orange-50'
-                      }`}
-                    >
-                      <MissionIcon 
-                        size={20} 
-                        className={isCompleted ? 'text-green-500' : 'text-gray-400'} 
-                      />
-                      <span className={`text-[8px] font-bold mt-0.5 text-center leading-tight ${
-                        isCompleted ? 'text-green-600' : 'text-gray-500'
-                      }`}>
-                        {mission.title.substring(0, 4)}...
-                      </span>
-                      
-                      {/* 完了スタンプ */}
-                      {isCompleted && (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="bg-green-500 rounded-full p-1 animate-bounce shadow-lg">
-                            <CheckCircle size={16} className="text-white" />
-                          </div>
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-
-              {/* フッターリンク */}
-              <button 
-                onClick={() => {
-                  if (!authUser) {
-                    router.push('/login')
-                  }
-                }}
-                className="w-full mt-4 py-2 text-xs font-black text-orange-500 hover:text-orange-600 flex items-center justify-center gap-1"
-              >
-                <Target size={14} />
-                {authUser ? 'すべてのミッションを見る' : 'ログインしてチャレンジに参加'}
-                <ChevronRight size={14} />
-              </button>
-            </div>
+            )}
 
             {/* 4. 天気予報セクション */}
             <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-[2rem] p-5 text-white shadow-xl relative overflow-hidden">
@@ -1589,163 +1486,44 @@ export default function AppHome() {
 
       {/* ミッション詳細モーダル */}
       {missionModalOpen && selectedMission && (
-        <>
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
           {/* Backdrop */}
           <div 
-            className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => {
               setMissionModalOpen(false)
               setSelectedMission(null)
-              setMissionPhoto(null)
-              setMissionPhotoPreview(null)
             }}
           />
           
           {/* モーダル本体 */}
-          <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[2001] bg-white rounded-[2rem] max-w-md mx-auto shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            {/* ヘッダー */}
-            <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-5 text-white relative overflow-hidden">
-              <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full" />
-              <div className="absolute -right-2 -bottom-2">
-                {(() => {
-                  const MissionIcon = selectedMission.icon
-                  return <MissionIcon size={60} className="text-white/20" />
-                })()}
-              </div>
-              
-              <div className="relative z-10">
-                <div className="flex items-center gap-2 mb-2">
-                  <Target size={16} />
-                  <span className="text-xs font-bold opacity-80">ミッション #{selectedMission.id}</span>
-                </div>
-                <h3 className="text-xl font-black">{selectedMission.title}</h3>
-              </div>
-            </div>
-
-            {/* コンテンツ */}
-            <div className="p-5 space-y-5">
-              {/* ミッション説明 */}
-              <div className="space-y-3">
-                <p className="text-sm text-gray-600 font-bold">{selectedMission.description}</p>
-                <div className="flex items-center gap-4 text-xs text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <MapPin size={12} />
-                    {selectedMission.location}
-                  </span>
-                  <span className="flex items-center gap-1 text-amber-500 font-black">
-                    <Star size={12} />
-                    {selectedMission.points}pt
-                  </span>
-                </div>
-              </div>
-
-              {/* 完了済みの場合 */}
-              {completedMissions.includes(selectedMission.id) ? (
-                <div className="bg-green-50 rounded-2xl p-6 text-center">
-                  <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-3 animate-bounce">
-                    <CheckCircle size={32} className="text-white" />
-                  </div>
-                  <p className="font-black text-green-600 text-lg">クリア済み！</p>
-                  <p className="text-sm text-green-500 font-bold mt-1">おめでとうございます</p>
-                </div>
-              ) : (
-                /* 未完了の場合：写真アップロード */
-                <>
-                  {!authUser ? (
-                    /* 未ログイン */
-                    <div className="bg-amber-50 rounded-2xl p-5 text-center">
-                      <p className="text-sm font-bold text-amber-800 mb-3">
-                        ミッションに参加するにはログインが必要です
-                      </p>
-                      <button
-                        onClick={() => {
-                          setMissionModalOpen(false)
-                          router.push('/login')
-                        }}
-                        className="bg-amber-500 text-white px-6 py-2 rounded-full font-black text-sm"
-                      >
-                        ログインする
-                      </button>
-                    </div>
-                  ) : (
-                    /* ログイン済み：写真アップロード */
-                    <div className="space-y-4">
-                      <input
-                        ref={missionFileInputRef}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={handleMissionPhotoSelect}
-                        className="hidden"
-                      />
-
-                      {missionPhotoPreview ? (
-                        <div className="relative">
-                          <img 
-                            src={missionPhotoPreview} 
-                            alt="プレビュー" 
-                            className="w-full h-40 object-cover rounded-2xl"
-                          />
-                          <button
-                            onClick={() => {
-                              setMissionPhoto(null)
-                              setMissionPhotoPreview(null)
-                            }}
-                            className="absolute top-2 right-2 p-2 bg-black/50 rounded-full text-white"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => missionFileInputRef.current?.click()}
-                          className="w-full h-32 border-2 border-dashed border-orange-300 rounded-2xl flex flex-col items-center justify-center gap-2 text-orange-500 hover:bg-orange-50 transition-colors"
-                        >
-                          <Camera size={32} />
-                          <span className="text-sm font-bold">写真をアップロード</span>
-                          <span className="text-xs opacity-60">タップして選択または撮影</span>
-                        </button>
-                      )}
-
-                      <button
-                        onClick={handleCompleteMission}
-                        disabled={!missionPhoto || uploadingMission}
-                        className="w-full py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-all shadow-lg"
-                      >
-                        {uploadingMission ? (
-                          <>
-                            <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
-                            確認中...
-                          </>
-                        ) : (
-                          <>
-                            <Upload size={18} />
-                            ミッション完了を申請
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* 閉じるボタン */}
-            <div className="px-5 pb-5">
-              <button
-                onClick={() => {
-                  setMissionModalOpen(false)
-                  setSelectedMission(null)
-                  setMissionPhoto(null)
-                  setMissionPhotoPreview(null)
-                }}
-                className="w-full py-3 bg-gray-100 text-gray-600 font-bold rounded-xl text-sm"
-              >
-                閉じる
-              </button>
-            </div>
+          <div className="relative z-[2001] w-full max-w-md animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto no-scrollbar rounded-3xl">
+            <MissionCard 
+              mission={selectedMission}
+              userId={authUser?.id || ''}
+              isCompleted={completedMissions.includes(selectedMission.id)}
+              onUpdate={() => {
+                // ミッション完了時の処理
+                refetchPoints()
+                setCompletedMissions(prev => [...prev, selectedMission.id])
+                setMissionModalOpen(false)
+                setSelectedMission(null)
+                // お祝いエフェクトやアラートはMissionCard側またはここで行う
+                alert('ミッションクリア！おめでとうございます！')
+              }}
+            />
+            {/* 閉じるボタン（右上に配置） */}
+            <button
+              onClick={() => {
+                setMissionModalOpen(false)
+                setSelectedMission(null)
+              }}
+              className="absolute top-4 right-4 p-2 bg-black/20 hover:bg-black/30 text-white rounded-full transition-colors z-10"
+            >
+              <X size={20} />
+            </button>
           </div>
-        </>
+        </div>
       )}
 
       {/* エリア未対応モーダル（ログイン済みかつ対応エリア外の場合に表示） */}

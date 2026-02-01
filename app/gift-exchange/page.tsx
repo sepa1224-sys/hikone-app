@@ -68,6 +68,11 @@ export default function GiftExchangePage() {
       }
 
       console.log('✅ [GiftExchange] 申請成功:', data)
+      
+      // 音声を再生
+      const audio = new Audio('/cat-meow.mp3')
+      audio.play().catch(e => console.log('音声再生に失敗しました:', e))
+
       setSubmitResult({
         success: true,
         message: 'ギフト交換の申請を受け付けました。審査後、送付いたします。'

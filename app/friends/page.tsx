@@ -157,6 +157,11 @@ export default function FriendsPage() {
       
       if (result.success) {
         refetchPoints()
+
+        // 音声再生
+        const audio = new Audio('/cat-meow.mp3')
+        audio.play().catch(e => console.log('音声再生に失敗しました:', e))
+
         setTimeout(() => {
           setShowSendModal(false)
           setSendTarget(null)

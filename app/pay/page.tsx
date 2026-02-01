@@ -79,7 +79,7 @@ function PayPageContent() {
       setResult(transferResult)
       if (transferResult.success) {
         refetchPoints()
-        const audio = new Audio('/sounds/payment.mp3')
+        const audio = new Audio('/cat-meow.mp3')
         audio.play().catch(e => console.log('音声再生に失敗しました:', e))
         setSuccessAmount(amount)
         setSuccessReceiver(receiverPreview?.name || '')
