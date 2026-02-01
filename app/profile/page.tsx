@@ -2,14 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useWasteSchedule } from '@/lib/hooks/useWasteSchedule'
-import { useMunicipalityStats } from '@/lib/hooks/useMunicipalityStats'
-import { getMissions, Mission } from '@/lib/actions/missions'
-import MissionStampCard from '@/components/mission/MissionStampCard'
-import WasteScheduleCard from '@/components/home/WasteScheduleCard'
-import { cityData } from '@/lib/constants/appData'
 import { useRouter } from 'next/navigation'
-import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History, Camera } from 'lucide-react'
+import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History, Camera, Home } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
 import { usePoints, usePointHistory, getPointHistoryStyle, PointHistory } from '@/lib/hooks/usePoints'
@@ -27,48 +21,6 @@ export default function ProfilePage() {
   
   // AuthProvider から認証状態を取得
   const { session, user: authUser, profile: authProfile, loading: authLoading, signOut } = useAuth()
-
-  // --- デバッグ用：ホーム画面からの移植ロジック ---
-  const [debugMissions, setDebugMissions] = useState<Mission[]>([])
-  useEffect(() => {
-    getMissions().then(result => {
-      if (result.success && result.data) setDebugMissions(result.data)
-    })
-  }, [])
-
-  const [debugUserCity, setDebugUserCity] = useState<string | null>(null)
-  const [debugUserSelectedArea, setDebugUserSelectedArea] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (authProfile) {
-      setDebugUserCity(authProfile.city || null)
-      setDebugUserSelectedArea(authProfile.selected_area || authProfile.detail_area || null)
-    }
-  }, [authProfile])
-
-  const { wasteSchedule: debugWasteSchedule, isLoading: debugWasteLoading, error: debugWasteError } = useWasteSchedule(debugUserSelectedArea)
-  const { stats: debugMunicipalityStats, isLoading: debugStatsLoading, error: debugStatsError } = useMunicipalityStats(debugUserCity, authUser?.id)
-
-  const [debugActiveEvent, setDebugActiveEvent] = useState<any>(null)
-  useEffect(() => {
-    const fetchActiveEvent = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('events')
-          .select('id, title, prize_amount, end_date')
-          .eq('status', 'active')
-          .order('prize_amount', { ascending: false })
-          .limit(1)
-          .single()
-        if (data && !error) setDebugActiveEvent(data)
-        else setDebugActiveEvent({ id: 'demo-1', title: '彦根城 冬の絶景フォトコンテスト', prize_amount: 5000, end_date: '2026-02-28' })
-      } catch {
-        setDebugActiveEvent({ id: 'demo-1', title: '彦根の冬景色フォトコンテスト', prize_amount: 5000, end_date: '2026-02-28' })
-      }
-    }
-    fetchActiveEvent()
-  }, [])
-  // ------------------------------------------
   
   // マウント済みフラグ（ハイドレーションエラー防止）
   const [isMounted, setIsMounted] = useState(false)
@@ -697,6 +649,14 @@ export default function ProfilePage() {
               <Camera size={32} />
             </div>
             <span>ひこポで払う（QR読み取り）</span>
+          </button>
+
+          <button
+            onClick={() => router.push('/')}
+            className="w-full bg-white hover:bg-gray-50 text-gray-700 font-bold py-4 rounded-[2rem] shadow-sm border border-gray-200 active:scale-95 transition-all flex items-center justify-center gap-2"
+          >
+            <Home size={20} />
+            <span>ホームに戻る</span>
           </button>
         </div>
 
@@ -1608,37 +1568,6 @@ export default function ProfilePage() {
         </div>
       )}
       
-      {/* --- デバッグ用：ホーム画面移植エリア --- */}
-      <div className="p-4 mt-8 bg-red-50 border-4 border-red-500 rounded-xl mx-4 mb-24">
-        <h2 className="text-xl font-bold text-red-600 mb-4">🔧 デバッグ用：ホーム画面移植エリア</h2>
-        <p className="mb-4 text-sm">ホーム画面のコンポーネントをここに表示しています。もしここでLoadingが止まるなら、これらのコンポーネントのいずれかが原因です。</p>
-
-        {/* 1. ゴミ収集スケジュール */}
-        <div className="mb-6">
-            <h3 className="font-bold mb-2">1. WasteScheduleCard</h3>
-            <WasteScheduleCard 
-                schedule={debugWasteSchedule} 
-                isLoading={debugWasteLoading} 
-                error={debugWasteError} 
-                userCity={debugUserCity}
-            />
-        </div>
-
-        {/* 2. ミッション */}
-        <div className="mb-6">
-            <h3 className="font-bold mb-2">2. MissionStampCard</h3>
-            <MissionStampCard missions={debugMissions} />
-        </div>
-
-        {/* 3. 統計情報 */}
-        <div className="mb-6">
-            <h3 className="font-bold mb-2">3. Municipality Stats</h3>
-            <pre className="text-xs bg-gray-100 p-2 overflow-auto">
-                {JSON.stringify(debugMunicipalityStats, null, 2)}
-            </pre>
-        </div>
-      </div>
-
       {/* 下部ナビゲーション */}
       <BottomNavigation />
 
