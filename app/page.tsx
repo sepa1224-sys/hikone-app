@@ -1152,7 +1152,7 @@ export default function AppHome() {
                           {selectedArea && (
                             <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl">
                               <p className="text-xs font-bold text-blue-700">
-                                📍 選択中: {selectedArea.split('・')[0]}...
+                                📍 選択中: {selectedArea.split(',')[0]}...
                               </p>
                             </div>
                           )}

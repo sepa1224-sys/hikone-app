@@ -4,7 +4,7 @@
  */
 
 // ===== サービス対応エリアの定義 =====
-// 現在は彦根市・犬上郡（多賀町、甲良町、豊郷町）・愛知郡（愛荘町）が対応エリア
+// 現在は彦根市、犬上郡（多賀町、甲良町、豊郷町）、愛知郡（愛荘町）が対応エリア
 export const SUPPORTED_CITIES = [
   '彦根市',
   '多賀町',
@@ -22,7 +22,7 @@ export function isSupportedCity(city: string | null | undefined): boolean {
 }
 
 // 未対応エリアのメッセージ
-export const UNSUPPORTED_AREA_MESSAGE = '現在は彦根市・犬上郡・愛知郡エリア限定のサービスです。順次拡大予定ですので、今しばらくお待ちください。'
+export const UNSUPPORTED_AREA_MESSAGE = '現在は彦根市、犬上郡、愛知郡エリア限定のサービスです。順次拡大予定ですので、今しばらくお待ちください。'
 
 // 地方区分の定義
 export const SHIGA_REGIONS = ['湖東', '湖南', '湖北', '湖西'] as const
@@ -62,12 +62,12 @@ export const SHIGA_REGION_CITIES: Record<ShigaRegion, string[]> = {
 // 市区町村ごとの詳細エリア（主に彦根市）
 export const CITY_DETAIL_AREAS: Record<string, string[]> = {
   '彦根市': [
-    '城南・城陽・若葉・高宮',
-    '城東・城北',
+    '城南,城陽,若葉,高宮',
+    '城東,城北',
     '城西',
-    '平田・金城',
-    '旭森・鳥居本・佐和山',
-    '河瀬・亀山・稲枝東・稲枝北・稲枝西',
+    '平田,金城',
+    '旭森,鳥居本,佐和山',
+    '河瀬,亀山,稲枝東,稲枝北,稲枝西',
   ],
   '近江八幡市': [
     '八幡学区',
@@ -165,8 +165,8 @@ export function formatFullLocation(
   if (region) parts.push(region)
   if (city) parts.push(city)
   if (detailArea) {
-    // 詳細エリアは最初の地名のみ表示（「城南・城陽・若葉・高宮」→「城南」）
-    const firstArea = detailArea.split('・')[0]
+    // 詳細エリアは最初の地名のみ表示（「城南,城陽,若葉,高宮」→「城南」）
+    const firstArea = detailArea.split(',')[0]
     parts.push(`${firstArea}エリア`)
   }
   
@@ -181,7 +181,7 @@ export function formatShortLocation(
   if (!city) return ''
   
   if (detailArea) {
-    const firstArea = detailArea.split('・')[0]
+    const firstArea = detailArea.split(',')[0]
     return `${city} ${firstArea}エリア`
   }
   
