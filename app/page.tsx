@@ -509,7 +509,13 @@ export default function AppHome() {
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
   // レンダリング条件の緩和：isMountedのみチェックし、スケルトン表示を廃止して即座に表示
-  if (!isMounted) return null
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-blue-50/30 flex items-center justify-center">
+        <div className="animate-pulse text-gray-400 font-bold text-sm">Loading...</div>
+      </div>
+    )
+  }
 
   // 統計データの存在チェックを強化
   const safeStats = municipalityStats || {

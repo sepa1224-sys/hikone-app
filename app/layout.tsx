@@ -8,7 +8,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja">
-      <body className="bg-gray-50 pb-20">
+      <body className="bg-gray-50 pb-20" suppressHydrationWarning={true}>
         {/* 認証プロバイダーでアプリ全体をラップ */}
         <AuthProvider>
           {/* メインコンテンツ */}
