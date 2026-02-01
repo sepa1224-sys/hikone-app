@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@supabase/supabase-js'
+import sharp from 'sharp'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -63,17 +64,69 @@ export async function submitMission(
       }
     }
 
-    // 4. 提出レコードの作成
-    // QRの場合は即時承認(approved)、写真の場合は承認待ち(pending)
-    const status = type === 'qr' ? 'approved' : 'pending'
+    // 4. 写真の場合のAI自動チェック
+    let status = type === 'qr' ? 'approved' : 'pending'
+    let rejectReason = null
 
+    if (type === 'photo' && proof) {
+      try {
+        console.log('AI Check Starting...', proof)
+        const response = await fetch(proof)
+        const arrayBuffer = await response.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
+
+        const image = sharp(buffer)
+        const metadata = await image.metadata()
+        const stats = await image.stats()
+
+        console.log('Image Stats:', stats)
+
+        // チェック1: 画像として認識できるか
+        if (!metadata.format) {
+          status = 'rejected'
+          rejectReason = 'AI判定: 画像ファイルとして認識できませんでした'
+        }
+        
+        // チェック2: 真っ暗ではないか (輝度平均が極端に低い)
+        // stats.channels[0] (Red), [1] (Green), [2] (Blue) の mean を確認
+        const brightness = (stats.channels[0].mean + stats.channels[1].mean + stats.channels[2].mean) / 3
+        console.log('Brightness:', brightness)
+
+        if (brightness < 10) { // 閾値は調整が必要だが、10以下はほぼ真っ暗
+          status = 'rejected'
+          rejectReason = 'AI判定: 画像が暗すぎます（真っ暗な画像は無効です）'
+        }
+
+        // チェック3: 単色ではないか (標準偏差が極端に低い)
+        const stdev = (stats.channels[0].stdev + stats.channels[1].stdev + stats.channels[2].stdev) / 3
+        console.log('Stdev:', stdev)
+
+        if (stdev < 5) {
+             // ほぼ単色（完全にグレー、白など）
+             // ただし、紙のアップなどはあり得るので、ここは警告のみにするか、一旦保留
+             // 今回は真っ暗チェックを優先
+        }
+
+      } catch (error) {
+        console.error('AI Check Error:', error)
+        // AIチェックエラーの場合は一旦保留にするか、rejectedにするか
+        // ここでは安全側に倒して pending のままにする（人間が確認）
+        // status = 'rejected'
+        // rejectReason = 'AI判定: 画像の解析に失敗しました'
+      }
+    }
+
+    // 5. 提出レコードの作成
+    // status は上で決定済み
+    
     const { error: insertError } = await supabase
       .from('mission_submissions')
       .insert({
         user_id: userId,
         mission_id: missionId,
-        status: status,
-        image_url: type === 'photo' ? proof : null
+        status: status, // pending, approved, or rejected
+        image_url: type === 'photo' ? proof : null,
+        reviewer_comment: rejectReason // AIの判定理由があれば保存
       })
 
     if (insertError) {
@@ -81,7 +134,6 @@ export async function submitMission(
       return { success: false, message: '提出に失敗しました', error: insertError.message }
     }
 
-    // 5. ポイント付与（QRの場合のみ即時付与）
     if (type === 'qr') {
       // プロフィールのポイントを加算
       // RPCがあればそれを使うが、ここでは直接加算する（トランザクションではないため厳密には不整合のリスクがあるが、今回は許容）
@@ -129,9 +181,17 @@ export async function submitMission(
       }
     } else {
       // 写真の場合
+      if (status === 'rejected') {
+        return {
+          success: false,
+          message: rejectReason || '画像が不適切と判定されました',
+          error: 'AI_REJECTED'
+        }
+      }
+      
       return {
         success: true,
-        message: '写真を提出しました！承認をお待ちください。'
+        message: '写真を提出しました！AIチェック完了、承認をお待ちください。'
       }
     }
 

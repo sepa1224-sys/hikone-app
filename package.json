@@ -15,6 +15,7 @@
     "@supabase/auth-ui-shared": "^0.1.8",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.93.1",
+    "browser-image-compression": "^2.0.2",
     "html5-qrcode": "^2.3.8",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.294.0",
@@ -26,6 +27,7 @@
     "react-dom": "^18.2.0",
     "react-leaflet": "^4.2.1",
     "react-qr-code": "^2.0.18",
+    "sharp": "^0.34.5",
     "swr": "^2.3.8"
   },
   "devDependencies": {

@@ -335,6 +335,28 @@ export default function AdminDashboard() {
               )}
             </div>
 
+            {/* ミッション承認管理へのリンク */}
+            <div className="bg-white rounded-2xl p-6 shadow-lg mb-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="bg-purple-100 p-3 rounded-xl">
+                    <CheckCircle2 size={28} className="text-purple-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-gray-900">ミッション承認待ち</h2>
+                    <p className="text-sm text-gray-500 font-bold">写真投稿の承認・却下を行います</p>
+                  </div>
+                </div>
+                <Link 
+                  href="/admin/review" 
+                  className="flex items-center gap-2 bg-purple-600 text-white px-5 py-3 rounded-xl font-bold hover:bg-purple-700 transition-colors"
+                >
+                  審査画面へ
+                  <ChevronRight size={18} />
+                </Link>
+              </div>
+            </div>
+
             {/* マンスリーミッション管理へのリンク */}
             <div className="bg-white rounded-2xl p-6 shadow-lg mb-6">
               <div className="flex items-center justify-between">

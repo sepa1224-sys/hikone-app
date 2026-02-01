@@ -4,8 +4,8 @@ import { useState, useRef, useEffect } from 'react'
 import { Mission } from '@/lib/actions/missions'
 import { QrCode, Camera, Coins, Loader2, CheckCircle2, AlertCircle, X, Upload } from 'lucide-react'
 import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from 'html5-qrcode'
-import { supabase } from '@/lib/supabase'
 import { submitMission } from '@/lib/actions/mission-completion'
+import MissionAction from './MissionAction'
 
 interface MissionCardProps {
   mission: Mission
@@ -78,48 +78,8 @@ export default function MissionCard({ mission, userId, isCompleted = false, isPe
     setIsScanning(false)
   }
 
-  // 写真選択ハンドラ
-  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setIsUploading(true)
-    setStatus('idle')
-    setMessage('')
-
-    try {
-      // ファイル拡張子の取得
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${userId}/${mission.id}_${Date.now()}.${fileExt}`
-
-      // Supabase Storageへアップロード
-      const { data, error: uploadError } = await supabase.storage
-        .from('mission-photos')
-        .upload(fileName, file)
-
-      if (uploadError) throw uploadError
-
-      // 公開URLの取得
-      const { data: { publicUrl } } = supabase.storage
-        .from('mission-photos')
-        .getPublicUrl(fileName)
-
-      // ミッション提出処理
-      await handleSubmit('photo', publicUrl)
-
-    } catch (error: any) {
-      console.error('Upload error:', error)
-      setStatus('error')
-      setMessage('写真のアップロードに失敗しました')
-      setIsUploading(false)
-    } finally {
-      // inputをリセット
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-    }
-  }
-
+  // 写真選択ハンドラ（削除済み - MissionActionを使用）
+  
   // 提出処理（Server Action呼び出し）
   const handleSubmit = async (type: 'qr' | 'photo', proof: string) => {
     setIsUploading(true)
@@ -252,33 +212,21 @@ export default function MissionCard({ mission, userId, isCompleted = false, isPe
                     )}
                   </button>
                 ) : (
-                  <div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      ref={fileInputRef}
-                      onChange={handlePhotoSelect}
-                      className="hidden"
-                    />
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploading}
-                      className="w-full py-3 bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white rounded-xl font-black shadow-md shadow-pink-200 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
-                      {isUploading ? (
-                        <>
-                          <Loader2 size={20} className="animate-spin" />
-                          アップロード中...
-                        </>
-                      ) : (
-                        <>
-                          <Camera size={20} />
-                          挑戦する（写真を撮影）
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  <MissionAction
+                    missionId={mission.id}
+                    userId={userId}
+                    onComplete={(success, msg) => {
+                      if (success) {
+                        setStatus('success')
+                        setMessage(msg)
+                        if (onUpdate) onUpdate()
+                      } else {
+                        setStatus('error')
+                        setMessage(msg)
+                      }
+                    }}
+                    disabled={isUploading}
+                  />
                 )}
               </div>
             )}
