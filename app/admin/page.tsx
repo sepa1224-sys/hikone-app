@@ -493,7 +493,7 @@ export default function AdminDashboard() {
                     }`}
                   >
                     {status === 'all' && 'すべて'}
-                    {status === 'pending' && '申請中'}
+                    {status === 'pending' && '審査中'}
                     {status === 'approved' && '承認済み'}
                     {status === 'rejected' && '却下'}
                     {status === 'sent' && '送付済み'}

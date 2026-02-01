@@ -156,7 +156,7 @@ export default function RedeemHistoryPage() {
             {history?.map((item) => {
               const exchangeType = getGiftExchangeType(item.gift_card_type)
               const statusConfig = {
-                pending: { label: '申請中', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
+                pending: { label: '審査中', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
                 approved: { label: '承認済み', color: 'bg-blue-100 text-blue-800', icon: CheckCircle2 },
                 rejected: { label: '却下', color: 'bg-red-100 text-red-800', icon: XCircle },
                 sent: { label: '送付済み', color: 'bg-green-100 text-green-800', icon: Package }

@@ -27,13 +27,6 @@ import {
   ALL_PREFECTURES, PREFECTURE_CITIES, HIKONE_AREAS, PREFECTURES, COUNTRIES 
 } from '@/lib/constants/appData'
 
-
-
-
-
-
-
-
 import { getMissions, Mission } from '@/lib/actions/missions'
 import MissionStampCard from '@/components/mission/MissionStampCard'
 import MissionCard from '@/components/mission/MissionCard'
