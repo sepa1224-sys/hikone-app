@@ -19,7 +19,7 @@ const normalizeAreaName = (areaName: string): string => {
   return areaName
     .trim()
     .replace(/\s+/g, '') // 空白を除去
-    .replace(/[・･]/g, '・') // 全角・半角の中点を統一
+    .replace(/[\u30fb･]/g, '\u30fb') // 全角・半角の中点を統一
 }
 
 // エリア名から検索キーワードを生成する関数
@@ -28,7 +28,7 @@ const generateSearchKeywords = (areaName: string): string[] => {
   const keywords: string[] = [normalized] // 元の文字列
   
   // 「・」で分割して、各部分も検索キーワードに追加
-  const parts = normalized.split('・')
+  const parts = normalized.split('\u30fb')
   keywords.push(...parts) // 各部分を追加
   
   // 最初の部分（例：「城南」）を優先的に使用
@@ -146,7 +146,7 @@ const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | 
 /**
  * ゴミ収集スケジュールをSWRでキャッシュして取得するカスタムフック
  * 
- * @param areaKey - ユーザーが選択したエリアキー（例: "城南・城陽..."）
+ * @param areaKey - ユーザーが選択したエリアキー（例: "城南/城陽..."）
  * @returns { data, error, isLoading, mutate }
  * 
  * キャッシュ戦略:

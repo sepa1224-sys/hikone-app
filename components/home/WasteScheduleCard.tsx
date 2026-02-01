@@ -54,9 +54,9 @@ const parseScheduleString = (scheduleStr: string | null, targetDate: Date): bool
   // ===== 「第1・3月曜」「第2・4水曜日」のパターン（最優先でチェック）=====
   // 「第」が含まれる場合は、このパターンのみで判定する
   if (scheduleStr.includes('第')) {
-    const weekMatch = scheduleStr.match(/第([0-9・]+)([日月火水木金土])/)
+    const weekMatch = scheduleStr.match(/第([0-9\u30fb]+)([日月火水木金土])/)
     if (weekMatch) {
-      const weeks = weekMatch[1].split('・').map(Number)
+      const weeks = weekMatch[1].split('\u30fb').map(Number)
       const day = weekMatch[2]
       // 完全一致: 指定された週かつ指定された曜日のみマッチ
       return weeks.includes(weekOfMonth) && day === targetDayName
@@ -472,7 +472,7 @@ export default function WasteScheduleCard({
                   <div>
                     <h2 className="text-lg font-black text-gray-900">週間ゴミ出しカレンダー</h2>
                     <p className="text-[10px] text-gray-500 font-bold">
-                      {userSelectedArea?.split('・')[0]}... エリア
+                      {userSelectedArea?.split('\u30fb')[0]}... エリア
                     </p>
                   </div>
                 </div>
@@ -583,7 +583,7 @@ export default function WasteScheduleCard({
                   <div>
                     <h2 className="text-lg font-black text-gray-900">月間ゴミ出しカレンダー</h2>
                     <p className="text-[10px] text-gray-500 font-bold">
-                      {userSelectedArea?.split('・')[0]}... エリア
+                      {userSelectedArea?.split('\u30fb')[0]}... エリア
                     </p>
                   </div>
                 </div>
