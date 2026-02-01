@@ -31,6 +31,16 @@ export interface Mission {
   created_at: string
 }
 
+export interface MissionSubmission {
+  id: string
+  user_id: string
+  mission_id: string
+  status: 'pending' | 'approved' | 'rejected'
+  image_url: string | null
+  reviewer_comment: string | null
+  created_at: string
+}
+
 export interface CreateMissionParams {
   title: string
   description?: string
