@@ -71,6 +71,8 @@ export default function EventPage() {
       setLoading(true)
       
       // アクティブなイベントを取得
+      // ★ Supabase テーブル未作成のため一時的にコメントアウト
+      /*
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('*')
@@ -79,6 +81,7 @@ export default function EventPage() {
       
       if (eventsError) {
         console.error('イベント取得エラー:', eventsError)
+      */
         // デモ用のモックデータ
         setEvents([
           {
@@ -102,9 +105,11 @@ export default function EventPage() {
             status: 'active'
           }
         ])
+      /*
       } else {
         setEvents(eventsData || [])
       }
+      */
 
       // ユーザーの投稿を取得
       if (user) {
@@ -160,12 +165,16 @@ export default function EventPage() {
     setError('')
     setSuccess('')
 
+    let currentStep = '開始'
+
     try {
       // ファイル名を生成
+      currentStep = 'ファイル名生成'
       const fileExt = selectedFile.name.split('.').pop()
       const fileName = `${user.id}/${selectedEvent.id}/${Date.now()}.${fileExt}`
 
       // Supabase Storageにアップロード
+      currentStep = 'Storage保存'
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('event-photos')
         .upload(fileName, selectedFile, {
@@ -176,11 +185,14 @@ export default function EventPage() {
       if (uploadError) throw uploadError
 
       // 公開URLを取得
+      currentStep = '公開URL取得'
       const { data: { publicUrl } } = supabase.storage
         .from('event-photos')
         .getPublicUrl(fileName)
 
       // event_submissions テーブルに保存
+      currentStep = 'DB保存'
+      /* ★ Supabase テーブル未作成のため一時的にコメントアウト
       const { error: insertError } = await supabase
         .from('event_submissions')
         .insert({
@@ -190,9 +202,16 @@ export default function EventPage() {
         })
 
       if (insertError) throw insertError
+      */
+      
+      // デモ用：DB保存スキップして成功とする
+      console.log('★ DB保存スキップ（テーブル未作成）', { event_id: selectedEvent.id, image_url: publicUrl })
 
       // 成功
-      setSuccess('投稿が完了しました！審査結果をお待ちください。')
+      const successMsg = '投稿が完了しました！審査結果をお待ちください。'
+      setSuccess(successMsg)
+      alert(successMsg)
+      
       setSubmissions([...submissions, {
         id: 'new',
         event_id: selectedEvent.id,
@@ -205,8 +224,13 @@ export default function EventPage() {
       setSelectedEvent(null)
 
     } catch (err: any) {
-      console.error('アップロードエラー:', err)
-      setError(err.message || 'アップロードに失敗しました')
+      console.error(`❌ [Upload] Error at step: ${currentStep}`, err)
+      let errorMessage = err?.message || ''
+      if (!errorMessage) errorMessage = JSON.stringify(err)
+      
+      const fullErrorMsg = `Upload Error (${currentStep}): ${errorMessage}`
+      alert(fullErrorMsg)
+      setError(fullErrorMsg)
     } finally {
       setUploading(false)
     }

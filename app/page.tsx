@@ -246,6 +246,8 @@ export default function AppHome() {
   useEffect(() => {
     const fetchActiveEvent = async () => {
       try {
+        // ★ Supabase テーブル未作成のため一時的にコメントアウト
+        /*
         const { data, error } = await supabase
           .from('events')
           .select('id, title, prize_amount, end_date')
@@ -257,13 +259,13 @@ export default function AppHome() {
         if (data && !error) {
           setActiveEvent(data)
         } else {
-          setActiveEvent({
-            id: 'demo-1',
-            title: '彦根城 冬の絶景フォトコンテスト',
-            prize_amount: 5000,
-            end_date: '2026-02-28'
-          })
-        }
+        */
+        setActiveEvent({
+          id: 'demo-1',
+          title: '彦根城 冬の絶景フォトコンテスト',
+          prize_amount: 5000,
+          end_date: '2026-02-28'
+        })
       } catch {
         setActiveEvent({
           id: 'demo-1',

@@ -51,89 +51,91 @@ const fetchWasteSchedule = async (areaKey: string): Promise<HikoneWasteMaster | 
   
   const fetchPromise = (async (): Promise<HikoneWasteMaster | null> => {
     try {
-  
-  // 検索キーワードを生成
-  const searchKeywords = generateSearchKeywords(areaKey)
-  
-  // 1. area_key で完全一致検索（正規化後の文字列で検索）
-  const normalizedAreaKey = normalizeAreaName(areaKey)
-  const { data: exactMatch, error: exactError } = await supabase
-    .from('hikone_waste_master')
-    .select(WASTE_SCHEDULE_COLUMNS)
-    .eq('area_key', normalizedAreaKey)
-    .single()
-  
-  if (exactMatch && !exactError) return exactMatch as HikoneWasteMaster
-  
-  // 2. area_key で部分一致検索（各キーワードで検索）
-  for (const keyword of searchKeywords) {
-    if (!keyword || keyword.trim() === '') continue
-    
-    const { data: partialMatch, error: partialError } = await supabase
-      .from('hikone_waste_master')
-      .select(WASTE_SCHEDULE_COLUMNS)
-      .ilike('area_key', `%${keyword}%`)
-      .limit(1)
-      .maybeSingle()
-    
-    if (partialMatch && !partialError) return partialMatch as HikoneWasteMaster
-  }
-  
-  // 3. area_key で逆方向の部分一致検索（DBのarea_keyがプロフィールのエリア名を含むかチェック）
-  // 例：プロフィールが「城南」で、DBが「城南・城陽・若葉・高宮」の場合
-  for (const keyword of searchKeywords) {
-    if (!keyword || keyword.trim() === '') continue
-    
-    // DBのarea_keyがプロフィールのキーワードを含むかチェック
-    const { data: reverseMatch, error: reverseError } = await supabase
-      .from('hikone_waste_master')
-      .select(WASTE_SCHEDULE_COLUMNS)
-      .ilike('area_key', `%${keyword}%`)
-      .limit(1)
-      .maybeSingle()
-    
-    if (reverseMatch && !reverseError) return reverseMatch as HikoneWasteMaster
-  }
-  
-  // 4. 全件取得して、手動でマッチング（最後の手段）
-  const { data: allAreas, error: allError } = await supabase
-    .from('hikone_waste_master')
-    .select(WASTE_SCHEDULE_COLUMNS)
-    .limit(20) // 彦根市のエリア数は限られているので20件で十分
-  
-  if (allAreas && !allError) {
-    // 各エリア名とプロフィールのエリア名を比較
-    for (const area of allAreas) {
-      const dbAreaKey = normalizeAreaName(area.area_key || '')
-      const profileAreaKey = normalizedAreaKey
+      // ★ Supabase テーブル未作成のため一時的にコメントアウトしてnullを返す
+      /*
+      // 検索キーワードを生成
+      const searchKeywords = generateSearchKeywords(areaKey)
       
-      // 完全一致
-      if (dbAreaKey === profileAreaKey) return area as HikoneWasteMaster
+      // 1. area_key で完全一致検索（正規化後の文字列で検索）
+      const normalizedAreaKey = normalizeAreaName(areaKey)
+      const { data: exactMatch, error: exactError } = await supabase
+        .from('hikone_waste_master')
+        .select(WASTE_SCHEDULE_COLUMNS)
+        .eq('area_key', normalizedAreaKey)
+        .single()
       
-      // 相互に含まれるかチェック
-      if (dbAreaKey.includes(profileAreaKey) || profileAreaKey.includes(dbAreaKey)) return area as HikoneWasteMaster
+      if (exactMatch && !exactError) return exactMatch as HikoneWasteMaster
       
-      // キーワードのいずれかが含まれるかチェック
+      // 2. area_key で部分一致検索（各キーワードで検索）
       for (const keyword of searchKeywords) {
-        if (dbAreaKey.includes(keyword) || keyword.includes(dbAreaKey)) return area as HikoneWasteMaster
+        if (!keyword || keyword.trim() === '') continue
+        
+        const { data: partialMatch, error: partialError } = await supabase
+          .from('hikone_waste_master')
+          .select(WASTE_SCHEDULE_COLUMNS)
+          .ilike('area_key', `%${keyword}%`)
+          .limit(1)
+          .maybeSingle()
+        
+        if (partialMatch && !partialError) return partialMatch as HikoneWasteMaster
       }
-    }
-  }
-  
-  // 5. 最終フォールバック: 彦根市のデフォルトエリアを返す
-  try {
-    const { data: fallbackMatch, error: fallbackError } = await supabase
-      .from('hikone_waste_master')
-      .select(WASTE_SCHEDULE_COLUMNS)
-      .limit(1)
-      .maybeSingle()
-    
-    if (fallbackMatch && !fallbackError) return fallbackMatch as HikoneWasteMaster
-  } catch {
-    // フォールバック検索失敗時は null を返す
-  }
-  
-  return null
+      
+      // 3. area_key で逆方向の部分一致検索（DBのarea_keyがプロフィールのエリア名を含むかチェック）
+      // 例：プロフィールが「城南」で、DBが「城南・城陽・若葉・高宮」の場合
+      for (const keyword of searchKeywords) {
+        if (!keyword || keyword.trim() === '') continue
+        
+        // DBのarea_keyがプロフィールのキーワードを含むかチェック
+        const { data: reverseMatch, error: reverseError } = await supabase
+          .from('hikone_waste_master')
+          .select(WASTE_SCHEDULE_COLUMNS)
+          .ilike('area_key', `%${keyword}%`)
+          .limit(1)
+          .maybeSingle()
+        
+        if (reverseMatch && !reverseError) return reverseMatch as HikoneWasteMaster
+      }
+      
+      // 4. 全件取得して、手動でマッチング（最後の手段）
+      const { data: allAreas, error: allError } = await supabase
+        .from('hikone_waste_master')
+        .select(WASTE_SCHEDULE_COLUMNS)
+        .limit(20) // 彦根市のエリア数は限られているので20件で十分
+      
+      if (allAreas && !allError) {
+        // 各エリア名とプロフィールのエリア名を比較
+        for (const area of allAreas) {
+          const dbAreaKey = normalizeAreaName(area.area_key || '')
+          const profileAreaKey = normalizedAreaKey
+          
+          // 完全一致
+          if (dbAreaKey === profileAreaKey) return area as HikoneWasteMaster
+          
+          // 相互に含まれるかチェック
+          if (dbAreaKey.includes(profileAreaKey) || profileAreaKey.includes(dbAreaKey)) return area as HikoneWasteMaster
+          
+          // キーワードのいずれかが含まれるかチェック
+          for (const keyword of searchKeywords) {
+            if (dbAreaKey.includes(keyword) || keyword.includes(dbAreaKey)) return area as HikoneWasteMaster
+          }
+        }
+      }
+      
+      // 5. 最終フォールバック: 彦根市のデフォルトエリアを返す
+      try {
+        const { data: fallbackMatch, error: fallbackError } = await supabase
+          .from('hikone_waste_master')
+          .select(WASTE_SCHEDULE_COLUMNS)
+          .limit(1)
+          .maybeSingle()
+        
+        if (fallbackMatch && !fallbackError) return fallbackMatch as HikoneWasteMaster
+      } catch {
+        // フォールバック検索失敗時は null を返す
+      }
+      */
+      
+      return null
     } catch {
       return null
     }

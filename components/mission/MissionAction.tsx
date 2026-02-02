@@ -22,45 +22,92 @@ export default function MissionAction({ missionId, userId, onComplete, disabled 
     if (!file) return
 
     setIsUploading(true)
+    let currentStep = '開始'
 
     try {
       // 1. 画像圧縮
+      currentStep = '画像圧縮'
+      console.log('🚀 [Upload] 1. 画像圧縮開始')
       const options = {
         maxSizeMB: 1, // 最大1MB
         maxWidthOrHeight: 1200, // 最大幅1200px
         useWebWorker: true
       }
       
-      console.log('圧縮開始:', file.size / 1024 / 1024, 'MB')
+      console.log('圧縮前サイズ:', file.size / 1024 / 1024, 'MB')
       const compressedFile = await imageCompression(file, options)
-      console.log('圧縮完了:', compressedFile.size / 1024 / 1024, 'MB')
+      console.log('圧縮後サイズ:', compressedFile.size / 1024 / 1024, 'MB')
+      console.log('✅ [Upload] 1. 画像圧縮完了')
 
       // 2. Supabase Storageへアップロード
-      const fileExt = file.name.split('.').pop()
+      currentStep = 'Storage保存'
+      console.log('🚀 [Upload] 2. Storageアップロード開始')
+      
+      // ファイル名生成: ユーザーID/ミッションID_タイムスタンプ.拡張子
+      const fileExt = file.name.split('.').pop() || 'jpg'
       const fileName = `${userId}/${missionId}_${Date.now()}.${fileExt}`
 
-      const { data, error: uploadError } = await supabase.storage
+      alert('Storageに送信開始...')
+
+      // タイムアウト付きのアップロード処理
+      const uploadPromise = supabase.storage
         .from('mission-photos')
         .upload(fileName, compressedFile)
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('TIMEOUT')), 30000)
+      })
 
-      if (uploadError) throw uploadError
+      const result: any = await Promise.race([uploadPromise, timeoutPromise])
+      
+      alert('Storage応答あり')
+
+      // タイムアウトエラーの場合はここでキャッチされる
+      if (result instanceof Error && result.message === 'TIMEOUT') {
+        throw new Error('アップロードがタイムアウトしました。電波状況を確認してください')
+      }
+
+      const { data, error: uploadError } = result
+
+      if (uploadError) {
+        console.error('❌ [Upload] Storageアップロード失敗:', uploadError)
+        throw new Error('Storage Upload Failed: ' + uploadError.message)
+      }
+      console.log('✅ [Upload] 2. Storageアップロード成功:', data)
 
       // 3. 公開URLの取得
       const { data: { publicUrl } } = supabase.storage
         .from('mission-photos')
         .getPublicUrl(fileName)
+      
+      console.log('🔗 [Upload] Public URL取得:', publicUrl)
 
       // 4. ミッション提出（ステータスは pending になる）
-      const result = await submitMission(userId, missionId, 'photo', publicUrl)
+      // mission_submissions テーブルに user_id, mission_id, image_url を保存
+      currentStep = 'DB保存'
+      console.log('🚀 [Upload] 3. DB保存（ミッション提出）開始')
+      const submitResult = await submitMission(userId, missionId, 'photo', publicUrl)
+      console.log('✅ [Upload] 3. DB保存完了 結果:', submitResult)
 
-      if (result.success) {
-        onComplete(true, result.message)
+      if (submitResult.success) {
+        alert('報告が完了しました！')
+        onComplete(true, '報告が完了しました！')
       } else {
-        onComplete(false, result.message)
+        throw new Error('DB Submission Failed: ' + submitResult.message)
       }
 
     } catch (error: any) {
-      console.error('Action error:', error)
+      console.error(`❌ [Upload] Error at step: ${currentStep}`, error)
+      
+      // タイムアウトエラーの特別扱い
+      if (error.message === 'TIMEOUT' || error.message?.includes('タイムアウト')) {
+        alert('アップロードがタイムアウトしました。電波状況を確認してください')
+      } else {
+        // 詳細なエラー表示
+        const errorDetail = JSON.stringify(error, null, 2)
+        alert(`詳細エラー: ${errorDetail}\n\nMessage: ${error.message || 'No message'}`)
+      }
+      
       onComplete(false, '写真のアップロードに失敗しました')
     } finally {
       setIsUploading(false)

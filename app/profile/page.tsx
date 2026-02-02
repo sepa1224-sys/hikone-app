@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import imageCompression from 'browser-image-compression'
 import { useRouter } from 'next/navigation'
 import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History, Camera, Home } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
@@ -21,6 +22,54 @@ export default function ProfilePage() {
   
   // AuthProvider から認証状態を取得
   const { session, user: authUser, profile: authProfile, loading: authLoading, signOut } = useAuth()
+  
+  // デバッグ用アップロード機能
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isUploading, setIsUploading] = useState(false)
+
+  const handleMissionPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    if (!authUser) {
+      alert('ユーザー情報が取得できません')
+      return
+    }
+
+    try {
+      setIsUploading(true)
+      
+      // 画像圧縮
+      const options = {
+        maxSizeMB: 1,
+        maxWidthOrHeight: 1200,
+        useWebWorker: true
+      }
+      const compressedFile = await imageCompression(file, options)
+
+      // ファイル名: ユーザーID/タイムスタンプ.jpg
+      const fileName = `${authUser.id}/${Date.now()}.jpg`
+
+      // Upload to mission-photos bucket
+      const { error } = await supabase.storage
+        .from('mission-photos')
+        .upload(fileName, compressedFile)
+
+      if (error) throw error
+
+      alert('Storageへの保存に成功しました！')
+
+    } catch (error: any) {
+      console.error('Upload error:', error)
+      // 詳細なエラー表示
+      alert('詳細エラー: ' + JSON.stringify(error))
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
   
   // マウント済みフラグ（ハイドレーションエラー防止）
   const [isMounted, setIsMounted] = useState(false)
@@ -1297,6 +1346,26 @@ export default function ProfilePage() {
               </button>
             )}
           </div>
+        </div>
+
+        {/* デバッグ用アップロード機能 */}
+        <div className="bg-white rounded-[2.5rem] p-6 shadow-lg border border-gray-100 mb-6">
+          <h3 className="text-lg font-black text-gray-800 mb-4">デバッグ: 写真アップロード</h3>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleMissionPhotoUpload}
+            className="hidden"
+            accept="image/*"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="w-full py-3 bg-gray-800 text-white rounded-xl font-black flex items-center justify-center gap-2"
+          >
+            {isUploading ? <Loader2 className="animate-spin" /> : <Camera />}
+            写真をアップロード
+          </button>
         </div>
 
         {/* ログアウトボタン */}

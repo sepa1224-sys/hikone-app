@@ -72,6 +72,7 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
       // 1. 基本的な統計情報を取得（存在チェックなどは簡略化）
       // もし municipalities テーブルやカラムがない場合のエラーをキャッチして無視する
       let municipalityData: any = null;
+      /* ★ Supabase テーブル未作成のため一時的にコメントアウト
       try {
         const { data, error } = await supabase
           .from('municipalities')
@@ -82,6 +83,7 @@ const fetchMunicipalityStats = async (city: string | null, currentUserId?: strin
       } catch (e) {
         console.error('Munis fetch error (ignored):', e);
       }
+      */
 
       // 2. 登録者数を取得
       // ※ここで "column city does not exist" になる可能性が高いため try-catch を強化
