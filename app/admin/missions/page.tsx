@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, QrCode, Camera, Loader2, Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, QrCode, Camera, Loader2, Calendar, ChevronLeft, ChevronRight, Printer } from 'lucide-react'
+import QRCode from 'react-qr-code'
 import { createMission, getMissions, deleteMission, Mission, MissionType } from '@/lib/actions/missions'
 
 export default function AdminMissionsPage() {
@@ -12,6 +13,7 @@ export default function AdminMissionsPage() {
   const [missions, setMissions] = useState<Mission[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [showQrPrint, setShowQrPrint] = useState(false)
 
   // フォームの状態
   const [formData, setFormData] = useState({
@@ -86,18 +88,107 @@ export default function AdminMissionsPage() {
     }
   }
 
+  if (showQrPrint) {
+    const qrMissions = missions.filter(m => m.mission_type === 'qr')
+    
+    return (
+      <div className="min-h-screen bg-white p-8">
+        <style jsx global>{`
+          @media print {
+            @page { margin: 1cm; }
+            body { -webkit-print-color-adjust: exact; }
+            .no-print { display: none !important; }
+          }
+        `}</style>
+
+        {/* Print Header */}
+        <div className="no-print flex items-center justify-between mb-8 bg-gray-50 p-4 rounded-xl border border-gray-100 shadow-sm">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setShowQrPrint(false)}
+              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+            >
+              <ArrowLeft className="w-6 h-6 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800">QRコード印刷プレビュー</h1>
+              <p className="text-sm text-gray-500">QRミッション: {qrMissions.length}件</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => window.print()}
+            className="flex items-center gap-2 bg-gray-900 text-white px-5 py-2.5 rounded-lg font-bold hover:bg-gray-800 transition-colors shadow-lg"
+          >
+            <Printer className="w-5 h-5" />
+            印刷する
+          </button>
+        </div>
+
+        {/* QR Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-8 print:grid-cols-2">
+          {qrMissions.length === 0 ? (
+            <div className="col-span-full text-center py-20 text-gray-400 font-bold">
+              QRミッションがありません
+            </div>
+          ) : (
+            qrMissions.map((mission) => (
+              <div 
+                key={mission.id} 
+                className="break-inside-avoid border-2 border-gray-200 rounded-2xl p-6 flex flex-col items-center text-center bg-white"
+              >
+                <div className="mb-2 px-3 py-1 bg-gray-100 rounded-full text-xs font-bold text-gray-500">
+                  {mission.month}
+                </div>
+                
+                <h2 className="text-xl font-black text-gray-900 mb-2 leading-tight min-h-[3rem] flex items-center justify-center">
+                  {mission.title}
+                </h2>
+                
+                <div className="flex items-center gap-1 text-amber-500 font-black mb-4 bg-amber-50 px-3 py-1 rounded-lg">
+                  <span className="text-lg">{mission.points}</span>
+                  <span className="text-xs">PT</span>
+                </div>
+
+                <div className="bg-white p-2 mb-4">
+                  <QRCode 
+                    value={mission.id} 
+                    size={160}
+                    level="H"
+                  />
+                </div>
+
+                <div className="text-[10px] font-mono text-gray-400 break-all">
+                  ID: {mission.id}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
         {/* ヘッダー */}
-        <div className="flex items-center gap-4 mb-8">
-          <button 
-            onClick={() => router.back()}
-            className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => router.back()}
+              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+            >
+              <ArrowLeft className="w-6 h-6 text-gray-600" />
+            </button>
+            <h1 className="text-2xl font-bold text-gray-800">マンスリーミッション管理</h1>
+          </div>
+          <button
+            onClick={() => setShowQrPrint(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
           >
-            <ArrowLeft className="w-6 h-6 text-gray-600" />
+            <Printer className="w-4 h-4" />
+            QR印刷
           </button>
-          <h1 className="text-2xl font-bold text-gray-800">マンスリーミッション管理</h1>
         </div>
 
         {/* 年月選択ナビゲーション */}

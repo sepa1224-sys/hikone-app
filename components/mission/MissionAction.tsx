@@ -55,7 +55,7 @@ export default function MissionAction({ missionId, userId, onComplete, disabled 
         .upload(fileName, compressedFile)
       
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('TIMEOUT')), 30000)
+        setTimeout(() => reject(new Error('TIMEOUT')), 120000) // 120秒に延長
       })
 
       const result: any = await Promise.race([uploadPromise, timeoutPromise])
@@ -86,14 +86,23 @@ export default function MissionAction({ missionId, userId, onComplete, disabled 
       // mission_submissions テーブルに user_id, mission_id, image_url を保存
       currentStep = 'DB保存'
       console.log('🚀 [Upload] 3. DB保存（ミッション提出）開始')
+      
       const submitResult = await submitMission(userId, missionId, 'photo', publicUrl)
+      
       console.log('✅ [Upload] 3. DB保存完了 結果:', submitResult)
 
       if (submitResult.success) {
-        alert('報告が完了しました！')
-        onComplete(true, '報告が完了しました！')
+        console.log('🎉 [Upload] 全工程完了: 成功')
+        alert(submitResult.message || '報告が完了しました！')
+        
+        // 成功時の処理（ここですぐにfalseにしてもよいが、finallyでも実行される）
+        // ユーザーの要望「保存が成功したら setUploading(false) を確実に実行して」に対応
+        setIsUploading(false)
+        
+        onComplete(true, submitResult.message || '報告が完了しました！')
       } else {
-        throw new Error('DB Submission Failed: ' + submitResult.message)
+        console.error('❌ [Upload] DB保存失敗:', submitResult)
+        throw new Error('DB Submission Failed: ' + (submitResult.message || submitResult.error))
       }
 
     } catch (error: any) {
@@ -105,11 +114,14 @@ export default function MissionAction({ missionId, userId, onComplete, disabled 
       } else {
         // 詳細なエラー表示
         const errorDetail = JSON.stringify(error, null, 2)
-        alert(`詳細エラー: ${errorDetail}\n\nMessage: ${error.message || 'No message'}`)
+        console.error('❌ [Upload] 詳細エラー:', errorDetail)
+        alert(`エラーが発生しました:\n${error.message || '不明なエラー'}`)
       }
       
       onComplete(false, '写真のアップロードに失敗しました')
     } finally {
+      // 確実にローディング状態を解除
+      console.log('🏁 [Upload] finallyブロック実行: setUploading(false)')
       setIsUploading(false)
       if (fileInputRef.current) {
         fileInputRef.current.value = ''

@@ -119,6 +119,14 @@ export async function submitMission(
     // 5. 提出レコードの作成
     // status は上で決定済み
     
+    console.log('📝 [Submit] DB保存開始:', {
+      userId,
+      missionId,
+      status,
+      hasImage: !!proof,
+      reviewer_comment: rejectReason
+    })
+
     const { error: insertError } = await supabase
       .from('mission_submissions')
       .insert({
@@ -126,13 +134,15 @@ export async function submitMission(
         mission_id: missionId,
         status: status, // pending, approved, or rejected
         image_url: type === 'photo' ? proof : null,
-        reviewer_comment: rejectReason // AIの判定理由があれば保存
+        reviewer_comment: rejectReason || null // nullを明示的に設定
       })
 
     if (insertError) {
-      console.error('Submission Error:', insertError)
-      return { success: false, message: '提出に失敗しました', error: insertError.message }
+      console.error('❌ [Submit] DB Insert Error:', insertError)
+      return { success: false, message: '提出に失敗しました: ' + insertError.message, error: insertError.message }
     }
+
+    console.log('✅ [Submit] DB保存成功')
 
     if (type === 'qr') {
       // プロフィールのポイントを加算

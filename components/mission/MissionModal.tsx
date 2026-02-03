@@ -109,14 +109,10 @@ export default function MissionModal({
               </div>
             ) : (
               <MissionAction 
-                mission={mission} 
+                missionId={mission.id} 
                 userId={userId} 
                 onComplete={() => {
-                  // 完了時の処理: 本来は親コンポーネントの状態を更新するが、
-                  // MissionActionは内部で処理を完結している場合もあるため、
-                  // ここではとりあえず閉じる（またはそのまま）
-                  // ユーザー体験的には「完了しました！」表示後に閉じるのがベストだが、
-                  // MissionActionの内部実装に依存する
+                  // 完了時の処理
                 }} 
               />
             )}
