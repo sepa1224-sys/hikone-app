@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { getPendingSubmissions, approveSubmission, rejectSubmission } from '@/lib/actions/mission-review'
-import { Loader2, Check, X, User, ZoomIn, ChevronLeft } from 'lucide-react'
+import { Loader2, Check, X, User, ZoomIn, ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 export default function AdminReviewPage() {
@@ -67,8 +67,12 @@ export default function AdminReviewPage() {
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* ヘッダー */}
       <div className="bg-white px-6 py-4 border-b sticky top-0 z-10 flex items-center gap-3">
-        <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-full">
-          <ChevronLeft size={24} />
+        <button 
+          onClick={() => router.push('/admin')} 
+          className="p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-600 transition-colors"
+          aria-label="管理画面に戻る"
+        >
+          <ArrowLeft size={24} />
         </button>
         <h1 className="text-xl font-black text-gray-800">ミッション承認待ち一覧</h1>
         <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded-full">
@@ -82,8 +86,15 @@ export default function AdminReviewPage() {
             <Loader2 className="animate-spin text-gray-400" size={32} />
           </div>
         ) : submissions.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">
-            <p className="font-bold">承認待ちの投稿はありません</p>
+          <div className="text-center py-20 text-gray-400 flex flex-col items-center">
+            <p className="font-bold mb-6">承認待ちの投稿はありません</p>
+            <button 
+              onClick={() => router.push('/admin')}
+              className="px-6 py-3 bg-white border-2 border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all flex items-center gap-2"
+            >
+              <ArrowLeft size={20} />
+              <span>管理画面ダッシュボードに戻る</span>
+            </button>
           </div>
         ) : (
           submissions.map((sub) => (

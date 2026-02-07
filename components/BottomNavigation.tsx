@@ -170,9 +170,14 @@ export default function BottomNavigation({ onNavigate }: BottomNavigationProps) 
   // 会員情報ボタンのクリックハンドラ
   const handleProfileClick = (e: React.MouseEvent, item: typeof NAV_ITEMS[0]) => {
     if (item.requiresAuth && !isLoggedIn) {
+      // イベントの競合停止: Next.jsの標準的な遷移処理を停止
       e.preventDefault()
+      e.stopPropagation()
+      
       onNavigate?.()
-      router.push('/login')
+      
+      // router.push の廃止: 強制的にリロードを伴う遷移を行う
+      window.location.href = '/login'
     } else {
       onNavigate?.()
     }

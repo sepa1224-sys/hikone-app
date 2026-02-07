@@ -2,9 +2,19 @@ import { createBrowserClient } from '@supabase/ssr'
 
 // 最新の @supabase/ssr の createBrowserClient を使用してクライアントを初期化
 // これにより、クライアント側でも Cookie を介した認証状態の同期が可能になります
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('🚨 [Supabase] クライアント作成エラー: 環境変数が不足しています', {
+    url: !!supabaseUrl,
+    key: !!supabaseAnonKey
+  })
+}
+
 export const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  supabaseUrl || '',
+  supabaseAnonKey || ''
 )
 
 // --- お店（Shop）関連の型定義 ---
@@ -96,4 +106,28 @@ export async function getTrainTimetables(station: string, destination: string) {
 
   if (error) throw error;
   return data as TrainTimetable[];
+}
+
+// --- LINE連携ヘルパー ---
+export const getLineId = async () => {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  // identities配列からLINEの接続情報を探す
+  // 1. 直接LINEプロバイダーの場合
+  // 2. Auth0経由でLINE接続の場合 (connection: 'line')
+  const identity = user.identities?.find(
+    (i) => i.provider === 'line' || (i.provider === 'auth0' && i.identity_data?.connection === 'line') || (i.provider === 'auth0' && i.identity_data?.isSocial) // 汎用的なチェック
+  )
+  
+  if (identity) {
+    return identity.id
+  }
+  
+  return null
+}
+
+// supabase.auth.get_line_id として呼び出せるように拡張（実行時パッチ）
+if (typeof window !== 'undefined') {
+  (supabase.auth as any).get_line_id = getLineId
 }

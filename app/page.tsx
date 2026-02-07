@@ -27,25 +27,58 @@ import {
   ALL_PREFECTURES, PREFECTURE_CITIES, HIKONE_AREAS, PREFECTURES, COUNTRIES 
 } from '@/lib/constants/appData'
 
-import { getMissions, Mission } from '@/lib/actions/missions'
+import { getMissions, Mission, getUserMissionStatus } from '@/lib/actions/missions'
 import MissionStampCard from '@/components/mission/MissionStampCard'
-import MissionCard from '@/components/mission/MissionCard'
+import MissionModal from '@/components/mission/MissionModal'
 
 export default function AppHome() {
   const pathname = usePathname()
   const router = useRouter()
   
   // マンスリーミッション
-  const [missions, setMissions] = useState<Mission[]>([])
+  const [activeTab, setActiveTab] = useState<'current' | 'next'>('current')
+  const [currentMissions, setCurrentMissions] = useState<Mission[]>([])
+  const [nextMissions, setNextMissions] = useState<Mission[]>([])
+  const [userMissionStatuses, setUserMissionStatuses] = useState<Record<string, string>>({})
+  const [selectedMission, setSelectedMission] = useState<Mission | null>(null)
+  const [missionModalOpen, setMissionModalOpen] = useState(false)
+
+  // ミッションステータスを更新する関数
+  const refreshMissionStatus = async () => {
+    const statusResult = await getUserMissionStatus()
+    if (statusResult.success && statusResult.data) {
+      setUserMissionStatuses(statusResult.data)
+    }
+  }
 
   useEffect(() => {
-    // ミッション取得
-    getMissions().then(result => {
+    const now = new Date()
+    const getMonthStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    
+    const currentMonth = getMonthStr(now)
+    const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    const nextMonth = getMonthStr(nextMonthDate)
+
+    // 今月のミッション取得
+    getMissions(currentMonth).then(result => {
       if (result.success && result.data) {
-        setMissions(result.data)
+        setCurrentMissions(result.data)
       }
     })
+
+    // 来月のミッション取得
+    getMissions(nextMonth).then(result => {
+      if (result.success && result.data) {
+        setNextMissions(result.data)
+      }
+    })
+    
+    // ステータス取得
+    refreshMissionStatus()
   }, [])
+
+  const displayMissions = activeTab === 'current' ? currentMissions : nextMissions
+
   const { session, user: authUser, profile: authProfile, refreshProfile, loading: authLoading } = useAuth()
   
   // マウント済みフラグ（ハイドレーションエラー防止）
@@ -112,6 +145,9 @@ export default function AppHome() {
   }, [authProfile, authUser, view, authLoading])
 
   const [mode, setMode] = useState<'local' | 'tourist'>('local') 
+  const handleToggleMode = () => {
+    setMode(prev => prev === 'local' ? 'tourist' : 'local')
+  }
   const [selectedCityId, setSelectedCityId] = useState<string>('hikone')
   const [isCitySelectorOpen, setIsCitySelectorOpen] = useState(false)
   const [tempPref, setTempPref] = useState<string | null>(null)
@@ -210,296 +246,8 @@ export default function AppHome() {
     end_date: string
   } | null>(null)
   
-  // マンスリーチャレンジ用のステート
-  const [completedMissions, setCompletedMissions] = useState<number[]>([1, 3, 6]) // デモ用：いくつかクリア済み
-  const [selectedMission, setSelectedMission] = useState<Mission | null>(null)
-  const [missionModalOpen, setMissionModalOpen] = useState(false)
-  const [missionPhoto, setMissionPhoto] = useState<File | null>(null)
-  const [missionPhotoPreview, setMissionPhotoPreview] = useState<string | null>(null)
-  const [uploadingMission, setUploadingMission] = useState(false)
-  const missionFileInputRef = useRef<HTMLInputElement>(null)
-  
-  // 編集フォーム用のステート
-  const [username, setUsername] = useState<string>('')
-  const [avatarUrl, setAvatarUrl] = useState<string>('')
-  const [prefecture, setPrefecture] = useState<string>('')
-  const [city, setCity] = useState<string>('')
-  const [selectedArea, setSelectedArea] = useState<string>('') // エリア選択用
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    localStorage.setItem('app_mode', mode)
-    localStorage.setItem('selected_city_id', selectedCityId)
-  }, [mode, selectedCityId])
-
-  // URLクエリパラメータまたはパスからviewを設定
-  useEffect(() => {
-    if (pathname !== '/') return
-    const viewParam = new URLSearchParams(window.location.search).get('view')
-    if (viewParam === 'profile') {
-      setView('profile')
-    }
-  }, [pathname])
-
-
-  // フォトコンテストイベントを取得
-  useEffect(() => {
-    const fetchActiveEvent = async () => {
-      try {
-        // ★ Supabase テーブル未作成のため一時的にコメントアウト
-        /*
-        const { data, error } = await supabase
-          .from('events')
-          .select('id, title, prize_amount, end_date')
-          .eq('status', 'active')
-          .order('prize_amount', { ascending: false })
-          .limit(1)
-          .single()
-        
-        if (data && !error) {
-          setActiveEvent(data)
-        } else {
-        */
-        setActiveEvent({
-          id: 'demo-1',
-          title: '彦根城 冬の絶景フォトコンテスト',
-          prize_amount: 5000,
-          end_date: '2026-02-28'
-        })
-      } catch {
-        setActiveEvent({
-          id: 'demo-1',
-          title: '彦根の冬景色フォトコンテスト',
-          prize_amount: 5000,
-          end_date: '2026-02-28'
-        })
-      } finally {
-        // 全体のロード状態を解除
-        setLoading(false)
-      }
-    }
-    fetchActiveEvent()
-  }, [])
-
-  // プロフィール編集用のデータ取得
-  const fetchProfileDataForEdit = async () => {
-    if (!authUser) return
-    setProfileLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single()
-      if (data) {
-        setProfile(data)
-        const areaValue = data.selected_area || data.detail_area || ''
-        setUsername(data.full_name || '')
-        setAvatarUrl(data.avatar_url || '')
-        setPrefecture(data.location || '')
-        setCity(data.city || '')
-        setSelectedArea(areaValue)
-      }
-    } catch {
-    } finally {
-      setProfileLoading(false)
-    }
-  }
-
-  // プロフィールページが表示されたときにデータを取得
-  useEffect(() => {
-    if (view === 'profile') {
-      if (!authUser) {
-        setView('main')
-        return
-      }
-      fetchProfileDataForEdit()
-    }
-  }, [view, authUser])
-
-  // ポップアップをキャンセルする処理
-  const handleCancelCitySelection = () => {
-    setIsCitySelectorOpen(false)
-    setTempPref(null)
-    setCitySearchQuery('')
-    setSelectedDestinationName('')
-    // 観光モードをOFFに戻す
-    setMode('local')
-    // ひこにゃんメッセージを表示
-    alert('お出かけはやめるのかニャ？地元でゆっくりするのもいいニャ！')
-  }
-
-  const handleToggleMode = () => {
-    if (mode === 'local') {
-      // 観光モードに切り替える場合は、まずポップアップを開く
-      // 目的地が選択されるまではmodeは'tourist'にしない（pending状態）
-      setIsCitySelectorOpen(true)
-    } else {
-      // 地元モードに戻す
-      setMode('local')
-    }
-  }
-
-  // ルート検索関数（駅名ベースに修正）
-  const handleSearchRoute = async () => {
-    setIsSearching(true)
-    try {
-      // 座標ではなく駅名で送信（彦根→京都）
-      const params = new URLSearchParams({
-        from: '彦根',
-        to: '京都',
-      })
-      
-      const res = await fetch(`/api/transport/route?${params.toString()}`)
-      const data = await res.json()
-      
-      // status が OK 以外の場合はエラー内容を alert で表示
-      if (data.status && data.status !== 'OK') {
-        alert(`エラー: ${data.status}\n詳細: ${data.msg || data.error_message || data.detail || 'エラーが発生しました'}`)
-      }
-      
-      if (res.ok && data.routes) {
-        setRoutes(data.routes || [])
-      } else {
-        setRoutes([])
-      }
-    } catch {
-      setRoutes([])
-    } finally {
-      setIsSearching(false)
-    }
-  }
-
-  const handleGoogleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/`,
-      },
-    })
-    if (error) {
-      alert('ログインに失敗しました。もう一度お試しください。')
-    }
-  }
-
-  // プロフィール保存処理
-  const handleSaveProfile = async () => {
-    if (!authUser) {
-      alert('ログインが必要です')
-      return
-    }
-
-    if (!username.trim()) {
-      alert('ユーザー名を入力してください')
-      return
-    }
-
-    // 都道府県が選択されている場合は市区町村も必須
-    if (prefecture && prefecture !== '海外' && !city.trim()) {
-      alert('市区町村を選択してください')
-      return
-    }
-
-    // 海外が選択されている場合は国名も必須
-    if (prefecture === '海外' && !city.trim()) {
-      alert('国名を選択してください')
-      return
-    }
-
-    setSaving(true)
-
-    try {
-      // 保存用データの準備
-      const updateData: any = {
-        id: authUser.id,
-        full_name: username.trim(),
-        updated_at: new Date().toISOString()
-      }
-
-      // オプショナルフィールドの設定
-      if (avatarUrl.trim()) {
-        updateData.avatar_url = avatarUrl.trim()
-      } else {
-        updateData.avatar_url = null
-      }
-
-      if (prefecture && prefecture.trim()) {
-        updateData.location = prefecture.trim() // locationカラムに都道府県を保存
-      } else {
-        updateData.location = null
-      }
-
-      if (city && city.trim()) {
-        updateData.city = city.trim()
-      } else {
-        updateData.city = null
-      }
-
-      // 彦根市の場合はエリアを保存、それ以外はnull
-      if (city === '彦根市' && selectedArea) {
-        updateData.selected_area = selectedArea
-      } else {
-        updateData.selected_area = null
-      }
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .upsert(updateData, {
-          onConflict: 'id'
-        })
-        .select()
-
-      if (error) {
-        alert(`保存に失敗しました: ${error.message}`)
-      } else {
-        alert('保存したニャ！')
-        // 画面上の名前を即座に更新
-        setProfile((prev: any) => ({
-          ...prev,
-          full_name: username.trim(),
-          avatar_url: avatarUrl.trim() || null,
-          location: prefecture || null,
-          city: city.trim() || null,
-          selected_area: city === '彦根市' ? selectedArea : null
-        }))
-        // ホーム画面のパーソナライズ用に更新
-        const newCity = city.trim() || null
-        setUserCity(newCity)
-        
-        const newSelectedArea = city === '彦根市' ? selectedArea : null
-        setUserSelectedArea(newSelectedArea)
-        
-        // SWR キャッシュを更新（State変更後、SWRのキーも変わるので自動で再取得される）
-        // 念のため手動でも再取得をトリガー
-        refetchWaste()
-        refetchStats()
-        
-        // プロフィール情報を再取得
-        await fetchProfileDataForEdit()
-      }
-    } catch (error: any) {
-      alert(`予期しないエラーが発生しました: ${error?.message || '不明なエラー'}`)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleLogout = async () => {
-    if (confirm('ログアウトしますか？')) {
-      await supabase.auth.signOut()
-      setProfile(null)
-      setView('main')
-      setUsername('')
-      setAvatarUrl('')
-      setPrefecture('')
-      setCity('')
-    }
-  }
-
   // ミッション達成数の計算
-  const completedCount = completedMissions.length
-  const remainingFor500Yen = Math.max(0, 5 - completedCount) // 5つで500円商品券
-  const remainingForGrandPrize = Math.max(0, 10 - completedCount) // 10個で豪華景品応募
+  const completedCount = (displayMissions || []).filter(m => userMissionStatuses[m.id] === 'approved').length
 
   const currentCity = cityData[selectedCityId] || cityData['hikone']
 
@@ -807,25 +555,46 @@ export default function AppHome() {
             )}
 
             {/* 3. マンスリー・チャレンジセクション（新デザイン） */}
-            {missions.length > 0 && (
+            {(displayMissions || []).length > 0 && (
               <div className="bg-white rounded-[2rem] p-5 shadow-lg border border-gray-100 overflow-hidden">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <Target className="w-5 h-5 text-orange-500" />
-                    <h3 className="font-bold text-gray-800">今月のミッション</h3>
+                    <h3 className="font-bold text-gray-800">マンスリーミッション</h3>
                   </div>
-                  <Link href="/missions" className="text-xs text-blue-600 font-bold hover:underline flex items-center gap-1">
-                    すべて見る <ChevronRight size={12} />
-                  </Link>
+                  <div className="flex bg-gray-100 p-1 rounded-lg">
+                    <button 
+                      onClick={() => setActiveTab('current')}
+                      className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                        activeTab === 'current' 
+                          ? 'bg-white text-orange-600 shadow-sm' 
+                          : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      今月
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('next')}
+                      className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                        activeTab === 'next' 
+                          ? 'bg-white text-blue-600 shadow-sm' 
+                          : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      来月
+                    </button>
+                  </div>
                 </div>
                 <div className="space-y-4">
                   <MissionStampCard 
-                    missions={missions} 
-                    userId={authUser?.id || ''} 
+                    missions={displayMissions}
+                    userId={authUser?.id || ''}
+                    userMissionStatuses={userMissionStatuses}
                     onMissionSelect={(mission) => {
                       setSelectedMission(mission)
                       setMissionModalOpen(true)
                     }}
+                    isNextMonth={activeTab === 'next'}
                   />
                 </div>
               </div>
@@ -1486,45 +1255,26 @@ export default function AppHome() {
       )}
 
       {/* ミッション詳細モーダル */}
-      {missionModalOpen && selectedMission && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => {
-              setMissionModalOpen(false)
-              setSelectedMission(null)
-            }}
-          />
-          
-          {/* モーダル本体 */}
-          <div className="relative z-[2001] w-full max-w-md animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto no-scrollbar rounded-3xl">
-            <MissionCard 
-              mission={selectedMission}
-              userId={authUser?.id || ''}
-              isCompleted={completedMissions.includes(selectedMission.id)}
-              onUpdate={() => {
-                // ミッション完了時の処理
-                refetchPoints()
-                setCompletedMissions(prev => [...prev, selectedMission.id])
-                setMissionModalOpen(false)
-                setSelectedMission(null)
-                // お祝いエフェクトやアラートはMissionCard側またはここで行う
-                alert('ミッションクリア！おめでとうございます！')
-              }}
-            />
-            {/* 閉じるボタン（右上に配置） */}
-            <button
-              onClick={() => {
-                setMissionModalOpen(false)
-                setSelectedMission(null)
-              }}
-              className="absolute top-4 right-4 p-2 bg-black/20 hover:bg-black/30 text-white rounded-full transition-colors z-10"
-            >
-              <X size={20} />
-            </button>
-          </div>
-        </div>
+      {selectedMission && (
+        <MissionModal
+          mission={selectedMission}
+          userId={authUser?.id || ''}
+          isOpen={missionModalOpen}
+          onClose={() => {
+            setMissionModalOpen(false)
+            setSelectedMission(null)
+          }}
+          isCompleted={userMissionStatuses[selectedMission.id] === 'approved'}
+          isPending={userMissionStatuses[selectedMission.id] === 'pending'}
+          isNextMonth={activeTab === 'next'}
+          onUpdate={() => {
+            refreshMissionStatus()
+            refetchPoints()
+            setMissionModalOpen(false)
+            setSelectedMission(null)
+            alert('ミッション報告ありがとうございます！審査をお待ちください。')
+          }}
+        />
       )}
 
       {/* エリア未対応モーダル（ログイン済みかつ対応エリア外の場合に表示） */}
@@ -1616,6 +1366,7 @@ export default function AppHome() {
                       setProfile(null)
                       setShowUnsupportedAreaModal(false)
                       setView('main')
+                      router.refresh()
                     }
                   }}
                   className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-2xl font-bold text-sm transition-colors flex items-center justify-center gap-2"

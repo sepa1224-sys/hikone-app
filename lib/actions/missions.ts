@@ -137,3 +137,38 @@ export async function deleteMission(id: string): Promise<ActionResult> {
     return { success: false, message: '予期せぬエラーが発生しました', error: err.message }
   }
 }
+
+/**
+ * ログインユーザーのミッション投稿状況を取得する
+ */
+export async function getUserMissionStatus(): Promise<ActionResult> {
+  try {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+       return { success: false, message: 'ユーザーが見つかりません' }
+    }
+
+    const { data, error } = await supabase
+      .from('mission_submissions')
+      .select('mission_id, status')
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error('Get Mission Status Error:', error)
+      return { success: false, message: 'ステータスの取得に失敗しました', error: error.message }
+    }
+
+    // Map形式に変換
+    const statusMap: Record<string, string> = {}
+    data.forEach((item: any) => {
+      statusMap[item.mission_id] = item.status
+    })
+
+    return { success: true, message: '取得成功', data: statusMap }
+  } catch (err: any) {
+    console.error('Get Mission Status Exception:', err)
+    return { success: false, message: '予期せぬエラーが発生しました', error: err.message }
+  }
+}

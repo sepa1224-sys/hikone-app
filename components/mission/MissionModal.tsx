@@ -12,6 +12,8 @@ interface MissionModalProps {
   onClose: () => void
   isCompleted?: boolean
   isPending?: boolean
+  isNextMonth?: boolean
+  onUpdate?: () => void
 }
 
 export default function MissionModal({
@@ -20,7 +22,9 @@ export default function MissionModal({
   isOpen,
   onClose,
   isCompleted = false,
-  isPending = false
+  isPending = false,
+  isNextMonth = false,
+  onUpdate
 }: MissionModalProps) {
   // モーダル表示時に背面のスクロールを禁止する
   useEffect(() => {
@@ -107,12 +111,17 @@ export default function MissionModal({
               <div className="w-full py-4 bg-yellow-100 text-yellow-700 rounded-xl font-bold text-center border border-yellow-200 flex items-center justify-center gap-2 shadow-sm">
                 <span>⏳ 承認待ちです</span>
               </div>
+            ) : isNextMonth ? (
+              <div className="w-full py-4 bg-gray-100 text-gray-500 rounded-xl font-bold text-center border border-gray-200 flex items-center justify-center gap-2 shadow-sm">
+                <span>📅 来月から開始できます</span>
+              </div>
             ) : (
               <MissionAction 
                 missionId={mission.id} 
                 userId={userId} 
+                missionType={mission.mission_type}
                 onComplete={() => {
-                  // 完了時の処理
+                  if (onUpdate) onUpdate()
                 }} 
               />
             )}

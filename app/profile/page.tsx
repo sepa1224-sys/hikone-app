@@ -406,6 +406,7 @@ export default function ProfilePage() {
       console.log('📋 [Profile] ログアウト実行')
       await signOut() // AuthProvider の signOut を使用
       setProfile(null)
+      router.refresh()
       router.push('/')
     }
   }

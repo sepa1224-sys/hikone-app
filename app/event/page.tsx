@@ -286,7 +286,7 @@ export default function EventPage() {
               <p className="text-sm font-bold text-amber-800">ログインが必要です</p>
               <p className="text-xs text-amber-600 mt-1">
                 写真を投稿するには
-                <Link href="/login" className="underline font-bold ml-1">ログイン</Link>
+                <Link href="/login" prefetch={false} className="underline font-bold ml-1">ログイン</Link>
                 してください
               </p>
             </div>

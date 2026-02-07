@@ -6,6 +6,34 @@ import { Mail, Lock, Eye, EyeOff, UserPlus, LogIn, ArrowLeft } from 'lucide-reac
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/components/AuthProvider'
+import { loginWithAuth0 } from '@/lib/actions/auth'
+import auth0 from 'auth0-js'
+
+// console.log("DOMAIN:", process.env.NEXT_PUBLIC_AUTH0_DOMAIN)
+// console.log("CLIENT_ID:", process.env.NEXT_PUBLIC_AUTH0_CLIENT_ID)
+
+// Auth0クライアントを取得する関数
+const getAuth0Client = () => {
+  if (typeof window === 'undefined') return null
+
+  const domain = process.env.NEXT_PUBLIC_AUTH0_DOMAIN
+  const clientID = process.env.NEXT_PUBLIC_AUTH0_CLIENT_ID
+
+  console.log('🔑 [Auth0] Config Check:', { domain, clientID })
+
+  if (!domain || !clientID) {
+    console.error('🔑 [Auth0] 環境変数が設定されていません')
+    return null
+  }
+
+  return new auth0.WebAuth({
+    domain: domain,
+    clientID: clientID,
+    redirectUri: window.location.origin + '/login',
+    responseType: 'token id_token',
+    scope: 'openid profile email'
+  })
+}
 
 // Googleアイコン（SVG）
 const GoogleIcon = () => (
@@ -29,6 +57,20 @@ const GoogleIcon = () => (
   </svg>
 )
 
+// LINEアイコン（SVG）
+const LineIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24">
+    <path
+      fill="#06C755"
+      d="M24 10.304c0-5.369-5.383-9.738-12-9.738-6.616 0-12 4.369-12 9.738 0 4.814 4.269 8.846 10.019 9.614.39.086.923.264 1.058.608.12.308.079.791.037 1.096-.053.396-.242 1.487-.242 1.487s-.086.533.136.786c.219.253.868.203 1.156-.027 3.515-2.822 6.541-6.179 6.541-6.179 3.504-2.195 5.292-4.524 5.292-7.385"
+    />
+    <path
+      fill="#fff"
+      d="M16.92 11.23h-1.636a.434.434 0 01-.434-.434v-2.31c0-.239.195-.434.434-.434h.619c.239 0 .434.195.434.434v1.275h.583c.239 0 .434.195.434.434v.601a.434.434 0 01-.434.434zm-3.328 0h-2.17a.434.434 0 01-.434-.434v-2.31c0-.239.195-.434.434-.434h.619c.239 0 .434.195.434.434v1.876h1.117c.239 0 .434.195.434.434v.601a.434.434 0 01-.434.434zm-3.864 0h-1.077a.434.434 0 01-.434-.434v-2.31c0-.239.195-.434.434-.434h.619c.239 0 .434.195.434.434v2.31c0 .239.195 .434 .434 .434h.458c.239 0 .434.195.434.434v-.002zm-3.842-1.033l1.176-1.602c.039-.053.059-.117.059-.181v-.383a.434.434 0 00-.434-.434h-1.636a.434.434 0 00-.434.434v2.31c0 .239.195 .434 .434 .434h.619a.434.434 0 00.434-.434v-1.189h.016l-1.176 1.602a.31.31 0 00-.059.181v.383c0 .239.195 .434 .434 .434h1.636a.434.434 0 00.434-.434v-2.31a.434.434 0 00-.434-.434h-.619a.434.434 0 00-.434.434v1.189h-.016z"
+    />
+  </svg>
+)
+
 export default function LoginPage() {
   const router = useRouter()
   
@@ -41,18 +83,80 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [lineLoading, setLineLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   
   // 既にログイン済みの場合はプロフィールページへリダイレクト
   useEffect(() => {
-    console.log('🔑 [Login] 認証状態確認:', { authLoading, hasSession: !!session })
+    // console.log('🔑 [Login] 認証状態確認:', { authLoading, hasSession: !!session })
     
     if (!authLoading && session) {
       console.log('🔑 [Login] 既にログイン済み → プロフィールへリダイレクト')
-      router.push('/profile')
+      window.location.href = '/profile'
     }
   }, [authLoading, session, router])
+
+  // Auth0からのリダイレクト処理（ハッシュがある場合）
+  useEffect(() => {
+    const auth0Client = getAuth0Client()
+    
+    if (typeof window !== 'undefined' && window.location.hash.includes('access_token') && auth0Client) {
+      console.log('🔑 [Login] Auth0コールバック検知、解析中...')
+      setLineLoading(true) // ローディング表示
+      
+      auth0Client.parseHash(async (err, authResult) => {
+        if (authResult && authResult.idToken && authResult.accessToken) {
+          console.log('🔑 [Login] Auth0認証成功。サーバーアクション経由でSupabaseログインを試行...')
+          
+          try {
+            // Server Actionを呼び出して、Supabaseの正規ログインリンク（マジックリンク）を取得
+            // これにより、RS256署名エラーを回避し、Supabase側で正しくセッションを発行させる
+            const result = await loginWithAuth0(authResult.accessToken, window.location.origin)
+
+            if (result.success && result.session) {
+              console.log('🔑 [Login] セッショントークン取得成功。クライアント側でログイン状態を反映します...')
+              setSuccess('ログイン処理中...')
+              
+              // 取得したトークンで即座にセッションを確立
+              const { error: sessionError } = await supabase.auth.setSession({
+                access_token: result.session.access_token,
+                refresh_token: result.session.refresh_token
+              })
+
+              if (sessionError) {
+                console.error('🔑 [Login] setSessionエラー:', sessionError)
+                throw sessionError
+              }
+
+              console.log('🔑 [Login] セッション確立完了。リダイレクトします。')
+              
+              // キャッシュをクリアして最新の状態を取得
+              router.refresh()
+              
+              // 確実に遷移（Cookieの反映を待つためawaitはできないが、refresh後にpushすることで整合性を高める）
+              router.push('/')
+              
+            } else {
+              console.error('🔑 [Login] サーバーログインエラー:', result.error)
+              setError('ログイン処理に失敗しました: ' + (result.error || '不明なエラー'))
+              setLineLoading(false)
+            }
+          } catch (e: any) {
+             console.error('🔑 [Login] 予期せぬエラー:', e)
+             setError('認証処理中にエラーが発生しました')
+             setLineLoading(false)
+          }
+        } else if (err) {
+          console.error('🔑 [Login] Auth0解析エラー:', err)
+          setError('認証に失敗しました: ' + err.errorDescription)
+          setLineLoading(false)
+        } else {
+          setLineLoading(false)
+        }
+      })
+    }
+  }, [router])
 
   // メール/パスワードでのログイン・登録
   const handleSubmit = async (e: React.FormEvent) => {
@@ -72,10 +176,9 @@ export default function LoginPage() {
         console.log('🔑 [Login] ログイン成功:', data.session?.user?.email)
         setSuccess('ログインしました！')
         
-        // ログイン成功後、少し待ってから遷移（Cookieの反映を待つ）
-        setTimeout(() => {
-          router.push('/profile')
-        }, 500)
+        // ログイン成功後、キャッシュをクリアして遷移
+        router.refresh()
+        router.push('/')
       } else {
         console.log('🔑 [Login] 新規登録実行中...')
         const { error } = await supabase.auth.signUp({
@@ -93,27 +196,64 @@ export default function LoginPage() {
     }
   }
 
-  // Googleでサインイン
-  const handleGoogleSignIn = async () => {
+  // Googleでサインイン（Auth0 SDK直接利用）
+  const handleGoogleSignIn = (e: React.MouseEvent) => {
+    e.preventDefault()
     setGoogleLoading(true)
     setError('')
 
+    const auth0Client = getAuth0Client()
+    if (!auth0Client) {
+      setError('Auth0設定エラー')
+      setGoogleLoading(false)
+      return
+    }
+
     try {
-      console.log('🔑 [Login] Googleログイン実行中...')
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: {
-            prompt: 'select_account',
-          },
-        },
+      console.log('🔑 [Login] Googleログイン(Auth0)実行中...')
+      auth0Client.authorize({
+        connection: 'google-oauth2'
       })
-      if (error) throw error
     } catch (err: any) {
       console.error('🔑 [Login] Googleログインエラー:', err.message)
-      setError(err.message || 'Googleログインに失敗しました')
+      setError('Googleログインに失敗しました')
       setGoogleLoading(false)
+    }
+  }
+
+  // LINEでサインイン（Auth0 SDK直接利用）
+  const handleLineSignIn = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setLineLoading(true)
+    setError('')
+
+    // ここで環境変数をチェックしてクライアントを初期化
+    const auth0Client = getAuth0Client()
+
+    if (!auth0Client) {
+      const domain = process.env.NEXT_PUBLIC_AUTH0_DOMAIN
+      const clientId = process.env.NEXT_PUBLIC_AUTH0_CLIENT_ID
+      
+      console.error('🔑 [Auth0] 環境変数不足:', { 
+        NEXT_PUBLIC_AUTH0_DOMAIN: domain ? '設定あり' : '未設定',
+        NEXT_PUBLIC_AUTH0_CLIENT_ID: clientId ? '設定あり' : '未設定'
+      })
+      
+      setError('Auth0設定が見つかりません。環境変数 (NEXT_PUBLIC_AUTH0_CLIENT_ID 等) を確認してください。')
+      setLineLoading(false)
+      return
+    }
+
+    try {
+      console.log('🔑 [Login] LINEログイン(Auth0)実行中...')
+      // Supabaseを通さず直接Auth0へリダイレクト
+      auth0Client.authorize({
+        connection: 'line' // Auth0側で設定したLINE接続
+      })
+    } catch (err: any) {
+      console.error('🔑 [Login] LINEログインエラー:', err.message)
+      setError(err.message || 'LINEログインに失敗しました')
+      setLineLoading(false)
     }
   }
   
@@ -133,7 +273,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-orange-50 flex flex-col">
       {/* ヘッダー */}
       <div className="p-4">
-        <Link href="/" className="inline-flex items-center gap-2 text-gray-500 hover:text-gray-700">
+        <Link href="/" prefetch={false} className="inline-flex items-center gap-2 text-gray-500 hover:text-gray-700">
           <ArrowLeft size={20} />
           <span className="text-sm font-bold">ホームに戻る</span>
         </Link>
@@ -152,6 +292,22 @@ export default function LoginPage() {
               {isLogin ? 'アカウントにログイン' : '新規アカウント作成'}
             </p>
           </div>
+
+          {/* LINEでサインインボタン */}
+          <button
+            onClick={handleLineSignIn}
+            disabled={lineLoading}
+            className="w-full py-4 bg-[#06C755] text-white font-bold rounded-2xl shadow-sm flex items-center justify-center gap-3 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-60 mb-4"
+          >
+            {lineLoading ? (
+              '接続中...'
+            ) : (
+              <>
+                <LineIcon />
+                LINEでログイン
+              </>
+            )}
+          </button>
 
           {/* Googleでサインインボタン */}
           <button
