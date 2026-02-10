@@ -449,3 +449,11 @@ export default function ShopSettingsMenuPage() {
     </div>
   )
 }
+
+export default function ShopSettingsMenuPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center items-center min-h-screen"><Loader2 className="animate-spin text-gray-400" /></div>}>
+      <ShopSettingsContent />
+    </Suspense>
+  )
+}
