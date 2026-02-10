@@ -290,3 +290,62 @@ export async function createShopByAdmin(params: {
     return { success: false, message: '作成に失敗しました: ' + error.message }
   }
 }
+
+export async function getAdminPayoutRequests() {
+  if (!await checkAdmin()) {
+    return { success: false, message: 'Unauthorized' }
+  }
+
+  const supabase = createClient()
+
+  try {
+    const { data, error } = await supabase
+      .from('payout_requests')
+      .select(`
+        *,
+        shops (
+          name
+        )
+      `)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    // Transform data
+    const requests = data.map(req => ({
+      ...req,
+      shop_name: req.shops?.name || 'Unknown Shop',
+      bank_details: req.bank_info // snapshot data
+    }))
+
+    return { success: true, requests }
+  } catch (error: any) {
+    console.error('getAdminPayoutRequests error:', error)
+    return { success: false, message: 'Failed to fetch payout requests' }
+  }
+}
+
+export async function approvePayout(requestId: string, shopId: string, amount: number) {
+    if (!await checkAdmin()) {
+        return { success: false, message: 'Unauthorized' }
+    }
+
+    const supabase = createServiceClient(supabaseUrl, supabaseServiceKey)
+
+    try {
+        const { error } = await supabase
+            .from('payout_requests')
+            .update({
+                status: 'paid',
+                processed_at: new Date().toISOString()
+            })
+            .eq('id', requestId)
+
+        if (error) throw error
+
+        return { success: true, message: 'Payout approved successfully' }
+    } catch (error: any) {
+        console.error('approvePayout error:', error)
+        return { success: false, message: 'Approval failed: ' + error.message }
+    }
+}
