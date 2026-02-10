@@ -24,7 +24,7 @@ export default function ShopFilters({
 }: ShopFiltersProps) {
   // ユニークなカテゴリを取得
   const categories = Array.from(
-    new Set(shops.map((shop) => shop.category).filter(Boolean))
+    new Set(shops.map((shop) => shop.category_main).filter(Boolean))
   ).sort() as string[]
 
   const hasActiveFilters = selectedCategory !== null || showOpenOnly || hideClosed

@@ -56,7 +56,7 @@ export default function AdminDashboard() {
 
   // 新規店舗作成用
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [createForm, setCreateForm] = useState({ name: '', email: '', category: '' })
+  const [createForm, setCreateForm] = useState({ shopId: '', email: '' })
   const [creating, setCreating] = useState(false)
 
   // 管理者権限チェック
@@ -238,20 +238,20 @@ export default function AdminDashboard() {
     await handleUpdateStatus(approvingRequestId, 'approved', giftCodeInput.trim())
   }
 
-  // 新規店舗作成処理
-  const handleCreateShop = async (e: React.FormEvent) => {
+  // 店舗オーナー紐付け処理
+  const handleAssignOwner = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!createForm.shopId) {
+      alert('店舗を選択してください')
+      return
+    }
     setCreating(true)
     try {
-      const res = await createShopByAdmin({
-        name: createForm.name,
-        ownerEmail: createForm.email,
-        category: createForm.category
-      })
+      const res = await assignShopOwner(createForm.shopId, createForm.email)
       if (res.success) {
-        alert('店舗を作成しました')
+        alert('店舗にオーナーを紐付けました')
         setShowCreateModal(false)
-        setCreateForm({ name: '', email: '', category: '' })
+        setCreateForm({ shopId: '', email: '' })
         
         // リロードして一覧更新
         setLoadingShops(true)
@@ -264,7 +264,7 @@ export default function AdminDashboard() {
         alert(res.message)
       }
     } catch (error) {
-      console.error('Shop creation error:', error)
+      console.error('Owner assignment error:', error)
       alert('エラーが発生しました')
     } finally {
       setCreating(false)
@@ -495,7 +495,7 @@ export default function AdminDashboard() {
                   className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors flex items-center gap-1"
                 >
                   <Plus size={16} />
-                  新規店舗を追加
+                  店舗オーナー紐付け
                 </button>
               </div>
               
@@ -796,23 +796,33 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
-      {/* 新規店舗作成モーダル */}
+      {/* 店舗オーナー紐付けモーダル */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <h3 className="text-xl font-bold mb-4 text-gray-900">新規店舗登録</h3>
-            <form onSubmit={handleCreateShop}>
+            <h3 className="text-xl font-bold mb-4 text-gray-900">店舗オーナー紐付け</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              既存の店舗にオーナー（ユーザー）を割り当てます。<br/>
+              ユーザーは事前に登録済みである必要があります。
+            </p>
+            <form onSubmit={handleAssignOwner}>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">店舗名</label>
-                  <input 
-                    type="text" 
-                    required 
-                    className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    value={createForm.name}
-                    onChange={e => setCreateForm({...createForm, name: e.target.value})}
-                    placeholder="店舗名を入力"
-                  />
+                  <label className="block text-sm font-bold text-gray-700 mb-1">対象店舗</label>
+                  <select 
+              required
+              className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              value={createForm.shopId}
+              onChange={e => setCreateForm({...createForm, shopId: e.target.value})}
+            >
+              <option value="">店舗を選択してください</option>
+              {shops.length === 0 && <option disabled>店舗データがありません</option>}
+              {shops.map(shop => (
+                <option key={shop.id} value={shop.id}>
+                  {shop.name} {shop.owner_name !== 'Unknown' ? `(現在のオーナー: ${shop.owner_name})` : '(オーナー未設定)'}
+                </option>
+              ))}
+            </select>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">オーナーメールアドレス</label>
@@ -825,22 +835,6 @@ export default function AdminDashboard() {
                     placeholder="owner@example.com"
                   />
                   <p className="text-xs text-gray-500 mt-1">※すでにユーザー登録済みのメールアドレスを入力してください</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">カテゴリ</label>
-                  <select 
-                    required
-                    className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    value={createForm.category}
-                    onChange={e => setCreateForm({...createForm, category: e.target.value})}
-                  >
-                    <option value="">選択してください</option>
-                    <option value="グルメ">グルメ</option>
-                    <option value="ショッピング">ショッピング</option>
-                    <option value="ビューティー">ビューティー</option>
-                    <option value="サービス">サービス</option>
-                    <option value="その他">その他</option>
-                  </select>
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
@@ -857,7 +851,7 @@ export default function AdminDashboard() {
                   className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
                 >
                   {creating && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
-                  登録する
+                  紐付ける
                 </button>
               </div>
             </form>

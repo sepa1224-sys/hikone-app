@@ -6,7 +6,7 @@ import { useAuth } from '@/components/AuthProvider'
 import { ArrowLeft, Store, Save, Loader2, Camera, Trash2, Plus, X, Lock, CreditCard, Utensils, Image as ImageIcon, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { updateShopBasicInfo, updateShopImages, getMenuItems, upsertMenuItem, deleteMenuItem, getShopSettings } from '@/lib/actions/shop'
+import { updateShopBasicInfo, updateShopImages, getMenuItems, upsertMenuItem, deleteMenuItem, getShopSettings, uploadShopImageAction } from '@/lib/actions/shop'
 import Image from 'next/image'
 
 // 画像圧縮用の簡易関数
@@ -47,6 +47,7 @@ function ShopSettingsContent() {
 
   // Basic Info State
   const [address, setAddress] = useState('') // Read-only
+  const [shopName, setShopName] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [transactionPassword, setTransactionPassword] = useState('')
   
@@ -87,6 +88,7 @@ function ShopSettingsContent() {
 
         // 1. Set Shop Data
         if (data.shop) {
+          setShopName(data.shop.name || '')
           setAddress(data.shop.address || '')
           setPhoneNumber(data.shop.phone_number || '')
           setThumbnailUrl(data.shop.thumbnail_url || null)
@@ -168,19 +170,18 @@ function ShopSettingsContent() {
     setUploading(true)
     try {
       const compressedBlob = await compressImage(file)
-      // RLSポリシー (storage.foldername(name))[1] = auth.uid() に準拠
-      const fileName = `${user.id}/${Date.now()}.jpg`
       
-      // Upload to 'shop-photos' bucket
-      const { error: uploadError } = await supabase.storage
-        .from('shop-photos') // Assuming bucket exists
-        .upload(fileName, compressedBlob, { contentType: 'image/jpeg', upsert: true })
+      // Server Actionを使用してアップロード (Admin代理編集時のRLS回避のため)
+      const formData = new FormData()
+      formData.append('file', compressedBlob, file.name)
+      
+      const result = await uploadShopImageAction(formData, impersonateShopId)
+      
+      if (!result.success || !result.publicUrl) {
+        throw new Error(result.message || 'アップロードに失敗しました')
+      }
 
-      if (uploadError) throw uploadError
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('shop-photos')
-        .getPublicUrl(fileName)
+      const publicUrl = result.publicUrl
 
       if (type === 'thumbnail') {
         setThumbnailUrl(publicUrl)
@@ -250,7 +251,7 @@ function ShopSettingsContent() {
       {impersonateShopId && (
         <div className="bg-red-50 border-b border-red-200 p-3 flex items-center justify-center gap-2 text-red-700 font-bold text-sm">
           <ShieldAlert size={18} />
-          管理者モードで編集中 (Shop ID: {impersonateShopId})
+          管理者として {shopName ? `[${shopName}]` : `(Shop ID: ${impersonateShopId})`} を編集中
         </div>
       )}
 

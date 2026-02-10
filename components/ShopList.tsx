@@ -73,9 +73,9 @@ export default function ShopList({ shops, selectedShopId, onShopClick }: ShopLis
                 <h2 className="text-xl font-bold text-gray-900 flex-1">
                   {shop.name}
                 </h2>
-                {shop.category && (
+                {shop.category_main && (
                   <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-3 py-1 rounded-full ml-2 whitespace-nowrap">
-                    {shop.category}
+                    {shop.category_main}
                   </span>
                 )}
               </div>

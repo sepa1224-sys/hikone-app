@@ -117,9 +117,9 @@ export default function Kaimono() {
           // カテゴリーが完全一致または部分一致する場合に含める
           const shoppingShops = data.filter((shop: any) => {
             return shoppingCategoryIds.some(catId => 
-              shop.category === catId || 
-              shop.category?.includes(catId) ||
-              catId.includes(shop.category)
+              shop.category_main === catId || 
+              shop.category_main?.includes(catId) ||
+              catId.includes(shop.category_main)
             )
           })
 
@@ -181,18 +181,18 @@ export default function Kaimono() {
     // カテゴリーフィルター
     if (selectedCategory) {
       result = result.filter(shop => 
-        shop.category === selectedCategory || 
-        shop.category?.includes(selectedCategory)
+        shop.category_main === selectedCategory || 
+        shop.category_main?.includes(selectedCategory)
       )
     }
 
-    // AI検索（簡易版：name, description, category に含まれるか）
+    // AI検索（簡易版：name, description, category_main に含まれるか）
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       result = result.filter(shop => 
         shop.name?.toLowerCase().includes(query) ||
         shop.description?.toLowerCase().includes(query) ||
-        shop.category?.toLowerCase().includes(query) ||
+        shop.category_main?.toLowerCase().includes(query) ||
         shop.address?.toLowerCase().includes(query)
       )
     }
@@ -327,7 +327,7 @@ export default function Kaimono() {
           </div>
         ) : (
           filteredShops.map((shop) => {
-            const theme = getCategoryTheme(shop.category)
+            const theme = getCategoryTheme(shop.category_main)
             return (
               <div 
                 key={shop.id} 
@@ -342,7 +342,7 @@ export default function Kaimono() {
                     <div>
                       <h2 className="text-sm font-black text-gray-800 leading-tight">{shop.name}</h2>
                       <span className={`text-[9px] font-black px-2 py-0.5 rounded-full mt-1 inline-block ${theme.bgLight} ${theme.textColor}`}>
-                        {shop.category}
+                        {shop.category_main}
                       </span>
                     </div>
                   </div>
@@ -393,13 +393,13 @@ export default function Kaimono() {
             <div className="px-6 pb-10">
               {/* 店舗名 */}
               <div className="flex items-start gap-4 mb-6">
-                <div className={`${getCategoryTheme(selectedShop.category).color} p-4 rounded-2xl text-white shadow-lg`}>
-                  {getCategoryTheme(selectedShop.category).icon}
+                <div className={`${getCategoryTheme(selectedShop.category_main).color} p-4 rounded-2xl text-white shadow-lg`}>
+                  {getCategoryTheme(selectedShop.category_main).icon}
                 </div>
                 <div className="flex-1">
                   <h2 className="text-2xl font-black text-gray-900 mb-1">{selectedShop.name}</h2>
-                  <span className={`text-xs font-black px-3 py-1 rounded-full ${getCategoryTheme(selectedShop.category).bgLight} ${getCategoryTheme(selectedShop.category).textColor}`}>
-                    {selectedShop.category}
+                  <span className={`text-xs font-black px-3 py-1 rounded-full ${getCategoryTheme(selectedShop.category_main).bgLight} ${getCategoryTheme(selectedShop.category_main).textColor}`}>
+                    {selectedShop.category_main}
                   </span>
                 </div>
               </div>

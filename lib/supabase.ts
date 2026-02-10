@@ -18,7 +18,7 @@ export const supabase = createClient()
 export type Shop = {
   id: string
   name: string
-  category: string
+  category_main: string
   address: string
   latitude: number | null  // 緯度（未取得の場合はnull）
   longitude: number | null // 経度（未取得の場合はnull）

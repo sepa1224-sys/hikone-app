@@ -31,7 +31,8 @@ export async function getAdminShops() {
     return { success: false, message: 'Unauthorized' }
   }
 
-  const supabase = createClient()
+  // Use service client to bypass RLS and ensure we get all shops
+  const supabase = createServiceClient(supabaseUrl, supabaseServiceKey)
   
   try {
     const { data: shops, error } = await supabase
@@ -49,6 +50,9 @@ export async function getAdminShops() {
       .order('created_at', { ascending: false })
     
     if (error) throw error
+
+    const unassignedCount = shops.filter(s => !s.owner_id).length
+    console.log(`[Debug] getAdminShops: Total=${shops.length}, Unassigned=${unassignedCount}`)
     
     // Transform data to include stamp count
     const shopsWithDetails = shops.map(shop => ({
@@ -204,7 +208,7 @@ export async function getPendingPayoutCount() {
 export async function createShopByAdmin(params: {
   name: string
   ownerEmail: string
-  category: string
+  category_main: string
 }) {
   if (!await checkAdmin()) {
     return { success: false, message: 'Unauthorized' }
@@ -233,7 +237,7 @@ export async function createShopByAdmin(params: {
       .insert({
         name: params.name,
         owner_id: owner.id,
-        category: params.category,
+        category_main: params.category_main,
         address: '未設定',
         phone_number: '',
       })
@@ -296,3 +300,100 @@ export async function getAdminPayoutRequests() { return []; }
 export async function approvePayout(id: string) { return { success: true }; }
 
 export async function generateInvitationCode(shopId: string) { return { success: true, code: "123456" }; }
+
+// 店舗にオーナーを紐付ける（管理者機能）
+export async function assignShopOwner(shopId: string, ownerEmail: string) {
+  if (!await checkAdmin()) {
+    return { success: false, message: 'Unauthorized' }
+  }
+
+  const supabase = createServiceClient(supabaseUrl, supabaseServiceKey)
+
+  try {
+    // 1. メールアドレスからユーザーを検索
+    // Note: email検索は管理者権限(service role)が必要な場合がある
+    // profilesテーブルにはemailカラムがある前提（syncされている場合）
+    // もしprofilesにemailがない場合は auth.users を検索する必要があるが、
+    // ここでは profiles に email があると仮定して進める（getAdminShopsでも参照しているため）
+    
+    // まず profiles で検索
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, email, role')
+      .eq('email', ownerEmail)
+      .single()
+
+    let userId = profile?.id
+
+    if (!userId) {
+      // profilesで見つからない場合、Authユーザーを検索する（まだprofileがない可能性は低いが念のため）
+      // Service Roleなら listUsers で検索できるが、コストが高い。
+      // ここでは「ユーザー登録が必要です」と返すのが安全
+      return { success: false, message: '指定されたメールアドレスのユーザーが見つかりません。先にユーザー登録を行ってください。' }
+    }
+
+    // 2. ショップの owner_id を更新
+    const { error: shopError } = await supabase
+      .from('shops')
+      .update({ 
+        owner_id: userId,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', shopId)
+
+    if (shopError) throw shopError
+
+    // 3. ユーザーのプロフィールを更新 (role => shop, shop_id => shopId)
+    const { error: updateProfileError } = await supabase
+      .from('profiles')
+      .update({
+        role: 'shop',
+        shop_id: shopId
+      })
+      .eq('id', userId)
+
+    if (updateProfileError) {
+      console.error('Failed to update user profile role:', updateProfileError)
+      // ショップ更新は成功しているので、致命的ではないがログに残す
+    }
+
+    return { success: true, message: '店舗にオーナーを紐付けました' }
+  } catch (error: any) {
+    console.error('assignShopOwner error:', error)
+    return { success: false, message: '紐付けに失敗しました: ' + error.message }
+  }
+}
+
+// 【緊急修正用】カテゴリーデータ更新
+export async function fixShopCategories() {
+  if (!await checkAdmin()) {
+    return { success: false, message: 'Unauthorized' }
+  }
+  const supabase = createServiceClient(supabaseUrl, supabaseServiceKey)
+  
+  const updates = [
+    { name: '彦根城前カフェ', category: 'カフェ' },
+    { name: '滋賀大ランチ処', category: '定食・ランチ' },
+    { name: '中央町ダイナー', category: '居酒屋' }
+  ]
+
+  let results = []
+  
+  for (const update of updates) {
+    // category_main を更新
+    const { error } = await supabase
+      .from('shops')
+      .update({ category_main: update.category })
+      .eq('name', update.name)
+    
+    if (error) {
+      console.error(`Failed to update ${update.name}:`, error)
+      results.push(`${update.name}: Failed`)
+    } else {
+      results.push(`${update.name}: Success`)
+    }
+  }
+  
+  return { success: true, message: results.join(', ') }
+}
+

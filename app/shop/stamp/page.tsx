@@ -1,15 +1,21 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
-import { createClient } from '@/lib/supabase/client'
 import QRCode from 'react-qr-code'
-import { ArrowLeft, Save, Stamp, Info } from 'lucide-react'
+import { ArrowLeft, Save, Stamp, Info, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
+import { getShopStampSettings, updateShopStampSettings } from '@/lib/actions/shop'
 
 export default function ShopStampPage() {
   const { user } = useAuth()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const impersonateShopId = searchParams.get('impersonateShopId') || undefined
+
   const [shopId, setShopId] = useState<string | null>(null)
+  const [shopName, setShopName] = useState<string | null>(null)
   const [targetCount, setTargetCount] = useState(10)
   const [reward, setReward] = useState('')
   const [loading, setLoading] = useState(true)
@@ -19,56 +25,47 @@ export default function ShopStampPage() {
   useEffect(() => {
     if (!user) return
     
-    async function fetchShopAndCard() {
-      const supabase = createClient()
-      
-      // 1. Get Shop ID
-      const { data: shop } = await supabase
-        .from('shops')
-        .select('id')
-        .eq('owner_id', user.id)
-        .single()
-      
-      if (!shop) {
-        setLoading(false)
-        return
-      }
-      setShopId(shop.id)
+    async function fetchData() {
+      try {
+        const { success, data, shopId: fetchedShopId, shopName: fetchedShopName, message } = await getShopStampSettings(user!.id, impersonateShopId)
+        
+        if (!success) {
+          console.error('Failed to fetch stamp settings:', message)
+          // エラー時の処理（必要なら）
+          setLoading(false)
+          return
+        }
 
-      // 2. Get Stamp Card Settings
-      const { data: card } = await supabase
-        .from('stamp_cards')
-        .select('*')
-        .eq('shop_id', shop.id)
-        .single()
-      
-      if (card) {
-        setTargetCount(card.target_count)
-        setReward(card.reward_description)
+        if (fetchedShopId) setShopId(fetchedShopId)
+        if (fetchedShopName) setShopName(fetchedShopName)
+
+        if (data) {
+          setTargetCount(data.target_count)
+          setReward(data.reward_description)
+        }
+      } catch (error) {
+        console.error('Error fetching stamp settings:', error)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
     
-    fetchShopAndCard()
-  }, [user])
+    fetchData()
+  }, [user, impersonateShopId])
 
   const handleSave = async () => {
-    if (!shopId) return
+    if (!user) return
     setSaving(true)
     setMessage(null)
     
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('stamp_cards')
-      .upsert({
-        shop_id: shopId,
-        target_count: targetCount,
-        reward_description: reward
-      })
+    const { success, message: resMessage } = await updateShopStampSettings(
+      user.id, 
+      { target_count: targetCount, reward_description: reward },
+      impersonateShopId
+    )
       
-    if (error) {
-      console.error(error)
-      setMessage({ type: 'error', text: '保存に失敗しました' })
+    if (!success) {
+      setMessage({ type: 'error', text: resMessage || '保存に失敗しました' })
     } else {
       setMessage({ type: 'success', text: '設定を保存しました！' })
     }
@@ -81,15 +78,26 @@ export default function ShopStampPage() {
     </div>
   )
 
+  const backLink = impersonateShopId 
+    ? `/shop/settings?impersonateShopId=${impersonateShopId}` 
+    : "/shop/dashboard"
+
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
        {/* Header */}
        <div className="bg-white p-4 shadow-sm flex items-center mb-6 sticky top-0 z-10">
-         <Link href="/shop/dashboard" className="p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-full transition">
+         <Link href={backLink} className="p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-full transition">
             <ArrowLeft size={24} />
          </Link>
-         <h1 className="font-bold text-lg text-gray-800 ml-2">スタンプカード管理</h1>
+         <h1 className="font-bold text-lg text-gray-800 ml-2">スタンプカード管理{impersonateShopId && ' (代理編集)'}</h1>
        </div>
+
+       {impersonateShopId && (
+        <div className="bg-red-50 border-b border-red-200 p-3 mb-6 -mt-6 flex items-center justify-center gap-2 text-red-700 font-bold text-sm">
+          <ShieldAlert size={18} />
+          管理者として {shopName ? `[${shopName}]` : `(Shop ID: ${impersonateShopId})`} を編集中
+        </div>
+      )}
 
        <div className="max-w-md mx-auto px-4 space-y-6">
          {/* QR Code Section */}

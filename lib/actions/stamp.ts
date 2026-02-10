@@ -194,3 +194,74 @@ export async function getMyStampCards() {
     return { success: false, message: 'スタンプカードの取得に失敗しました' }
   }
 }
+
+// スタンプカード設定の更新（管理者代理対応）
+export async function updateStampCardSettings(
+  userId: string,
+  settings: {
+    targetCount: number
+    rewardDescription?: string
+    expiryDays?: number
+  },
+  impersonateShopId?: string
+) {
+  const supabase = createServiceClient(supabaseUrl, supabaseServiceKey)
+
+  try {
+    let shopId = impersonateShopId
+
+    // 1. 店舗IDの特定と権限チェック
+    if (impersonateShopId) {
+      // 管理者権限チェック
+      const { data: { user } } = await supabase.auth.admin.getUserById(userId)
+      let isAdmin = false
+      if (process.env.ADMIN_EMAIL && user?.email === process.env.ADMIN_EMAIL) {
+        isAdmin = true
+      } else {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('is_admin, role')
+          .eq('id', userId)
+          .single()
+        isAdmin = profile?.is_admin === true || profile?.role === 'admin'
+      }
+
+      if (!isAdmin) {
+        return { success: false, message: '権限がありません' }
+      }
+      console.log(`[ADMIN] Updating stamp card settings for shop: ${impersonateShopId}`)
+    } else {
+      // 通常オーナー: 自分の店舗IDを取得
+      const { data: shop } = await supabase
+        .from('shops')
+        .select('id')
+        .eq('owner_id', userId)
+        .single()
+      
+      if (!shop) {
+        return { success: false, message: '店舗が見つかりません' }
+      }
+      shopId = shop.id
+    }
+
+    if (!shopId) return { success: false, message: '店舗IDが特定できません' }
+
+    // 2. 設定の更新 (Upsert)
+    const { error } = await supabase
+      .from('stamp_cards')
+      .upsert({
+        shop_id: shopId,
+        target_count: settings.targetCount,
+        reward_description: settings.rewardDescription,
+        expiry_days: settings.expiryDays || 365, // デフォルト365日
+        updated_at: new Date().toISOString()
+      })
+
+    if (error) throw error
+
+    return { success: true, message: 'スタンプカード設定を保存しました' }
+  } catch (error: any) {
+    console.error('updateStampCardSettings error:', error)
+    return { success: false, message: '保存に失敗しました' }
+  }
+}

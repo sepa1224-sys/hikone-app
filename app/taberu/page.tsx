@@ -636,17 +636,17 @@ export default function Taberu() {
         console.log('🔍 DBから届いた生データ(1件目):', data[0])
         
         // カテゴリの生データを詳細確認（隠れた文字がないか）
-        const rawCategory = data[0].category
+        const rawCategory = data[0].category_main
         console.log('🔍 [カテゴリ詳細確認]')
         console.log('   - 生の値:', JSON.stringify(rawCategory))
         console.log('   - 文字数:', rawCategory?.length)
         console.log('   - 各文字コード:', rawCategory ? [...rawCategory].map(c => c.charCodeAt(0)) : 'null')
         
         // ★★★ DBの生のカテゴリ値を最初の10件出力 ★★★
-        console.log('🔍 DBの生のカテゴリ値 (最初の10件):', data.map((s: any) => s.category).slice(0, 10))
+        console.log('🔍 DBの生のカテゴリ値 (最初の10件):', data.map((s: any) => s.category_main).slice(0, 10))
         
         // 全カテゴリのユニーク一覧（trimして正規化）
-        const uniqueCategories = [...new Set(data.map((s: any) => s.category?.trim()).filter(Boolean))]
+        const uniqueCategories = [...new Set(data.map((s: any) => s.category_main?.trim()).filter(Boolean))]
         console.log('🔍 取得データ内のユニークカテゴリ:', uniqueCategories)
         console.log('🔍 ユニークカテゴリ数:', uniqueCategories.length)
         
@@ -662,12 +662,12 @@ export default function Taberu() {
           const lng = rawLng !== null ? Number(rawLng) : null
           
           // カテゴリをtrimしてクレンジング
-          const cleanCategory = s.category ? String(s.category).trim() : 'その他'
+          const cleanCategory = s.category_main ? String(s.category_main).trim() : 'その他'
           
           return {
             id: s.id,
             name: s.name ? String(s.name).trim() : '名称未設定',
-            category: cleanCategory,
+            category_main: cleanCategory,
             address: s.address ? String(s.address).trim() : '',
             phone: s.phone || s.tel || '',
             opening_hours: s.opening_hours || s.hours || '',
@@ -706,7 +706,7 @@ export default function Taberu() {
         // ★★★ カテゴリ別の件数を詳細ログ出力 ★★★
         const categoryCount: Record<string, number> = {}
         formattedData.forEach(s => {
-          const cat = s.category?.trim() || 'なし'
+          const cat = s.category_main?.trim() || 'なし'
           categoryCount[cat] = (categoryCount[cat] || 0) + 1
         })
         console.log('')
@@ -725,7 +725,7 @@ export default function Taberu() {
         console.log(`🗺️ ShopMap に ${formattedData.length} 件渡します`)
         
         // ===== カテゴリ一覧をデバッグ出力 =====
-        const allCategories = [...new Set(formattedData.map(s => s.category?.trim()).filter(Boolean))]
+        const allCategories = [...new Set(formattedData.map(s => s.category_main?.trim()).filter(Boolean))]
         console.log('🏷️ [初期化] DB内の全カテゴリ一覧:', allCategories)
         console.log(`🏷️ [初期化] ユニークカテゴリ数: ${allCategories.length}件`)
         
@@ -924,7 +924,7 @@ export default function Taberu() {
     console.log('🔍 フィルタリング開始')
     console.log('選択されたカテゴリ（複数選択対応）:', selectedCategories)
     console.log('選択されたエリア:', selectedArea)
-    console.log('DBカテゴリの生データサンプル:', allShops.slice(0, 10).map(s => ({ name: s.name, cat: s.category })))
+    console.log('DBカテゴリの生データサンプル:', allShops.slice(0, 10).map(s => ({ name: s.name, cat: s.category_main })))
     console.log('========================================')
     
     // ===== 🆕 エリアフィルター（shop.areaでフィルタリング）=====
@@ -975,7 +975,7 @@ export default function Taberu() {
       console.log('🏷️ [カテゴリ検索] キーワード:', allKeywords)
       
       // ★★★ DB内の実際のカテゴリ名を出力（デバッグ用）★★★
-      const allCategoriesInDB = [...new Set(allShops.map(s => s.category?.trim()).filter(Boolean))]
+      const allCategoriesInDB = [...new Set(allShops.map(s => s.category_main?.trim()).filter(Boolean))]
       console.log('🏷️ [カテゴリ検索] DB内の全カテゴリ一覧:', allCategoriesInDB)
       
       // ★★★ 2. 正規化関数: 大文字小文字・全角半角を統一 ★★★
@@ -994,17 +994,15 @@ export default function Taberu() {
       
       result = result.filter(shop => {
         // ★★★ 1. DBのカテゴリデータの「ゆらぎ」を吸収 ★★★
-        // category, category_main, 店名 のいずれかにキーワードが含まれればOK
-        const normalizedCategory = normalize(shop.category)
-        const normalizedCategoryMain = normalize((shop as any).category_main) // category_main も検索対象
+        // category_main, 店名 のいずれかにキーワードが含まれればOK
+        const normalizedCategory = normalize(shop.category_main)
         const normalizedName = normalize(shop.name)
         
         // OR検索: いずれかのキーワードにマッチすればOK
         const isMatch = allKeywords.some(kw => {
           const normalizedKw = normalize(kw)
-          // category, category_main, 店名のいずれかにキーワードが含まれていればマッチ
+          // category_main, 店名のいずれかにキーワードが含まれていればマッチ
           return normalizedCategory.includes(normalizedKw) || 
-                 normalizedCategoryMain.includes(normalizedKw) || 
                  normalizedName.includes(normalizedKw)
         })
         
@@ -1016,9 +1014,9 @@ export default function Taberu() {
       
       // マッチしたカテゴリを出力
       if (result.length > 0) {
-        const matchedCategories = [...new Set(result.map(s => s.category))]
+        const matchedCategories = [...new Set(result.map(s => s.category_main))]
         console.log('🏷️ [カテゴリ検索] マッチしたカテゴリ:', matchedCategories)
-        console.log('🏷️ [カテゴリ検索] マッチした店舗サンプル:', result.slice(0, 5).map(s => ({ name: s.name, cat: s.category })))
+        console.log('🏷️ [カテゴリ検索] マッチした店舗サンプル:', result.slice(0, 5).map(s => ({ name: s.name, cat: s.category_main })))
       } else {
         // 0件の場合、詳細デバッグ
         console.log('🏷️ [カテゴリ検索] ⚠️ 0件 - 原因調査')
@@ -1037,7 +1035,7 @@ export default function Taberu() {
       const query = searchQuery.toLowerCase().trim()
       result = result.filter(s => 
         s.name?.toLowerCase().includes(query) ||
-        s.category?.toLowerCase().includes(query) ||
+        s.category_main?.toLowerCase().includes(query) ||
         s.address?.toLowerCase().includes(query)
       )
       console.log(`🔍 [テキスト検索] "${searchQuery}" → ${result.length}件`)
@@ -1350,7 +1348,7 @@ export default function Taberu() {
                         <span className="text-[9px] font-black text-rose-600">#{idx + 1}</span>
                       </div>
                       <p className="text-xs font-black text-gray-800 line-clamp-2 mb-1">{shop.name}</p>
-                      <p className="text-[9px] text-gray-500">{shop.category}</p>
+                      <p className="text-[9px] text-gray-500">{shop.category_main}</p>
                       {shop.view_count && (
                         <p className="text-[8px] text-rose-400 mt-1">{shop.view_count}回表示</p>
                       )}
@@ -1386,7 +1384,7 @@ export default function Taberu() {
                       )}
                       {/* カテゴリバッジ */}
                       <div className="absolute top-4 right-4 bg-black/20 backdrop-blur-md px-3 py-1 rounded-full text-[9px] font-bold text-white uppercase tracking-widest">
-                        {shop.category}
+                        {shop.category_main}
                       </div>
                       {/* 人気ランキングバッジ（上位3件） */}
                       {index < 3 && (
@@ -1559,7 +1557,7 @@ export default function Taberu() {
               
               {/* カテゴリ・価格帯・距離 */}
               <div className="flex items-center gap-2 mb-6 flex-wrap">
-                <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-xs font-black">{selectedShop.category}</span>
+                <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-xs font-black">{selectedShop.category_main}</span>
                 {selectedShop.price_range && (
                   <span className="text-gray-900 font-black text-sm">{selectedShop.price_range}</span>
                 )}
@@ -1675,7 +1673,7 @@ export default function Taberu() {
                       <span className="text-xs font-bold text-gray-400">ジャンル</span>
                     </div>
                     <div className="flex-1">
-                      <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded text-xs font-black">{selectedShop.category}</span>
+                      <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded text-xs font-black">{selectedShop.category_main}</span>
                     </div>
                   </div>
                   

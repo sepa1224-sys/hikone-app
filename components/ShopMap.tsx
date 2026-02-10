@@ -364,7 +364,7 @@ const ShopMarker = memo(function ShopMarker({
             <p className="font-black text-sm text-gray-900 leading-tight mb-0.5">{shop.name}</p>
             <div className="flex items-center gap-1">
               <span className="text-[9px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded font-bold">
-                {shop.category}
+                {shop.category_main}
               </span>
             </div>
           </div>

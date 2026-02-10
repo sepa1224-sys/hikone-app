@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@supabase/supabase-js'
+import { createClient as createServerClient } from '@/lib/supabase/server'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -236,7 +237,7 @@ export async function getShopSettings(userId: string, impersonateShopId?: string
     // 1. 店舗基本情報
     const { data: shopData } = await supabase
       .from('shops')
-      .select('id, address, phone_number, thumbnail_url, gallery_urls, owner_id')
+      .select('id, name, address, phone_number, thumbnail_url, gallery_urls, owner_id')
       .eq('id', shop.id)
       .single()
 
@@ -688,6 +689,73 @@ export async function updateShopImages(
   }
 }
 
+// 店舗画像のアップロード（Service Role使用）
+export async function uploadShopImageAction(
+  formData: FormData,
+  impersonateShopId?: string
+) {
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+  
+  try {
+    // 1. ユーザー認証 (Server Clientを使用)
+    const serverClient = createServerClient()
+    const { data: { user } } = await serverClient.auth.getUser()
+    
+    if (!user) {
+      return { success: false, message: '認証されていません' }
+    }
+
+    // 2. 店舗IDの解決と権限チェック
+    // getShopTargetはuserIdを受け取るが、ここでは認証済みユーザーIDを使用
+    const shop = await getShopTarget(supabase, user.id, impersonateShopId)
+    
+    if (!shop) {
+      return { success: false, message: '店舗が見つかりません' }
+    }
+
+    if (impersonateShopId) {
+      console.log(`[ADMIN] Uploading image for shop: ${shop.id} by Admin: ${user.id}`)
+    }
+
+    // 3. ファイルの取得
+    const file = formData.get('file') as File
+    if (!file) {
+      return { success: false, message: 'ファイルが選択されていません' }
+    }
+
+    // 4. アップロード処理
+    // ファイル名を生成: {shopId}/{timestamp}.jpg
+    const timestamp = Date.now()
+    const fileName = `${shop.id}/${timestamp}.jpg`
+    
+    // ArrayBufferに変換
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    const { error: uploadError } = await supabase.storage
+      .from('shop-photos')
+      .upload(fileName, buffer, {
+        contentType: file.type || 'image/jpeg',
+        upsert: true
+      })
+
+    if (uploadError) {
+      console.error('Upload error:', uploadError)
+      throw uploadError
+    }
+
+    // 5. 公開URLの取得
+    const { data: { publicUrl } } = supabase.storage
+      .from('shop-photos')
+      .getPublicUrl(fileName)
+
+    return { success: true, publicUrl }
+  } catch (error: any) {
+    console.error('uploadShopImageAction error:', error)
+    return { success: false, message: 'アップロードに失敗しました: ' + error.message }
+  }
+}
+
 // --- メニューアイテム管理 ---
 
 export async function getMenuItems(userId: string, impersonateShopId?: string) {
@@ -762,5 +830,74 @@ export async function deleteMenuItem(userId: string, itemId: string, impersonate
   } catch (error) {
     console.error('deleteMenuItem error:', error)
     return { success: false }
+  }
+}
+
+// --- スタンプカード設定 ---
+
+export async function getShopStampSettings(userId: string, impersonateShopId?: string) {
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+  try {
+    const shop = await getShopTarget(supabase, userId, impersonateShopId)
+    if (!shop) return { success: false, message: '店舗が見つかりません' }
+
+    // 店舗名も取得（バナー表示用）
+    const { data: shopData } = await supabase
+      .from('shops')
+      .select('name')
+      .eq('id', shop.id)
+      .single()
+
+    const { data: card, error } = await supabase
+      .from('stamp_cards')
+      .select('*')
+      .eq('shop_id', shop.id)
+      .single()
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('getShopStampSettings error:', error)
+    }
+
+    return { 
+      success: true, 
+      data: card, 
+      shopId: shop.id,
+      shopName: shopData?.name 
+    }
+  } catch (error) {
+    console.error('getShopStampSettings error:', error)
+    return { success: false, message: 'データ取得に失敗しました' }
+  }
+}
+
+export async function updateShopStampSettings(
+  userId: string, 
+  settings: { target_count: number, reward_description: string }, 
+  impersonateShopId?: string
+) {
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+  try {
+    const shop = await getShopTarget(supabase, userId, impersonateShopId)
+    if (!shop) return { success: false, message: '店舗が見つかりません' }
+
+    if (impersonateShopId) {
+      console.log(`[ADMIN] Updating stamp settings: ${shop.id} by Admin: ${userId}`)
+    }
+
+    const { error } = await supabase
+      .from('stamp_cards')
+      .upsert({
+        shop_id: shop.id,
+        target_count: settings.target_count,
+        reward_description: settings.reward_description,
+        updated_at: new Date().toISOString()
+      })
+      
+    if (error) throw error
+
+    return { success: true, message: '設定を保存しました' }
+  } catch (error: any) {
+    console.error('updateShopStampSettings error:', error)
+    return { success: false, message: '保存に失敗しました' }
   }
 }
