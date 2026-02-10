@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic';
+
+
 // ステップ1: ベースURLの完全固定（末尾スラッシュなし）
 const ODPT_API_BASE = 'https://api.odpt.jp/api/v4'
 

@@ -349,3 +349,24 @@ export async function approvePayout(requestId: string, shopId: string, amount: n
         return { success: false, message: 'Approval failed: ' + error.message }
     }
 }
+
+export async function generateInvitationCode(shopId: string) {
+  try {
+    const isAdmin = await checkAdmin()
+    if (!isAdmin) {
+      return { success: false, message: 'Unauthorized' }
+    }
+
+    // Generate a random 6-character code
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase()
+
+    // In a real implementation, we would save this to the database
+    // For now, we'll just return the code as a mock response
+    // await supabase.from('shop_invitations').insert({ shop_id: shopId, code })
+
+    return { success: true, code }
+  } catch (error) {
+    console.error('Error generating invitation code:', error)
+    return { success: false, message: 'Failed to generate code' }
+  }
+}

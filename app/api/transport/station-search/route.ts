@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic';
+
+
 const ODPT_API_BASE = 'https://api.odpt.jp/api/v4'
 
 // フォールバックトークン

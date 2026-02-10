@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
 import { ArrowLeft, Store, Save, Loader2, Camera, Trash2, Plus, X, Lock, CreditCard, Utensils, Image as ImageIcon, ShieldAlert } from 'lucide-react'
@@ -35,7 +35,7 @@ async function compressImage(file: File): Promise<Blob> {
   })
 }
 
-export default function ShopSettingsMenuPage() {
+function ShopSettingsContent() {
   const { user } = useAuth()
   const searchParams = useSearchParams()
   const impersonateShopId = searchParams.get('impersonateShopId') || undefined
@@ -452,7 +452,11 @@ export default function ShopSettingsMenuPage() {
 
 export default function ShopSettingsMenuPage() {
   return (
-    <Suspense fallback={<div className="flex justify-center items-center min-h-screen"><Loader2 className="animate-spin text-gray-400" /></div>}>
+    <Suspense fallback={
+      <div className="flex justify-center items-center min-h-screen">
+        <Loader2 className="animate-spin text-gray-400" />
+      </div>
+    }>
       <ShopSettingsContent />
     </Suspense>
   )
