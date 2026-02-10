@@ -121,6 +121,8 @@ export default function ProfileRegistrationModal({
     detail_area: '', // 詳細エリア（自由入力または選択）
     interests: [] as string[],
     is_student: null as boolean | null,
+    user_type: '', // '大学生', '高校生', '専門学生', '社会人', 'その他'
+    university_name: '', // 大学名（user_typeが大学生の場合）
     school_name: '',
     grade: '' as string | number
   })
@@ -209,7 +211,7 @@ export default function ProfileRegistrationModal({
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('full_name, gender, birthday, prefecture, location, region, city, selected_area, detail_area, interests, is_student, school_name, grade')
+        .select('full_name, gender, birthday, prefecture, location, region, city, selected_area, detail_area, interests, is_student, school_name, grade, user_type, university_name')
         .eq('id', userId)
         .single()
 
@@ -257,6 +259,8 @@ export default function ProfileRegistrationModal({
           detail_area: data.detail_area || '',
           interests: data.interests || [],
           is_student: isStudentValue ?? null,
+          user_type: data.user_type || '',
+          university_name: data.university_name || '',
           school_name: schoolNameFromDB,
           grade: data.grade ?? ''
         })
@@ -320,10 +324,30 @@ export default function ProfileRegistrationModal({
       return
     }
 
-    if (formData.is_student === true && (!formData.school_name || !formData.grade)) {
-      setErrorMsg('学校名と学年を選択してください')
-      setTimeout(() => setErrorMsg(''), 3000)
-      return
+    if (formData.is_student === true) {
+      if (!formData.user_type) {
+        setErrorMsg('学生区分を選択してください')
+        setTimeout(() => setErrorMsg(''), 3000)
+        return
+      }
+      
+      if (formData.user_type === '大学生' && !formData.university_name) {
+        setErrorMsg('大学名を入力してください')
+        setTimeout(() => setErrorMsg(''), 3000)
+        return
+      }
+
+      if (formData.user_type !== '大学生' && !formData.school_name) {
+        setErrorMsg('学校名を入力してください')
+        setTimeout(() => setErrorMsg(''), 3000)
+        return
+      }
+
+      if (!formData.grade) {
+        setErrorMsg('学年を選択してください')
+        setTimeout(() => setErrorMsg(''), 3000)
+        return
+      }
     }
 
     // ===== 対応エリアのバリデーション =====
@@ -375,6 +399,8 @@ export default function ProfileRegistrationModal({
         is_student: formData.is_student,
         school_name: formData.is_student ? formData.school_name : null,
         grade: formData.is_student ? (formData.grade || null) : null,
+        user_type: formData.is_student ? formData.user_type : null,
+        university_name: (formData.is_student && formData.user_type === '大学生') ? formData.university_name : null,
         updated_at: new Date().toISOString()
       }
       
@@ -398,13 +424,15 @@ export default function ProfileRegistrationModal({
         .select()
 
       // detail_area や学生関連のカラムが存在しないエラーの場合、それらを除いて再試行
-      if (error && (error.message.includes('detail_area') || error.message.includes('is_student') || error.message.includes('school_name') || error.message.includes('grade'))) {
+      if (error && (error.message.includes('detail_area') || error.message.includes('is_student') || error.message.includes('school_name') || error.message.includes('grade') || error.message.includes('user_type') || error.message.includes('university_name'))) {
         console.warn('📋 [Profile] 新しいカラムが存在しないため、除外して再試行')
         const retryProfileData = { ...profileData }
         delete retryProfileData.detail_area
         delete retryProfileData.is_student
         delete retryProfileData.school_name
         delete retryProfileData.grade
+        delete retryProfileData.user_type
+        delete retryProfileData.university_name
         const retryResult = await supabase
           .from('profiles')
           .upsert(retryProfileData, { 
@@ -555,30 +583,110 @@ export default function ProfileRegistrationModal({
               {/* 学生の場合の追加項目 */}
               {formData.is_student === true && (
                 <div className="space-y-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                  
+                  {/* 学生区分 */}
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-gray-500 ml-2">学校名</label>
-                    <select
-                      value={formData.school_name}
-                      onChange={(e) => setFormData({ ...formData, school_name: e.target.value })}
-                      className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm"
-                    >
-                      <option value="">学校名を選択してください</option>
-                      <option value="滋賀大学">滋賀大学</option>
-                      <option value="滋賀県立大学">滋賀県立大学</option>
-                      <option value="聖泉大学">聖泉大学</option>
-                      <option value="近江高校">近江高校</option>
-                      <option value="彦根東高校">彦根東高校</option>
-                      <option value="その他">その他（自由入力）</option>
-                    </select>
-                    {formData.school_name === 'その他' && (
-                      <input
-                        type="text"
-                        placeholder="学校名を入力してください"
-                        className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm mt-2"
-                        onChange={(e) => setFormData({ ...formData, school_name: e.target.value })}
-                      />
-                    )}
+                    <label className="text-xs font-black text-gray-500 ml-2">学生区分</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['大学生', '高校生', '専門学生', 'その他'].map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => setFormData({ ...formData, user_type: type })}
+                          className={`py-2 rounded-xl text-xs font-bold transition-all ${
+                            formData.user_type === type
+                              ? 'bg-orange-500 text-white shadow-md'
+                              : 'bg-white text-gray-600 border border-orange-100 hover:bg-orange-50'
+                          }`}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+
+                  {/* 大学生の場合: 大学名 */}
+                  {formData.user_type === '大学生' && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-gray-500 ml-2">大学名</label>
+                      <select
+                        value={['滋賀大学', '滋賀県立大学', '聖泉大学', ''].includes(formData.university_name) ? formData.university_name : 'その他'}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setFormData({ 
+                            ...formData, 
+                            university_name: val === 'その他' ? '' : val 
+                          })
+                        }}
+                        className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm"
+                      >
+                        <option value="">大学名を選択してください</option>
+                        <option value="滋賀大学">滋賀大学</option>
+                        <option value="滋賀県立大学">滋賀県立大学</option>
+                        <option value="聖泉大学">聖泉大学</option>
+                        <option value="その他">その他（自由入力）</option>
+                      </select>
+                      {(!['滋賀大学', '滋賀県立大学', '聖泉大学', ''].includes(formData.university_name) || formData.university_name === '') && (
+                        // 「その他」が選択された場合（空文字含む）またはリストにない値の場合に入力を表示
+                        // ただし初期状態（空）では表示したくないので、Selectが「その他」の時だけ表示する制御が必要
+                        // ここでは簡易的に「Selectの値が'その他'」の時にInputを出すようにするが、
+                        // Inputに入力するとSelectの値は'その他'になる（リストにないから）のでOK
+                        (['滋賀大学', '滋賀県立大学', '聖泉大学', ''].includes(formData.university_name) === false || formData.university_name === '') && 
+                        // 直前のSelectで「その他」を選んだ場合、formData.university_nameは''になる
+                        // その場合に入力を出したいが、初期状態も''なので区別がつかない
+                        // なので、university_nameが空の場合はSelectで選ばせる
+                        // 一旦、値が入っているがリストにない場合のみInputを表示し、
+                        // 「その他」を選んだ時はInputにフォーカスさせるなどの工夫が必要
+                        // シンプルに: Selectでその他を選んだら、Inputを表示。
+                        <input
+                          type="text"
+                          placeholder="大学名を入力してください"
+                          className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm mt-2"
+                          value={formData.university_name}
+                          onChange={(e) => setFormData({ ...formData, university_name: e.target.value })}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* 大学生以外の場合: 学校名 */}
+                  {(formData.user_type && formData.user_type !== '大学生') && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-gray-500 ml-2">学校名</label>
+                      <select
+                        value={['近江高校', '彦根東高校', '彦根総合高校', '彦根工業高校', '河瀬高校', ''].includes(formData.school_name) ? formData.school_name : 'その他'}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setFormData({ 
+                            ...formData, 
+                            school_name: val === 'その他' ? '' : val 
+                          })
+                        }}
+                        className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm"
+                      >
+                        <option value="">学校名を選択してください</option>
+                        {formData.user_type === '高校生' && (
+                          <>
+                            <option value="近江高校">近江高校</option>
+                            <option value="彦根東高校">彦根東高校</option>
+                            <option value="彦根総合高校">彦根総合高校</option>
+                            <option value="彦根工業高校">彦根工業高校</option>
+                            <option value="河瀬高校">河瀬高校</option>
+                          </>
+                        )}
+                        <option value="その他">その他（自由入力）</option>
+                      </select>
+                      {(!['近江高校', '彦根東高校', '彦根総合高校', '彦根工業高校', '河瀬高校', ''].includes(formData.school_name)) && (
+                        <input
+                          type="text"
+                          placeholder="学校名を入力してください"
+                          className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm mt-2"
+                          value={formData.school_name}
+                          onChange={(e) => setFormData({ ...formData, school_name: e.target.value })}
+                        />
+                      )}
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <label className="text-xs font-black text-gray-500 ml-2">学年</label>
                     <select

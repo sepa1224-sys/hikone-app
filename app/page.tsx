@@ -8,7 +8,7 @@ import {
   ChevronRight, LogOut, Edit, Mail, MapPin, User, Search,
   Cloud, CloudRain, CloudSun, Droplets, Wind, Ticket, Gift, CalendarDays, PartyPopper, ShoppingBag,
   Camera, Trophy, Target, CheckCircle, Star, Coffee, Utensils, Castle, Mountain, 
-  Heart, ShoppingCart, Bike, Upload, Award, MessageSquare, Activity, Footprints
+  Heart, ShoppingCart, Bike, Upload, Award, MessageSquare, Activity, Footprints, Stamp
 } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import ChatRegistration from '@/components/ChatRegistration'
@@ -599,6 +599,22 @@ export default function AppHome() {
                 </div>
               </div>
             )}
+
+            {/* スタンプカード一覧へのリンク */}
+            <Link href="/stamp/cards" className="block">
+              <div className="bg-gradient-to-r from-purple-500 to-indigo-600 rounded-[2rem] p-5 text-white shadow-lg flex items-center justify-between active:scale-95 transition-transform">
+                <div className="flex items-center gap-4">
+                  <div className="bg-white/20 p-3 rounded-xl">
+                    <Stamp size={24} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">スタンプカード</h3>
+                    <p className="text-xs font-bold opacity-80">集めたスタンプを確認しよう</p>
+                  </div>
+                </div>
+                <ChevronRight size={24} className="opacity-80" />
+              </div>
+            </Link>
 
             {/* 4. 天気予報セクション */}
             <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-[2rem] p-5 text-white shadow-xl relative overflow-hidden">

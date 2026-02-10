@@ -4,13 +4,14 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import imageCompression from 'browser-image-compression'
 import { useRouter } from 'next/navigation'
-import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History, Camera, Home } from 'lucide-react'
+import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History, Camera, Home, School, GraduationCap, Layout } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
 import { usePoints, usePointHistory, getPointHistoryStyle, PointHistory } from '@/lib/hooks/usePoints'
 import { applyReferralCode } from '@/lib/actions/referral'
 import { useFriends, addFriend, removeFriend, searchUserByCode, Friend } from '@/lib/hooks/useFriends'
 import { sendHikopo } from '@/lib/actions/transfer'
+import { getUniversityStats, UniversityStats } from '@/lib/actions/stats'
 import QRCode from 'react-qr-code'
 import { formatFullLocation, formatShortLocation } from '@/lib/constants/shigaRegions'
 import { ProfileSkeleton } from '@/components/Skeleton'
@@ -253,6 +254,43 @@ export default function ProfilePage() {
   const [quickSendAmount, setQuickSendAmount] = useState('')
   const [quickSending, setQuickSending] = useState(false)
   const [quickSendResult, setQuickSendResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  // 大学統計モーダル用のステート
+  const [showStatsModal, setShowStatsModal] = useState(false)
+  const [universityStats, setUniversityStats] = useState<UniversityStats | null>(null)
+  const [loadingStats, setLoadingStats] = useState(false)
+
+  // 大学統計を取得して表示
+  const handleShowUniversityStats = async () => {
+    console.log('👆 [Profile] 大学統計クリック: 処理開始')
+    
+    // 強制的にモーダルを表示（デバッグ用）
+    setShowStatsModal(true)
+    console.log('👆 [Profile] モーダル表示フラグを設定: true')
+
+    if (!profile?.university_name) {
+      console.log('👆 [Profile] 大学名がありません')
+      return
+    }
+
+    setLoadingStats(true)
+    console.log('👆 [Profile] 統計データ取得開始:', profile.university_name)
+    
+    try {
+      const result = await getUniversityStats(profile.university_name)
+      console.log('👆 [Profile] 統計データ取得完了:', result)
+      
+      if (result.success && result.data) {
+        setUniversityStats(result.data)
+      } else {
+        console.error('Stats fetch error:', result.error)
+      }
+    } catch (err) {
+      console.error('Stats fetch error:', err)
+    } finally {
+      setLoadingStats(false)
+    }
+  }
 
   // AuthProvider の状態が確定したらプロフィールを取得
   useEffect(() => {
@@ -1011,6 +1049,35 @@ export default function ProfilePage() {
                 </div>
               )}
 
+              {/* 学校情報（学生の場合） */}
+              {profile?.is_student && (
+                <div 
+                  className={`flex items-center justify-between py-3 border-b border-gray-100 ${profile.university_name ? 'cursor-pointer hover:bg-gray-50 transition-colors' : ''}`}
+                  onClick={() => {
+                    console.log('👆 [Profile] 学校行divをクリック')
+                    if (profile.university_name) {
+                      handleShowUniversityStats()
+                    } else {
+                      console.log('👆 [Profile] 大学名がないため反応しません')
+                    }
+                  }}
+                >
+                  <span className="text-sm font-bold text-gray-500 flex items-center gap-2">
+                    <School size={16} className="text-orange-500" />
+                    学校・学年
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm font-black text-gray-800">
+                      {profile.university_name || profile.school_name || '未設定'} 
+                      {profile.grade && ` ${profile.grade}`}
+                    </span>
+                    {profile.university_name && (
+                      <ChevronRight size={14} className="text-gray-400" />
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* 性別 */}
               {profile?.gender && (
                 <div className="flex items-center justify-between py-3 border-b border-gray-100">
@@ -1346,6 +1413,23 @@ export default function ProfilePage() {
                 <ChevronRight size={20} className="text-gray-400 group-hover:text-indigo-500 transition-colors" />
               </button>
             )}
+
+            {/* 大学掲示板（大学生の場合のみ表示） */}
+            {profile?.user_type === '大学生' && profile?.university_name && (
+              <button
+                onClick={() => router.push('/board')}
+                className="w-full flex items-center gap-4 p-4 bg-gray-50 hover:bg-green-50 rounded-2xl transition-colors group border-2 border-green-200"
+              >
+                <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center group-hover:bg-green-200 transition-colors">
+                  <Layout size={20} className="text-green-600" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-black text-gray-800">{profile.university_name} 掲示板</p>
+                  <p className="text-xs text-gray-500 font-bold">同じ大学の学生と交流しよう</p>
+                </div>
+                <ChevronRight size={20} className="text-gray-400 group-hover:text-green-500 transition-colors" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -1380,6 +1464,92 @@ export default function ProfilePage() {
           </button>
         </div>
       </div>
+
+      {/* 大学統計モーダル */}
+      {showStatsModal && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-6">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowStatsModal(false)}
+          />
+          
+          <div className="relative bg-white rounded-[2rem] p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 z-[10001]">
+            {/* ヘッダー */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
+                  <School size={20} className="text-orange-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-gray-800">{profile?.university_name}</h3>
+                  <p className="text-xs text-gray-500 font-bold">学生統計情報</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowStatsModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={20} className="text-gray-400" />
+              </button>
+            </div>
+            
+            {loadingStats ? (
+              <div className="py-8 text-center">
+                <Loader2 size={32} className="animate-spin text-orange-500 mx-auto mb-3" />
+                <p className="text-sm text-gray-400 font-bold">データを集計中...</p>
+              </div>
+            ) : universityStats ? (
+              <div className="space-y-6">
+                {/* 合計人数 */}
+                <div className="text-center p-4 bg-orange-50 rounded-2xl">
+                  <p className="text-sm text-gray-500 font-bold mb-1">登録学生数</p>
+                  <p className="text-4xl font-black text-orange-600">
+                    {universityStats.totalCount}
+                    <span className="text-base text-gray-500 ml-1">人</span>
+                  </p>
+                </div>
+                
+                {/* 学年別内訳 */}
+                <div>
+                  <h4 className="text-sm font-black text-gray-700 mb-3 flex items-center gap-2">
+                    <GraduationCap size={16} />
+                    学年別内訳
+                  </h4>
+                  <div className="space-y-2">
+                    {universityStats.gradeBreakdown.map((item) => (
+                      <div key={item.grade} className="flex items-center gap-3">
+                        <div className="w-16 text-xs font-bold text-gray-500">{item.grade}</div>
+                        <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-orange-400 rounded-full"
+                            style={{ 
+                              width: `${(item.count / universityStats.totalCount) * 100}%` 
+                            }}
+                          />
+                        </div>
+                        <div className="w-10 text-right text-sm font-black text-gray-800">
+                          {item.count}人
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500 font-bold">
+                データが見つかりませんでした
+              </div>
+            )}
+            
+            <button
+              onClick={() => setShowStatsModal(false)}
+              className="w-full mt-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl font-black transition-colors"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* プロフィール編集モーダル */}
       {showProfileModal && authUser && (
@@ -1632,6 +1802,80 @@ export default function ProfilePage() {
                   <Send size={18} />
                 )}
                 送金
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 大学統計モーダル */}
+      {showStatsModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowStatsModal(false)}
+          />
+          
+          <div className="relative bg-white rounded-[2rem] p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            {/* ヘッダー */}
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <School size={32} className="text-blue-500" />
+              </div>
+              <h3 className="text-xl font-black text-gray-800 mb-1">
+                {loadingStats ? '集計中...' : universityStats?.universityName || '大学統計'}
+              </h3>
+              <p className="text-sm text-gray-500 font-bold">登録ユーザー数</p>
+            </div>
+
+            {loadingStats ? (
+              <div className="py-8 text-center">
+                <Loader2 size={32} className="animate-spin text-blue-500 mx-auto mb-2" />
+                <p className="text-sm text-gray-400 font-bold">データを取得しています...</p>
+              </div>
+            ) : universityStats ? (
+              <div className="space-y-6">
+                {/* 合計人数 */}
+                <div className="text-center">
+                  <span className="text-4xl font-black text-blue-600">
+                    {universityStats.totalCount}
+                  </span>
+                  <span className="text-sm font-bold text-gray-500 ml-1">人</span>
+                </div>
+
+                {/* 学年別内訳 */}
+                <div className="bg-gray-50 rounded-2xl p-4">
+                  <p className="text-xs text-gray-500 font-bold mb-3 flex items-center gap-1">
+                    <Users size={12} />
+                    学年別内訳
+                  </p>
+                  <div className="space-y-2">
+                    {universityStats.gradeBreakdown.map((item, index) => (
+                      <div key={index} className="flex items-center justify-between py-1 border-b border-gray-100 last:border-0">
+                        <span className="text-sm font-bold text-gray-700">{item.grade}</span>
+                        <span className="text-sm font-black text-gray-900">{item.count}人</span>
+                      </div>
+                    ))}
+                    {universityStats.gradeBreakdown.length === 0 && (
+                      <p className="text-center text-gray-400 text-xs py-2">データがありません</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-4 text-red-500 font-bold">
+                データの取得に失敗しました
+              </div>
+            )}
+            
+            {/* 閉じるボタン */}
+            <div className="mt-6">
+              <button
+                onClick={() => setShowStatsModal(false)}
+                className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl font-black transition-colors flex items-center justify-center gap-2"
+              >
+                <X size={18} />
+                閉じる
               </button>
             </div>
           </div>

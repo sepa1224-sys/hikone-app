@@ -1,41 +1,47 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/profile'
+  // if "next" is in param, use it as the redirect URL
+  const next = searchParams.get('next') ?? '/'
 
   if (code) {
-    const cookieStore = cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            // path: '/' を入れることで、アプリ全体でCookieを使えるようにします
-            cookieStore.set({ name, value, ...options, path: '/' })
-          },
-          remove(name: string, options: CookieOptions) {
-            cookieStore.set({ name, value: '', ...options, path: '/' })
-          },
-        },
-      }
-    )
-
+    const supabase = createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     
     if (!error) {
-      // 成功時、一瞬待機させるようなリダイレクト（確実にCookieを焼くため）
-      const response = NextResponse.redirect(`${origin}${next}`)
-      return response
+      // Check if user is a shop owner
+      const { data: { user } } = await supabase.auth.getUser()
+      let redirectUrl = next
+
+      if (user) {
+        const { data: shop } = await supabase
+          .from('shops')
+          .select('id')
+          .eq('owner_id', user.id)
+          .single()
+        
+        if (shop) {
+          redirectUrl = '/shop/dashboard'
+        }
+      }
+
+      const forwardedHost = request.headers.get('x-forwarded-host') // original origin before load balancer
+      const isLocalEnv = process.env.NODE_ENV === 'development'
+      
+      if (isLocalEnv) {
+        // we can be sure that there is no load balancer in between, so no need to watch for X-Forwarded-Host
+        return NextResponse.redirect(`${origin}${redirectUrl}`)
+      } else if (forwardedHost) {
+        return NextResponse.redirect(`https://${forwardedHost}${redirectUrl}`)
+      } else {
+        return NextResponse.redirect(`${origin}${redirectUrl}`)
+      }
     }
   }
 
+  // return the user to an error page with instructions
   return NextResponse.redirect(`${origin}/auth/auth-code-error`)
 }

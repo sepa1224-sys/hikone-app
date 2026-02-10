@@ -1,4 +1,4 @@
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/client'
 
 // 最新の @supabase/ssr の createBrowserClient を使用してクライアントを初期化
 // これにより、クライアント側でも Cookie を介した認証状態の同期が可能になります
@@ -12,10 +12,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   })
 }
 
-export const supabase = createBrowserClient(
-  supabaseUrl || '',
-  supabaseAnonKey || ''
-)
+export const supabase = createClient()
 
 // --- お店（Shop）関連の型定義 ---
 export type Shop = {
@@ -117,7 +114,7 @@ export const getLineId = async () => {
   // 1. 直接LINEプロバイダーの場合
   // 2. Auth0経由でLINE接続の場合 (connection: 'line')
   const identity = user.identities?.find(
-    (i) => i.provider === 'line' || (i.provider === 'auth0' && i.identity_data?.connection === 'line') || (i.provider === 'auth0' && i.identity_data?.isSocial) // 汎用的なチェック
+    (i) => i.provider === 'line' // LINEプロバイダーのみチェック
   )
   
   if (identity) {
