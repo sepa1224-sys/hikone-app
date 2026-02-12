@@ -72,3 +72,19 @@ ADR-002に基づき、スタンプカードのデータ構造を「店舗設定(
 **次のステップ**:
 - 作成したマイグレーションSQLの適用。
 - 実環境での動作検証（検証用スクリプト `scripts/verify_stamp_system.ts` を用意済み）。
+
+2026-02-13 (Continued): ビルドエラー解消のための Suspense 導入
+
+**概要**:
+`npm run build` 実行時に `app/shop/stamp/page.tsx` および `app/stamp/scan/page.tsx` で発生する "Missing Suspense with CSR Bailout" エラーを解消するため、`useSearchParams()` を使用するコンポーネントを Suspense でラップする修正を行った。
+
+**変更点**:
+- `app/shop/stamp/page.tsx`:
+    - メインロジックを `ShopStampContent` に切り出し。
+    - `ShopStampPage` で `ShopStampContent` を `<Suspense>` でラップし、ローディングフォールバックを追加。
+- `app/stamp/scan/page.tsx`:
+    - メインロジックを `StampScanContent` に切り出し。
+    - `StampScanPage` で `StampScanContent` を `<Suspense>` でラップし、ローディングフォールバックを追加。
+
+**検証**:
+- ローカル環境にて `npm run build` を実行し、正常に完了することを確認済み。

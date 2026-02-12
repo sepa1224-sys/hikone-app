@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import QRScanner from '@/components/shop/QRScanner'
 import { grantStamp } from '@/lib/actions/stamp'
 import { ArrowLeft, MapPin, CheckCircle2, AlertCircle, Loader2, Store } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function StampScanPage() {
+function StampScanContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const queryShopId = searchParams.get('shopId')
@@ -200,5 +200,18 @@ export default function StampScanPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function StampScanPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mb-4"></div>
+        <p className="text-gray-500">読み込み中...</p>
+      </div>
+    }>
+      <StampScanContent />
+    </Suspense>
   )
 }
