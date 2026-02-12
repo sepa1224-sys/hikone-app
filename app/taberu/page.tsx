@@ -608,8 +608,10 @@ export default function Taberu() {
     setLoading(true)
     
     try {
-      // Supabase から全データを取得
-      const { data, error } = await supabase.from('shops').select('*')
+      // Supabase から全データを取得 (menu_itemsテーブルも結合)
+      const { data, error } = await supabase
+        .from('shops')
+        .select('*, menu_items_data:menu_items(*)')
         
         // ===== 1. エラーチェック =====
         if (error) {
@@ -677,7 +679,9 @@ export default function Taberu() {
             latitude: lat,
             longitude: lng,
             place_id: s.place_id || undefined,
-            menu_items: s.menu_items || []
+            menu_items: s.menu_items_data && Array.isArray(s.menu_items_data) && s.menu_items_data.length > 0
+              ? s.menu_items_data.map((m: any) => `${m.name}:${m.price}:${m.image_url || ''}`)
+              : (s.menu_items || [])
           }
         })
         
@@ -1698,8 +1702,9 @@ export default function Taberu() {
                   const img = imgParts.join(':');
                   return (
                     <div key={i} className="flex gap-4 p-3 bg-white border border-gray-100 rounded-[1.8rem] shadow-sm items-center">
-                      <div className="w-20 h-20 rounded-2xl overflow-hidden bg-gray-100 shrink-0">
-                        {img ? <img src={img} className="w-full h-full object-cover" alt={name} /> : <div className="text-[10px] text-gray-300 font-bold p-4">No Image</div>}
+                      <div className="w-20 h-20 rounded-2xl overflow-hidden bg-gray-100 shrink-0 relative">
+                        <div className="absolute inset-0 flex items-center justify-center text-[10px] text-gray-300 font-bold">No Image</div>
+                        {img && <img src={img} className="absolute inset-0 w-full h-full object-cover z-10" alt={name} onError={(e) => e.currentTarget.style.display = 'none'} />}
                       </div>
                       <div className="flex-1">
                         <p className="font-black text-sm text-gray-800 mb-1">{name}</p>

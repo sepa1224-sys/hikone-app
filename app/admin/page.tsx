@@ -8,7 +8,7 @@ import { Settings, TrendingUp, Save, AlertCircle, CheckCircle, Gift, Package, XC
 import Link from 'next/link'
 import { GIFT_EXCHANGE_TYPES, getGiftExchangeType } from '@/lib/constants/giftExchangeTypes'
 import { useAuth } from '@/components/AuthProvider'
-import { getPendingPayoutCount, getAdminShops, createShopByAdmin } from '@/lib/actions/admin'
+import { getPendingPayoutCount, getAdminShops, createShopByAdmin, assignShopOwner, revokeShopOwner } from '@/lib/actions/admin'
 
 interface GiftExchangeRequest {
   id: string
@@ -24,6 +24,8 @@ interface GiftExchangeRequest {
     email?: string
   }
 }
+
+// export const revalidate = 0; // Client Componentではexportできないため削除
 
 export default function AdminDashboard() {
   const router = useRouter()
@@ -126,11 +128,22 @@ export default function AdminDashboard() {
   useEffect(() => {
     async function fetchShops() {
       setLoadingShops(true)
-      const res = await getAdminShops()
-      if (res.success && res.shops) {
-        setShops(res.shops)
+      try {
+        const res = await getAdminShops()
+        console.log("getAdminShops Response:", res)
+        
+        if (res.success && Array.isArray(res.shops)) {
+          setShops(res.shops)
+        } else {
+          console.error("❌ 店舗データの取得に失敗しました:", res)
+          setShops([])
+        }
+      } catch (error) {
+        console.error("❌ fetchShops error:", error)
+        setShops([])
+      } finally {
+        setLoadingShops(false)
       }
-      setLoadingShops(false)
     }
     fetchShops()
   }, [])
@@ -268,6 +281,34 @@ export default function AdminDashboard() {
       alert('エラーが発生しました')
     } finally {
       setCreating(false)
+    }
+  }
+
+  // 店舗オーナー解除処理
+  const handleRevokeOwner = async (shopId: string, shopName: string, ownerName: string) => {
+    if (!confirm(`店舗「${shopName}」のオーナー「${ownerName}」の権限を解除しますか？\n解除すると、このユーザーは店舗管理画面にアクセスできなくなります。`)) {
+      return
+    }
+    
+    try {
+      setLoadingShops(true) // 操作中はローディング表示にするか、個別に処理中の状態を持つのが理想だが簡易的に
+      const res = await revokeShopOwner(shopId)
+      
+      if (res.success) {
+        alert('オーナー権限を解除しました')
+        // リロードして一覧更新
+        const shopsRes = await getAdminShops()
+        if (shopsRes.success && shopsRes.shops) {
+          setShops(shopsRes.shops)
+        }
+      } else {
+        alert(res.message)
+      }
+    } catch (error) {
+      console.error('Revoke owner error:', error)
+      alert('エラーが発生しました')
+    } finally {
+      setLoadingShops(false)
     }
   }
 
@@ -526,13 +567,26 @@ export default function AdminDashboard() {
                             {shop.stamp_count ? `${shop.stamp_count}個` : '未設定'}
                           </td>
                           <td className="py-4 text-right">
-                            <Link
-                              href={`/shop/settings?impersonateShopId=${shop.id}`}
-                              className="inline-flex items-center gap-1 bg-gray-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-700 transition-colors"
-                            >
-                              <Settings size={14} />
-                              管理画面を見る
-                            </Link>
+                            <div className="flex items-center justify-end gap-2">
+                              {shop.owner_id ? (
+                                <button
+                                  onClick={() => handleRevokeOwner(shop.id, shop.name, shop.owner_name)}
+                                  className="inline-flex items-center gap-1 bg-red-100 text-red-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors"
+                                >
+                                  <XCircle size={14} />
+                                  権限解除
+                                </button>
+                              ) : (
+                                <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">未設定</span>
+                              )}
+                              <Link
+                                href={`/shop/settings?impersonateShopId=${shop.id}`}
+                                className="inline-flex items-center gap-1 bg-gray-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-700 transition-colors"
+                              >
+                                <Settings size={14} />
+                                管理
+                              </Link>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -808,21 +862,21 @@ export default function AdminDashboard() {
             <form onSubmit={handleAssignOwner}>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">対象店舗</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">対象店舗（全店舗表示中 - デバッグモード）</label>
                   <select 
-              required
-              className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              value={createForm.shopId}
-              onChange={e => setCreateForm({...createForm, shopId: e.target.value})}
-            >
-              <option value="">店舗を選択してください</option>
-              {shops.length === 0 && <option disabled>店舗データがありません</option>}
-              {shops.map(shop => (
-                <option key={shop.id} value={shop.id}>
-                  {shop.name} {shop.owner_name !== 'Unknown' ? `(現在のオーナー: ${shop.owner_name})` : '(オーナー未設定)'}
-                </option>
-              ))}
-            </select>
+                    required
+                    className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    value={createForm.shopId}
+                    onChange={e => setCreateForm({...createForm, shopId: e.target.value})}
+                  >
+                    <option value="">店舗を選択してください</option>
+                    {shops.length === 0 && <option disabled>店舗が見つかりません</option>}
+                    {shops.map(shop => (
+                      <option key={shop.id} value={shop.id}>
+                        {shop.name} {shop.owner_id ? '(オーナー設定済)' : '(未設定)'}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">オーナーメールアドレス</label>
@@ -851,7 +905,7 @@ export default function AdminDashboard() {
                   className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
                 >
                   {creating && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
-                  紐付ける
+                  このユーザーを店主に任命する
                 </button>
               </div>
             </form>

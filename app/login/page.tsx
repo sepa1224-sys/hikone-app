@@ -43,6 +43,8 @@ const LineIcon = () => (
   </svg>
 )
 
+import { signUpWithAutoConfirm } from '@/lib/actions/auth'
+
 export default function LoginPage() {
   const router = useRouter()
   

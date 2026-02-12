@@ -1,17 +1,27 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import QRScanner from '@/components/shop/QRScanner'
 import { grantStamp } from '@/lib/actions/stamp'
-import { ArrowLeft, MapPin, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { ArrowLeft, MapPin, CheckCircle2, AlertCircle, Loader2, Store } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function StampScanPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const queryShopId = searchParams.get('shopId')
+
   const [status, setStatus] = useState<'idle' | 'locating' | 'granting' | 'success' | 'error'>('idle')
   const [message, setMessage] = useState('')
   const [shopName, setShopName] = useState('')
+
+  // クエリパラメータでshopIdが渡された場合の処理
+  useEffect(() => {
+    if (queryShopId) {
+       // 自動では開始せず、ユーザーにボタンを押させる（誤操作防止）
+    }
+  }, [queryShopId])
 
   const handleScan = async (shopId: string) => {
     if (status !== 'idle') return
@@ -64,6 +74,8 @@ export default function StampScanPage() {
     setStatus('idle')
     setMessage('')
     setShopName('')
+    // クエリパラメータがある場合は戻るボタンなどでリストに戻る想定だが、リセット時はスキャンモードへ
+    router.replace('/stamp/scan')
   }
 
   return (
@@ -81,17 +93,48 @@ export default function StampScanPage() {
         {/* Status Display */}
         {status === 'idle' && (
           <div className="w-full space-y-4">
-            <div className="bg-white p-6 rounded-2xl shadow-sm text-center">
-              <p className="font-bold text-gray-800 mb-2">店舗のQRコードをスキャン</p>
-              <p className="text-xs text-gray-500 mb-6">
-                カメラへのアクセスと位置情報を許可してください。<br/>
-                店舗から半径50m以内でスタンプを獲得できます。
-              </p>
-              
-              <div className="overflow-hidden rounded-xl border-2 border-blue-100">
-                <QRScanner onScan={handleScan} />
+            {queryShopId ? (
+               <div className="bg-white p-8 rounded-2xl shadow-sm text-center">
+                  <div className="bg-blue-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Store size={32} className="text-blue-500" />
+                  </div>
+                  <p className="font-bold text-gray-800 mb-2">店舗でスタンプを押す</p>
+                  <p className="text-sm text-gray-500 mb-8">
+                    位置情報を確認してスタンプを獲得します。<br/>
+                    店舗にいることを確認してください。
+                  </p>
+                  
+                  <button 
+                    onClick={() => handleScan(queryShopId)}
+                    className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-blue-700 transition flex items-center justify-center gap-2"
+                  >
+                    <MapPin size={20} />
+                    ここ（現在地）でスタンプ！
+                  </button>
+
+                  <div className="mt-6 border-t pt-6">
+                    <p className="text-xs text-gray-400 mb-2">または</p>
+                    <button 
+                      onClick={() => router.replace('/stamp/scan')}
+                      className="text-gray-500 text-sm font-bold underline"
+                    >
+                      QRコードをスキャンする
+                    </button>
+                  </div>
+               </div>
+            ) : (
+              <div className="bg-white p-6 rounded-2xl shadow-sm text-center">
+                <p className="font-bold text-gray-800 mb-2">店舗のQRコードをスキャン</p>
+                <p className="text-xs text-gray-500 mb-6">
+                  カメラへのアクセスと位置情報を許可してください。<br/>
+                  店舗から半径50m以内でスタンプを獲得できます。
+                </p>
+                
+                <div className="overflow-hidden rounded-xl border-2 border-blue-100">
+                  <QRScanner onScan={handleScan} />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 

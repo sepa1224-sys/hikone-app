@@ -41,6 +41,8 @@ export default function AdminPayoutsPage() {
 
     setProcessingId(request.id)
     try {
+      // 2026-02-12: shop_id引数は Server Action 側で自動解決される場合もあるが、
+      // ここでは明示的に request.shop_id (これは owner_id) を渡しています。
       const res = await approvePayout(request.id, request.shop_id, request.amount)
       if (res.success) {
         alert('振込完了処理を行いました')
@@ -102,11 +104,13 @@ export default function AdminPayoutsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {requests.map((req) => (
-              <div key={req.id} className={`bg-white rounded-xl p-6 shadow-sm border flex flex-col md:flex-row md:items-center justify-between gap-4 ${req.status === 'paid' ? 'border-green-100 bg-green-50/30' : 'border-gray-100'}`}>
+            {requests.map((req) => {
+              const isPaid = req.status === 'paid' || req.status === 'completed'
+              return (
+              <div key={req.id} className={`bg-white rounded-xl p-6 shadow-sm border flex flex-col md:flex-row md:items-center justify-between gap-4 ${isPaid ? 'border-green-100 bg-green-50/30' : 'border-gray-100'}`}>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    {req.status === 'paid' ? (
+                    {isPaid ? (
                         <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold">
                             <Check size={12} /> 振込完了
                         </span>
@@ -177,7 +181,8 @@ export default function AdminPayoutsPage() {
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

@@ -6,8 +6,10 @@ import { useAuth } from '@/components/AuthProvider'
 import { ArrowLeft, Store, Save, Loader2, Camera, Trash2, Plus, X, Lock, CreditCard, Utensils, Image as ImageIcon, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { updateShopBasicInfo, updateShopImages, getMenuItems, upsertMenuItem, deleteMenuItem, getShopSettings, uploadShopImageAction } from '@/lib/actions/shop'
+import { updateShopBasicInfo, updateShopImages, getMenuItems, upsertMenuItem, deleteMenuItem, getShopSettings, uploadShopImageAction, getShopStampSettings, updateShopBankInfo, uploadMenuImageAction } from '@/lib/actions/shop'
+import { updateStampCardSettings } from '@/lib/actions/stamp'
 import Image from 'next/image'
+import { Stamp } from 'lucide-react'
 
 // 画像圧縮用の簡易関数
 async function compressImage(file: File): Promise<Blob> {
@@ -43,7 +45,10 @@ function ShopSettingsContent() {
   // Data States
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [savingBank, setSavingBank] = useState(false)
   const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [currentShopId, setCurrentShopId] = useState<string | undefined>(undefined)
 
   // Basic Info State
   const [address, setAddress] = useState('') // Read-only
@@ -69,13 +74,53 @@ function ShopSettingsContent() {
   const [menuItems, setMenuItems] = useState<any[]>([])
   const [editingItem, setEditingItem] = useState<any | null>(null) // null means adding new or not editing
 
+  // Stamp Card State
+  const [stampTargetCount, setStampTargetCount] = useState(10)
+  const [stampRewardDescription, setStampRewardDescription] = useState('')
+
   useEffect(() => {
     if (!user) return
+    
+    // [Init Fix] Shop IDを確実に取得する
+    // getShopSettingsの一部として取得されるが、念のため独立しても確認する
+    // Note (2026-02-12): サーバー側で暗黙的ID解決を行うようになったため、
+    // ここでIDが取れなくても保存処理自体は user.id (owner_id) 経由で成功します。
+    // currentShopId は主にフロントエンドでの表示やチェック用として機能します。
+    async function ensureShopId() {
+       if (currentShopId) return
+       
+       if (!impersonateShopId) {
+          const { data: shop } = await supabase
+            .from('shops')
+            .select('id')
+            .eq('owner_id', user!.id)
+            .single()
+          if (shop?.id) {
+             console.log('[Init] Shop ID resolved:', shop.id)
+             setCurrentShopId(shop.id)
+          }
+       }
+    }
+    ensureShopId()
 
     async function fetchData() {
       try {
         setLoading(true)
         const userId = user!.id
+
+        // Admin Check
+        if (impersonateShopId) {
+          setIsAdmin(true)
+        } else {
+          const { data: userProfile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', userId)
+            .single()
+          if (userProfile?.role === 'admin') {
+            setIsAdmin(true)
+          }
+        }
 
         // Use the centralized data fetching function that supports impersonation
         const { success, data, message } = await getShopSettings(userId, impersonateShopId)
@@ -93,6 +138,9 @@ function ShopSettingsContent() {
           setPhoneNumber(data.shop.phone_number || '')
           setThumbnailUrl(data.shop.thumbnail_url || null)
           setGalleryUrls(data.shop.gallery_urls || [])
+          if (data.shop.id) {
+            setCurrentShopId(data.shop.id)
+          }
         }
 
         // 2. Set Profile Data (Transaction Password)
@@ -117,6 +165,13 @@ function ShopSettingsContent() {
           setMenuItems(menuData)
         }
 
+        // 5. Fetch Stamp Settings
+        const { success: stampSuccess, data: stampData } = await getShopStampSettings(userId, impersonateShopId)
+        if (stampSuccess && stampData) {
+          setStampTargetCount(stampData.target_count || 10)
+          setStampRewardDescription(stampData.reward_description || '')
+        }
+
       } catch (error) {
         console.error('Error fetching data:', error)
         setMessage({ type: 'error', text: 'エラーが発生しました' })
@@ -130,7 +185,7 @@ function ShopSettingsContent() {
 
   // --- Handlers ---
 
-  const handleSaveBasicInfo = async (e: React.FormEvent) => {
+  const handleSaveShopInfo = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
 
@@ -138,22 +193,80 @@ function ShopSettingsContent() {
     setMessage(null)
 
     try {
-      // 銀行情報の入力チェック: 全て空の場合は undefined を渡して保存をスキップする
-      const isBankInfoEmpty = !bankInfo.bankName && !bankInfo.branchName && !bankInfo.accountNumber && !bankInfo.accountHolder
-      
-      console.log('[Debug] handleSaveBasicInfo: Invoking updateShopBasicInfo (Shop ID resolution happens on server)', {
-        userId: user.id,
-        hasBankInfo: !isBankInfoEmpty
-      })
+      console.log('[Debug] handleSaveShopInfo: Saving basic info')
 
       const result = await updateShopBasicInfo(user.id, {
+        name: shopName,
+        address: address,
         phoneNumber,
         transactionPassword,
-        bankInfo: isBankInfoEmpty ? undefined : bankInfo
       }, impersonateShopId)
       
       if (result.success) {
-        setMessage({ type: 'success', text: result.message || '保存しました' })
+        setMessage({ type: 'success', text: result.message || '店舗情報を保存しました' })
+        setTimeout(() => setMessage(null), 3000)
+      } else {
+        setMessage({ type: 'error', text: result.message || '保存に失敗しました' })
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'エラーが発生しました' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveBankInfo = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!user) return
+
+    setSavingBank(true)
+    setMessage(null)
+
+    // Admin impersonation check
+    const formData = new FormData(e.currentTarget)
+    const formImpersonateId = formData.get('impersonateShopId') as string
+    // Only use impersonate ID if it's explicitly provided (Admin case)
+    const targetImpersonateId = formImpersonateId || impersonateShopId || undefined
+
+    console.log('[Debug] handleSaveBankInfo: Saving bank info', { 
+      targetImpersonateId,
+      user_id: user.id
+    })
+
+    try {
+      // Updated signature: bankInfo first, then optional impersonateShopId
+      // Server will resolve shop ID from user.id if impersonateShopId is missing
+      const result = await updateShopBankInfo(bankInfo, targetImpersonateId)
+      
+      if (result.success) {
+        setMessage({ type: 'success', text: result.message || '口座情報を保存しました' })
+        setTimeout(() => setMessage(null), 3000)
+      } else {
+        setMessage({ type: 'error', text: result.message || '保存に失敗しました' })
+      }
+    } catch (error) {
+      console.error('Error saving bank info:', error)
+      setMessage({ type: 'error', text: 'エラーが発生しました' })
+    } finally {
+      setSavingBank(false)
+    }
+  }
+
+  const handleSaveStampSettings = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+
+    setSaving(true)
+    setMessage(null)
+
+    try {
+      const result = await updateStampCardSettings(user.id, {
+        targetCount: stampTargetCount,
+        rewardDescription: stampRewardDescription
+      }, impersonateShopId)
+
+      if (result.success) {
+        setMessage({ type: 'success', text: result.message || 'スタンプ設定を保存しました' })
         setTimeout(() => setMessage(null), 3000)
       } else {
         setMessage({ type: 'error', text: result.message || '保存に失敗しました' })
@@ -208,9 +321,27 @@ function ShopSettingsContent() {
   }
 
   // Menu Handlers
-  const handleSaveMenuItem = async (item: any) => {
+  const handleSaveMenuItem = async (item: any, file?: File) => {
     if (!user) return
     
+    // Upload image if selected
+    if (file) {
+       try {
+         const formData = new FormData()
+         formData.append('file', await compressImage(file), file.name)
+         const uploadRes = await uploadMenuImageAction(formData, impersonateShopId)
+         
+         if (uploadRes.success && uploadRes.publicUrl) {
+            item.image_url = uploadRes.publicUrl
+         } else {
+            alert('画像アップロードに失敗しましたが、テキストのみ保存を試みます')
+         }
+       } catch (e) {
+         console.error(e)
+         alert('画像処理エラー')
+       }
+    }
+
     const { success } = await upsertMenuItem(user.id, item, impersonateShopId)
     if (success) {
       // Refresh menu
@@ -314,6 +445,51 @@ function ShopSettingsContent() {
           </div>
         </section>
 
+        {/* --- 1.5. スタンプカード設定 --- */}
+        <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <h2 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg">
+            <Stamp className="text-purple-500" />
+            スタンプカード設定
+          </h2>
+          
+          <form onSubmit={handleSaveStampSettings} className="space-y-4">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1">スタンプ目標数 (特典獲得に必要な数)</label>
+              <select 
+                value={stampTargetCount} 
+                onChange={(e) => setStampTargetCount(Number(e.target.value))}
+                className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+              >
+                <option value={5}>5個</option>
+                <option value={10}>10個</option>
+                <option value={15}>15個</option>
+                <option value={20}>20個</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1">特典内容 (10個貯まった時のプレゼント)</label>
+              <input 
+                type="text" 
+                value={stampRewardDescription} 
+                onChange={(e) => setStampRewardDescription(e.target.value)}
+                placeholder="例: お好きなドリンク1杯無料、500円割引チケットなど"
+                className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+                required
+              />
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={saving}
+              className="w-full bg-purple-600 text-white font-bold py-3 rounded-xl shadow-md hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+              設定を保存
+            </button>
+          </form>
+        </section>
+
         {/* --- 2. メニュー管理 (優先) --- */}
         <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-4">
@@ -353,15 +529,32 @@ function ShopSettingsContent() {
                 <form onSubmit={(e) => {
                   e.preventDefault()
                   const formData = new FormData(e.currentTarget)
+                  const file = formData.get('image') as File
+                  
                   handleSaveMenuItem({
                     id: editingItem.id, // undefined for new
                     name: formData.get('name'),
                     price: Number(formData.get('price')),
                     description: formData.get('description'),
                     category: 'other', // Default or select
-                    sort_order: 0
-                  })
+                    sort_order: 0,
+                    image_url: editingItem.image_url // Preserve existing if no new file
+                  }, file.size > 0 ? file : undefined)
                 }} className="space-y-4">
+                  <div className="flex justify-center mb-4">
+                    <div className="h-32 w-32 bg-gray-100 rounded-lg relative overflow-hidden">
+                      <div className="absolute inset-0 flex items-center justify-center text-gray-400"><ImageIcon /></div>
+                      {editingItem.image_url && (
+                        <img 
+                          src={editingItem.image_url} 
+                          alt="Menu" 
+                          className="absolute inset-0 w-full h-full object-cover z-10" 
+                          onError={(e) => e.currentTarget.style.display = 'none'}
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <input type="file" name="image" accept="image/*" className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100" />
                   <input name="name" defaultValue={editingItem.name} placeholder="商品名" required className="w-full p-3 bg-gray-50 rounded-xl" />
                   <input name="price" type="number" defaultValue={editingItem.price} placeholder="価格" required className="w-full p-3 bg-gray-50 rounded-xl" />
                   <textarea name="description" defaultValue={editingItem.description} placeholder="説明" className="w-full p-3 bg-gray-50 rounded-xl" />
@@ -375,11 +568,11 @@ function ShopSettingsContent() {
           )}
         </section>
 
-        {/* --- 3. 基本情報 & 銀行口座 --- */}
+        {/* --- 3. 基本情報 --- */}
         <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
            <h2 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg">
              <Store className="text-blue-600" />
-             基本・口座情報
+             店舗基本情報
            </h2>
            
            {loading ? (
@@ -387,13 +580,33 @@ function ShopSettingsContent() {
                <Loader2 className="animate-spin text-gray-400" />
              </div>
            ) : (
-             <form onSubmit={handleSaveBasicInfo} className="space-y-6">
-               {/* Basic */}
-               <div className="space-y-4 border-b pb-6">
+             <form onSubmit={handleSaveShopInfo} className="space-y-6">
+               <div className="space-y-4">
                  <div>
-                   <label className="block text-sm font-bold text-gray-700 mb-1">住所 (変更不可)</label>
-                   <input type="text" value={address} readOnly className="w-full p-3 bg-gray-100 border border-gray-200 rounded-xl text-gray-500" />
-                   <p className="text-xs text-red-500 mt-1">※住所変更は運営にお問い合わせください</p>
+                   <label className="block text-sm font-bold text-gray-700 mb-1">店舗名 {isAdmin ? '(編集可能)' : '(変更不可)'}</label>
+                   <input 
+                     type="text" 
+                     value={shopName} 
+                     onChange={(e) => setShopName(e.target.value)}
+                     readOnly={!isAdmin} 
+                     className={`w-full p-3 border border-gray-200 rounded-xl ${!isAdmin ? 'bg-gray-100 text-gray-500' : 'bg-gray-50'}`} 
+                   />
+                 </div>
+
+                 <div>
+                   <label className="block text-sm font-bold text-gray-700 mb-1">住所 {isAdmin ? '(編集可能)' : '(変更不可)'}</label>
+                   <input 
+                     type="text" 
+                     value={address} 
+                     onChange={(e) => setAddress(e.target.value)}
+                     readOnly={!isAdmin} 
+                     className={`w-full p-3 border border-gray-200 rounded-xl ${!isAdmin ? 'bg-gray-100 text-gray-500' : 'bg-gray-50'}`} 
+                   />
+                   {!isAdmin ? (
+                     <p className="text-xs text-red-500 mt-1">※住所変更は運営にお問い合わせください</p>
+                   ) : (
+                     <p className="text-xs text-green-600 mt-1 font-bold">※管理者権限で編集中：住所・店舗名の変更が可能です</p>
+                   )}
                  </div>
                  
                  <div>
@@ -409,26 +622,7 @@ function ShopSettingsContent() {
                  </div>
                </div>
 
-               {/* Bank */}
-               <div className="space-y-4">
-                 <h3 className="font-bold text-gray-600 flex items-center gap-2">
-                   <CreditCard size={18} /> 振込先口座
-                 </h3>
-                 <div className="grid grid-cols-2 gap-4">
-                   <input value={bankInfo.bankName} onChange={(e) => setBankInfo({...bankInfo, bankName: e.target.value})} placeholder="銀行名" className="p-3 bg-gray-50 border rounded-xl" />
-                   <input value={bankInfo.branchName} onChange={(e) => setBankInfo({...bankInfo, branchName: e.target.value})} placeholder="支店名" className="p-3 bg-gray-50 border rounded-xl" />
-                 </div>
-                 <div className="grid grid-cols-3 gap-4">
-                   <select value={bankInfo.accountType} onChange={(e) => setBankInfo({...bankInfo, accountType: e.target.value as any})} className="p-3 bg-gray-50 border rounded-xl">
-                     <option value="ordinary">普通</option>
-                     <option value="current">当座</option>
-                   </select>
-                   <input value={bankInfo.accountNumber} onChange={(e) => setBankInfo({...bankInfo, accountNumber: e.target.value})} placeholder="口座番号" className="col-span-2 p-3 bg-gray-50 border rounded-xl" />
-                 </div>
-                 <input value={bankInfo.accountHolder} onChange={(e) => setBankInfo({...bankInfo, accountHolder: e.target.value})} placeholder="口座名義 (カタカナ)" className="w-full p-3 bg-gray-50 border rounded-xl" />
-               </div>
-
-               {message && (
+               {message && !message.text.includes('口座') && (
                  <div className={`p-3 rounded-xl text-sm font-bold ${message.type === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
                    {message.text}
                  </div>
@@ -440,10 +634,53 @@ function ShopSettingsContent() {
                  className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
                >
                  {saving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-                 設定を保存する
+                 店舗情報を保存
                </button>
              </form>
            )}
+        </section>
+
+        {/* --- 4. 銀行口座情報 --- */}
+        <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+           <h2 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg">
+             <CreditCard className="text-green-600" />
+             振込先口座情報
+           </h2>
+           
+           <form onSubmit={handleSaveBankInfo} className="space-y-6">
+               {/* Shop ID Debug/Hidden Input */}
+               <input type="hidden" name="impersonateShopId" value={impersonateShopId || currentShopId || ''} />
+               <input type="hidden" id="force-shop-id-value" value={currentShopId || ''} />
+             <div className="space-y-4">
+               <div className="grid grid-cols-2 gap-4">
+                 <input value={bankInfo.bankName} onChange={(e) => setBankInfo({...bankInfo, bankName: e.target.value})} placeholder="銀行名" className="p-3 bg-gray-50 border rounded-xl" />
+                 <input value={bankInfo.branchName} onChange={(e) => setBankInfo({...bankInfo, branchName: e.target.value})} placeholder="支店名" className="p-3 bg-gray-50 border rounded-xl" />
+               </div>
+               <div className="grid grid-cols-3 gap-4">
+                 <select value={bankInfo.accountType} onChange={(e) => setBankInfo({...bankInfo, accountType: e.target.value as any})} className="p-3 bg-gray-50 border rounded-xl">
+                   <option value="ordinary">普通</option>
+                   <option value="current">当座</option>
+                 </select>
+                 <input value={bankInfo.accountNumber} onChange={(e) => setBankInfo({...bankInfo, accountNumber: e.target.value})} placeholder="口座番号" className="col-span-2 p-3 bg-gray-50 border rounded-xl" />
+               </div>
+               <input value={bankInfo.accountHolder} onChange={(e) => setBankInfo({...bankInfo, accountHolder: e.target.value})} placeholder="口座名義 (カタカナ)" className="w-full p-3 bg-gray-50 border rounded-xl" />
+             </div>
+
+             {message && message.text.includes('口座') && (
+               <div className={`p-3 rounded-xl text-sm font-bold ${message.type === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                 {message.text}
+               </div>
+             )}
+
+             <button
+               type="submit"
+               disabled={savingBank}
+               className="w-full bg-green-600 text-white font-bold py-4 rounded-xl hover:bg-green-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+             >
+               {savingBank ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+               口座情報を保存
+             </button>
+           </form>
         </section>
 
       </div>
