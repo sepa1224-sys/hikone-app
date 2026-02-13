@@ -478,23 +478,23 @@ export default function ProfileRegistrationModal({
 
   // 選択された都道府県・地方区分に基づいて市区町村リストを取得
   const availableCities = (() => {
-    if (!formData.prefecture || formData.prefecture === '海外') return []
+    if (!formData.prefecture || formData.prefecture === '海外') return [];
     
     // 滋賀県の場合は地方区分に基づいて市区町村を取得
     if (formData.prefecture === '滋賀県') {
       if (formData.region && SHIGA_REGION_CITIES[formData.region as keyof typeof SHIGA_REGION_CITIES]) {
-        return SHIGA_REGION_CITIES[formData.region as keyof typeof SHIGA_REGION_CITIES]
+        return SHIGA_REGION_CITIES[formData.region as keyof typeof SHIGA_REGION_CITIES];
       }
       // 地方区分が選択されていない場合は全ての滋賀県市区町村を表示
-      return Object.values(SHIGA_REGION_CITIES).flat()
+      return Object.values(SHIGA_REGION_CITIES).flat();
     }
     
     // 他の都道府県
-    return PREFECTURE_CITIES[formData.prefecture] || []
-  })()
+    return PREFECTURE_CITIES[formData.prefecture] || [];
+  })();
   
   // 詳細エリアの選択肢を取得
-  const availableDetailAreas = formData.city ? (CITY_DETAIL_AREAS[formData.city] || []) : []
+  const availableDetailAreas = formData.city ? (CITY_DETAIL_AREAS[formData.city] || []) : [];
 
   return (
     <>
@@ -585,78 +585,79 @@ export default function ProfileRegistrationModal({
 
                   {/* 大学生の場合: 大学名 */}
                   {formData.user_type === '大学生' && (
-                    <div className="space-y-2">
-                      <label className="text-xs font-black text-gray-500 ml-2">大学名</label>
-                      <select
-                        value={['滋賀大学', '滋賀県立大学', '聖泉大学', ''].includes(formData.university_name) ? formData.university_name : 'その他'}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          setFormData({ 
-                            ...formData, 
-                            university_name: val === 'その他' ? '' : val 
-                          })
-                        }}
-                        className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm"
-                      >
-                        <option value="">大学名を選択してください</option>
-                        <option value="滋賀大学">滋賀大学</option>
-                        <option value="滋賀県立大学">滋賀県立大学</option>
-                        <option value="聖泉大学">聖泉大学</option>
-                        <option value="その他">その他（自由入力）</option>
-                      </select>
-                      {(!['滋賀大学', '滋賀県立大学', '聖泉大学', ''].includes(formData.university_name) || formData.university_name === '') && (
-                        <input
-                          type="text"
-                          placeholder="大学名を入力してください"
-                          className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm mt-2"
-                          value={formData.university_name}
-                          onChange={(e) => setFormData({ ...formData, university_name: e.target.value })}
-                        />
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-black text-gray-500 ml-2">学部</label>
-                      <select
-                        value={['経済学部', 'データサイエンス学部', '教育学部', '人間文化学部', '工学部', '人間看護学部', '環境科学学部', ''].includes(formData.faculty) ? formData.faculty : 'その他'}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          setFormData({ 
-                            ...formData, 
-                            faculty: val === 'その他' ? '' : val 
-                          })
-                        }}
-                        className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm"
-                      >
-                        <option value="">学部を選択してください</option>
-                        {formData.university_name === '滋賀大学' && (
-                          <>
-                            <option value="経済学部">経済学部</option>
-                            <option value="データサイエンス学部">データサイエンス学部</option>
-                            <option value="教育学部">教育学部</option>
-                          </>
+                    <>
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-gray-500 ml-2">大学名</label>
+                        <select
+                          value={['滋賀大学', '滋賀県立大学', '聖泉大学', ''].includes(formData.university_name) ? formData.university_name : 'その他'}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setFormData({ 
+                              ...formData, 
+                              university_name: val === 'その他' ? '' : val 
+                            })
+                          }}
+                          className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm"
+                        >
+                          <option value="">大学名を選択してください</option>
+                          <option value="滋賀大学">滋賀大学</option>
+                          <option value="滋賀県立大学">滋賀県立大学</option>
+                          <option value="聖泉大学">聖泉大学</option>
+                          <option value="その他">その他（自由入力）</option>
+                        </select>
+                        {(!['滋賀大学', '滋賀県立大学', '聖泉大学', ''].includes(formData.university_name) || formData.university_name === '') && (
+                          <input
+                            type="text"
+                            placeholder="大学名を入力してください"
+                            className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm mt-2"
+                            value={formData.university_name}
+                            onChange={(e) => setFormData({ ...formData, university_name: e.target.value })}
+                          />
                         )}
-                        {formData.university_name === '滋賀県立大学' && (
-                          <>
-                            <option value="人間文化学部">人間文化学部</option>
-                            <option value="工学部">工学部</option>
-                            <option value="人間看護学部">人間看護学部</option>
-                            <option value="環境科学学部">環境科学学部</option>
-                          </>
-                        )}
-                        <option value="その他">その他（自由入力）</option>
-                      </select>
-                      {(!['経済学部', 'データサイエンス学部', '教育学部', '人間文化学部', '工学部', '人間看護学部', '環境科学学部', ''].includes(formData.faculty) || formData.faculty === '') && (
-                        <input
-                          type="text"
-                          placeholder="学部を入力してください"
-                          className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm mt-2"
-                          value={formData.faculty}
-                          onChange={(e) => setFormData({ ...formData, faculty: e.target.value })}
-                        />
-                      )}
-                    </div>
+                      </div>
 
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-gray-500 ml-2">学部</label>
+                        <select
+                          value={['経済学部', 'データサイエンス学部', '教育学部', '人間文化学部', '工学部', '人間看護学部', '環境科学学部', ''].includes(formData.faculty) ? formData.faculty : 'その他'}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setFormData({ 
+                              ...formData, 
+                              faculty: val === 'その他' ? '' : val 
+                            })
+                          }}
+                          className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm"
+                        >
+                          <option value="">学部を選択してください</option>
+                          {formData.university_name === '滋賀大学' && (
+                            <>
+                              <option value="経済学部">経済学部</option>
+                              <option value="データサイエンス学部">データサイエンス学部</option>
+                              <option value="教育学部">教育学部</option>
+                            </>
+                          )}
+                          {formData.university_name === '滋賀県立大学' && (
+                            <>
+                              <option value="人間文化学部">人間文化学部</option>
+                              <option value="工学部">工学部</option>
+                              <option value="人間看護学部">人間看護学部</option>
+                              <option value="環境科学学部">環境科学学部</option>
+                            </>
+                          )}
+                          <option value="その他">その他（自由入力）</option>
+                        </select>
+                        {(!['経済学部', 'データサイエンス学部', '教育学部', '人間文化学部', '工学部', '人間看護学部', '環境科学学部', ''].includes(formData.faculty) || formData.faculty === '') && (
+                          <input
+                            type="text"
+                            placeholder="学部を入力してください"
+                            className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm mt-2"
+                            value={formData.faculty}
+                            onChange={(e) => setFormData({ ...formData, faculty: e.target.value })}
+                          />
+                        )}
+                      </div>
+                    </>
                   )}
 
                   {/* 大学生以外の場合: 学校名 */}

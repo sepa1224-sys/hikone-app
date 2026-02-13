@@ -18,6 +18,17 @@
   - 初回コンプリート時の200pt付与処理（Server Action）
   - プロフィール画面への進捗ゲージ表示
   - ポイント獲得時の完了アニメーション実装
+- **パーソナライズ・ホームおよびウィジェットシステムの導入**
+  - ホーム画面のウィジェット化（天気、ゴミ出し、ショートカット、次の電車）
+  - ユーザー属性（学生/社会人）に基づく初期レイアウトの動的生成
+  - ウィジェット設定の永続化（`user_settings` テーブル、JSONBカラム）
+  - プロフィール画面への「ホーム画面のカスタマイズ」導線追加
+  - ドキュメント: `docs/specs/home_widgets.md` 作成
+- **構文エラーの修正とプロフ登録ロジックの再整備**
+  - `ProfileRegistrationModal.tsx` のJSX構文エラー（Parent Element不足、セミコロン欠落）修正
+  - `app/page.tsx` における `authUser` 初期化順序による ReferenceError の修正
+  - Immutable Birthday（変更不可）ポリシーの適用とUI反映
+  - プロフィール完遂ボーナス（200pt）のロジック統合確認
   - ドキュメント: `docs/specs/point_system.md` 作成
 - **[PULSE] 生年月日ロック、誕生日・ログインボーナスの実装 (ADR-023, ADR-024)**
   - 生年月日のImmutable化（登録時必須、変更不可ロック、Backendバリデーション）
@@ -32,3 +43,6 @@
   - ウィジェット設定モーダル（表示切替、並び替え機能）の実装
   - プロフィール画面への設定導線追加
   - ドキュメント: `docs/specs/home_widgets.md` 作成
+- **構文エラーの修正とプロフ登録ロジックの再整備**
+  - ProfileRegistrationModal.tsx の構文エラー（Expression expected）の修正
+  - 生年月日ロック機能およびプロフィール完遂ボーナス（200pt）ロジックの整合性確認

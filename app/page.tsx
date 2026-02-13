@@ -37,6 +37,8 @@ export default function AppHome() {
   const pathname = usePathname()
   const router = useRouter()
   
+  const { session, user: authUser, profile: authProfile, refreshProfile, loading: authLoading } = useAuth()
+
   // マンスリーミッション
   const [activeTab, setActiveTab] = useState<'current' | 'next'>('current')
   const [currentMissions, setCurrentMissions] = useState<Mission[]>([])
@@ -89,8 +91,6 @@ export default function AppHome() {
   }, [])
 
   const displayMissions = activeTab === 'current' ? currentMissions : nextMissions
-
-  const { session, user: authUser, profile: authProfile, refreshProfile, loading: authLoading } = useAuth()
   
   // マウント済みフラグ（ハイドレーションエラー防止）
   const [isMounted, setIsMounted] = useState(false)
