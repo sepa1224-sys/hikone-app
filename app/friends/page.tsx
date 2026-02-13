@@ -336,18 +336,26 @@ export default function FriendsPage() {
                     <img
                       src={friend.avatar_url}
                       alt=""
-                      className="w-12 h-12 rounded-full object-cover border-2 border-white shadow"
+                      className="w-12 h-12 rounded-full object-cover border-2 border-white shadow cursor-pointer active:scale-95 transition-transform"
+                      onClick={() => router.push(`/profile/${friend.friend_id}`)}
                     />
                   ) : (
-                    <div className="w-12 h-12 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full flex items-center justify-center border-2 border-white shadow">
+                    <div 
+                      className="w-12 h-12 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full flex items-center justify-center border-2 border-white shadow cursor-pointer active:scale-95 transition-transform"
+                      onClick={() => router.push(`/profile/${friend.friend_id}`)}
+                    >
                       <UserCircle size={28} className="text-white" />
                     </div>
                   )}
                   
                   {/* 名前とコード */}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-black text-gray-800 truncate">
+                  <div 
+                    className="flex-1 min-w-0 cursor-pointer group"
+                    onClick={() => router.push(`/profile/${friend.friend_id}`)}
+                  >
+                    <p className="font-black text-gray-800 truncate group-hover:text-purple-600 transition-colors flex items-center gap-1">
                       {friend.full_name || 'ユーザー'}
+                      <ChevronRight size={14} className="text-gray-300 group-hover:text-purple-400" />
                     </p>
                     <p className="text-xs text-gray-400 font-bold">
                       {friend.referral_code || '---'}

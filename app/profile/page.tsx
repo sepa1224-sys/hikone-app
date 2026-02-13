@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import imageCompression from 'browser-image-compression'
 import { useRouter } from 'next/navigation'
-import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History, Camera, Home, School, GraduationCap, Layout } from 'lucide-react'
+import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History, Camera, Home, School, GraduationCap, Layout, ShieldCheck, CheckCircle } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
 import { usePoints, usePointHistory, getPointHistoryStyle, PointHistory } from '@/lib/hooks/usePoints'
@@ -12,6 +12,7 @@ import { applyReferralCode } from '@/lib/actions/referral'
 import { useFriends, addFriend, removeFriend, searchUserByCode, Friend } from '@/lib/hooks/useFriends'
 import { sendHikopo } from '@/lib/actions/transfer'
 import { getUniversityStats, UniversityStats } from '@/lib/actions/stats'
+import { getVerificationStatus, VerificationStatus } from '@/lib/actions/student-verification'
 import QRCode from 'react-qr-code'
 import { formatFullLocation, formatShortLocation } from '@/lib/constants/shigaRegions'
 import { ProfileSkeleton } from '@/components/Skeleton'
@@ -103,6 +104,15 @@ export default function ProfilePage() {
   const { points, referralCode: swrReferralCode, isLoading: pointsLoading, refetch: refetchPoints } = usePoints(authUser?.id ?? null)
   const { history: pointHistory, isLoading: historyLoading, refetch: refetchHistory } = usePointHistory(authUser?.id ?? null)
   
+  // 学生認証ステータス
+  const [verificationStatus, setVerificationStatus] = useState<VerificationStatus | null>(null)
+  
+  useEffect(() => {
+    if (authUser?.id) {
+      getVerificationStatus(authUser.id).then(setVerificationStatus)
+    }
+  }, [authUser?.id])
+
   // referralCode は SWR または profile から取得（どちらかが取得できれば表示）
   const referralCode = swrReferralCode || profile?.referral_code || null
   
@@ -780,6 +790,47 @@ export default function ProfilePage() {
                     <Mail size={14} />
                     {profile.email}
                   </p>
+                )}
+                
+                {/* 学生認証ステータス */}
+                {profile?.is_student && verificationStatus && (
+                  <div className="mt-3 bg-white/10 rounded-xl p-3 backdrop-blur-sm border border-white/20">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        {verificationStatus.isVerified ? (
+                          <div className="bg-green-500 text-white p-1 rounded-full">
+                            <CheckCircle size={14} className="fill-white text-green-500" />
+                          </div>
+                        ) : (
+                          <div className="bg-yellow-500 text-white p-1 rounded-full">
+                            <ShieldCheck size={14} />
+                          </div>
+                        )}
+                        <span className="text-sm font-bold">
+                          {verificationStatus.isVerified ? '学生認証済み' : '学生認証ステータス'}
+                        </span>
+                      </div>
+                      <span className="text-xs font-bold opacity-80">
+                        {verificationStatus.verificationCount} / {verificationStatus.requiredCount}
+                      </span>
+                    </div>
+                    
+                    {!verificationStatus.isVerified && (
+                      <div className="w-full bg-black/20 rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="bg-yellow-400 h-full rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, (verificationStatus.verificationCount / verificationStatus.requiredCount) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                    
+                    {verificationStatus.isVerified && (
+                      <div className="flex items-center gap-1 text-xs text-green-300 font-bold mt-1">
+                        <Sparkles size={12} />
+                        <span>認証完了バッジ付与済み</span>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
