@@ -130,9 +130,7 @@ export default function ScanContent() {
                   店舗から半径50m以内でスタンプを獲得できます。
                 </p>
                 
-                <div className="overflow-hidden rounded-xl border-2 border-blue-100">
-                  <QRScanner onScan={handleScan} />
-                </div>
+                <QRScanner onScan={handleScan} />
               </div>
             )}
           </div>

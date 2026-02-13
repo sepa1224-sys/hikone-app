@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Html5QrcodeScanner } from 'html5-qrcode'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 
 interface QRScannerProps {
   onScan: (decodedText: string) => void
@@ -9,9 +9,9 @@ interface QRScannerProps {
 }
 
 export default function QRScanner({ onScan, onError }: QRScannerProps) {
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null)
   const [isMounted, setIsMounted] = useState(false)
-
+  const scannerRef = useRef<Html5Qrcode | null>(null)
+  
   useEffect(() => {
     setIsMounted(true)
   }, [])
@@ -19,46 +19,53 @@ export default function QRScanner({ onScan, onError }: QRScannerProps) {
   useEffect(() => {
     if (!isMounted) return
 
-    // スキャナー初期化
-    // "reader" はdivのID
-    // 既に初期化されていたらスキップ
-    if (scannerRef.current) return
+    const elementId = "reader"
+    // Ensure element exists
+    if (!document.getElementById(elementId)) return
 
-    try {
-        const scanner = new Html5QrcodeScanner(
-          "reader",
-          { 
-            fps: 10, 
-            qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0
-          },
-          /* verbose= */ false
-        )
-        
-        scanner.render(
+    const html5QrCode = new Html5Qrcode(elementId, /* verbose= */ false)
+    scannerRef.current = html5QrCode
+
+    const config = {
+      fps: 10,
+      qrbox: { width: 250, height: 250 },
+      aspectRatio: 1.0,
+      formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+    }
+
+    let isRunning = false
+
+    const startScanner = async () => {
+      try {
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
           (decodedText) => {
-            // スキャン成功時
             onScan(decodedText)
           },
           (errorMessage) => {
-            // スキャン失敗（頻繁に発生するのでログには出さない）
-            if (onError) onError(errorMessage)
+            // Ignore parse errors, only report critical setup errors via catch
           }
         )
-    
-        scannerRef.current = scanner
-    } catch (e) {
-        console.error('Scanner init error:', e)
+        isRunning = true
+      } catch (err) {
+        console.error("Error starting scanner:", err)
+        if (onError) onError(err)
+      }
     }
 
+    startScanner()
+
     return () => {
-      // クリーンアップ
-      if (scannerRef.current) {
-        try {
-            scannerRef.current.clear().catch(e => console.error('Failed to clear scanner', e))
-        } catch (e) {
-            console.error('Cleanup error', e)
-        }
+      if (isRunning) {
+        html5QrCode.stop().then(() => {
+          html5QrCode.clear()
+        }).catch(err => {
+          console.error("Failed to stop scanner", err)
+        })
+      } else {
+        // If it didn't start yet or failed, just clear
+        html5QrCode.clear()
       }
     }
   }, [isMounted, onScan, onError])
@@ -66,9 +73,22 @@ export default function QRScanner({ onScan, onError }: QRScannerProps) {
   if (!isMounted) return <div className="h-64 bg-gray-100 animate-pulse rounded-lg"></div>
 
   return (
-    <div className="w-full max-w-sm mx-auto">
-        <div id="reader" className="overflow-hidden rounded-lg"></div>
-        <p className="text-xs text-center text-gray-500 mt-2">カメラへのアクセスを許可してください</p>
+    <div className="w-full max-w-sm mx-auto relative">
+      <div 
+        id="reader" 
+        className="w-full overflow-hidden rounded-lg bg-black"
+        style={{ minHeight: '300px' }}
+      ></div>
+      {/* Overlay guide */}
+      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+        <div className="w-64 h-64 border-2 border-white/50 rounded-lg relative">
+            <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-blue-500 -mt-1 -ml-1"></div>
+            <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-blue-500 -mt-1 -mr-1"></div>
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-blue-500 -mb-1 -ml-1"></div>
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-blue-500 -mb-1 -mr-1"></div>
+        </div>
+      </div>
+      <p className="text-xs text-center text-gray-500 mt-4">QRコードを枠内に合わせてください</p>
     </div>
   )
 }
