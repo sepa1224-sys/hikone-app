@@ -56,7 +56,13 @@ export async function grantStamp(shopId: string, userLat: number, userLng: numbe
     const distance = calculateDistance(userLat, userLng, shop.latitude, shop.longitude)
     console.log(`[Stamp Debug] User: (${userLat}, ${userLng}), Shop: (${shop.latitude}, ${shop.longitude}), Distance: ${distance}m`)
 
-    if (distance > 50) {
+    // 管理者バイパス (ADR-006): ドイツ開発拠点からのテスト用
+    const isAdminBypass = user.email === 'sepa1224@gmail.com'
+    if (isAdminBypass) {
+      console.log('[Stamp Debug] Admin bypass active: Skipping distance check.')
+    }
+
+    if (distance > 50 && !isAdminBypass) {
       return { 
         success: false, 
         message: `店舗からの距離が遠すぎます（現在地から約${Math.round(distance)}m）。店舗に近づいて再度お試しください。` 
