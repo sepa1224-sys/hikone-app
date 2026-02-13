@@ -13,12 +13,13 @@ import {
   UNSUPPORTED_AREA_MESSAGE
 } from '@/lib/constants/shigaRegions'
 import { useAuth } from '@/components/AuthProvider'
+import { updateProfile, type ProfileUpdateData } from '@/lib/actions/profile'
 
 interface ProfileRegistrationModalProps {
   userId: string
   userEmail?: string
   userFullName?: string
-  onComplete: () => void
+  onComplete: (bonusAwarded?: boolean) => void
 }
 
 const GENDERS = ['男性', '女性', 'その他', '回答しない']
@@ -124,7 +125,9 @@ export default function ProfileRegistrationModal({
     user_type: '', // '大学生', '高校生', '専門学生', '社会人', 'その他'
     university_name: '', // 大学名（user_typeが大学生の場合）
     school_name: '',
-    grade: '' as string | number
+    grade: '' as string | number,
+    faculty: '', // 学部（大学生のみ）
+    nearest_station: '' // 最寄り駅
   })
 
   // 生年月日を年・月・日に分解して管理
@@ -211,7 +214,7 @@ export default function ProfileRegistrationModal({
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('full_name, gender, birthday, prefecture, location, region, city, selected_area, detail_area, interests, is_student, school_name, grade, user_type, university_name')
+        .select('full_name, gender, birthday, prefecture, location, region, city, selected_area, detail_area, interests, is_student, school_name, grade, user_type, university_name, faculty, nearest_station')
         .eq('id', userId)
         .single()
 
@@ -262,7 +265,9 @@ export default function ProfileRegistrationModal({
           user_type: data.user_type || '',
           university_name: data.university_name || '',
           school_name: schoolNameFromDB,
-          grade: data.grade ?? ''
+          grade: data.grade ?? '',
+          faculty: data.faculty || '',
+          nearest_station: data.nearest_station || ''
         })
         setBirthYear(year)
         setBirthMonth(month)
@@ -384,91 +389,50 @@ export default function ProfileRegistrationModal({
       // formData.selected_area がある場合はそれを使用、なければ detail_area を使用
       const selectedAreaValue = formData.selected_area || formData.detail_area || null
       
-      const profileData: Record<string, any> = {
-        id: userId,
-        full_name: formData.full_name || null,
-        gender: formData.gender || null,
-        birthday: birthdayString || null, // YYYY-MM-DD形式の日付文字列
-        // 都道府県: prefecture と location の両方に保存（後方互換性）
-        prefecture: formData.prefecture || null,
-        location: formData.prefecture || null, // 旧カラム名にも同じ値を保存
-        region: formData.region || null, // 地方区分（湖東、湖南、湖北、湖西）
-        city: formData.city || null, // 市区町村
-        selected_area: selectedAreaValue, // ゴミ収集エリア（detail_area と統合）
-        interests: formData.interests.length > 0 ? formData.interests : null,
+      // Use Server Action for secure update and bonus check
+      const result = await updateProfile(userId, {
+        full_name: formData.full_name || undefined,
+        gender: formData.gender || undefined,
+        birthday: birthdayString || undefined,
+        prefecture: formData.prefecture || undefined,
+        location: formData.prefecture || undefined, // legacy
+        region: formData.region || undefined,
+        city: formData.city || undefined,
+        selected_area: selectedAreaValue || undefined,
+        detail_area: formData.detail_area || undefined,
+        interests: formData.interests.length > 0 ? formData.interests : undefined,
         is_student: formData.is_student,
-        school_name: formData.is_student ? formData.school_name : null,
-        grade: formData.is_student ? (formData.grade || null) : null,
-        user_type: formData.is_student ? formData.user_type : null,
-        university_name: (formData.is_student && formData.user_type === '大学生') ? formData.university_name : null,
-        updated_at: new Date().toISOString()
-      }
-      
-      // detail_area カラムが存在する場合は追加（マイグレーション適用後）
-      // 存在しない場合はエラーを無視して selected_area に統合済み
-      if (formData.detail_area) {
-        profileData.detail_area = formData.detail_area
-      }
-      
-      console.log('📋 [Profile] 保存データ:', profileData)
-      console.log('📋 [Profile] ユーザーID:', userId)
+        school_name: formData.is_student ? (formData.school_name || undefined) : undefined,
+        grade: formData.is_student ? (formData.grade || undefined) : undefined,
+        user_type: formData.is_student ? (formData.user_type || undefined) : undefined,
+        university_name: (formData.is_student && formData.user_type === '大学生') ? (formData.university_name || undefined) : undefined,
+        faculty: (formData.is_student && formData.user_type === '大学生') ? (formData.faculty || undefined) : undefined,
+        nearest_station: formData.nearest_station || undefined
+      })
 
-      // profilesテーブルにupsert（更新または挿入）
-      // onConflict: 'id' を明示的に指定して、既存レコードがある場合は確実に更新
-      let { data, error } = await supabase
-        .from('profiles')
-        .upsert(profileData, { 
-          onConflict: 'id',
-          ignoreDuplicates: false // falseにすることで、既存レコードを更新
-        })
-        .select()
-
-      // detail_area や学生関連のカラムが存在しないエラーの場合、それらを除いて再試行
-      if (error && (error.message.includes('detail_area') || error.message.includes('is_student') || error.message.includes('school_name') || error.message.includes('grade') || error.message.includes('user_type') || error.message.includes('university_name'))) {
-        console.warn('📋 [Profile] 新しいカラムが存在しないため、除外して再試行')
-        const retryProfileData = { ...profileData }
-        delete retryProfileData.detail_area
-        delete retryProfileData.is_student
-        delete retryProfileData.school_name
-        delete retryProfileData.grade
-        delete retryProfileData.user_type
-        delete retryProfileData.university_name
-        const retryResult = await supabase
-          .from('profiles')
-          .upsert(retryProfileData, { 
-            onConflict: 'id',
-            ignoreDuplicates: false
-          })
-          .select()
-        data = retryResult.data
-        error = retryResult.error
-      }
-
-      if (error) {
-        console.error('📋 [Profile] 保存失敗の理由:', error.message)
-        console.error('📋 [Profile] エラー詳細:', JSON.stringify(error, null, 2))
-        console.error('📋 [Profile] エラーコード:', error.code)
-        
-        setErrorMsg(`保存に失敗しました: ${error.message}`)
-        setSaving(false) // エラー時も確実に解除
+      if (!result.success) {
+        console.error('📋 [Profile] 保存失敗:', result.message, result.error)
+        setErrorMsg(`保存に失敗しました: ${result.message}`)
+        setSaving(false)
         setTimeout(() => setErrorMsg(''), 5000)
-      } else {
-        console.log('📋 [Profile] 保存成功:', data)
-        setShowSuccess(true)
-        setErrorMsg('')
-        
-        // コンテキストのプロフィールを更新
-        await refreshProfile()
-        // モーダル内のステートも最新化（DBから再取得）
-        console.log('📋 [Profile] 保存完了、最新データを再取得します')
-        await checkProfileStatus()
-        
-        // 保存成功通知を表示してからモーダルを閉じる
-        setTimeout(() => {
-          setSaving(false) // 閉じる直前に解除
-          onComplete()
-        }, 1500)
+        return
       }
+
+      console.log('📋 [Profile] 保存成功:', result)
+      setShowSuccess(true)
+      setErrorMsg('')
+      
+      // コンテキストのプロフィールを更新
+      await refreshProfile()
+      // モーダル内のステートも最新化（DBから再取得）
+      console.log('📋 [Profile] 保存完了、最新データを再取得します')
+      await checkProfileStatus()
+      
+      // 保存成功通知を表示してからモーダルを閉じる
+      setTimeout(() => {
+        setSaving(false) // 閉じる直前に解除
+        onComplete(result.bonusAwarded)
+      }, 1500)
     } catch (error: any) {
       console.error('Unexpected error:', error)
       setErrorMsg(`予期しないエラー: ${error?.message || '不明なエラー'}`)
@@ -626,17 +590,6 @@ export default function ProfileRegistrationModal({
                         <option value="その他">その他（自由入力）</option>
                       </select>
                       {(!['滋賀大学', '滋賀県立大学', '聖泉大学', ''].includes(formData.university_name) || formData.university_name === '') && (
-                        // 「その他」が選択された場合（空文字含む）またはリストにない値の場合に入力を表示
-                        // ただし初期状態（空）では表示したくないので、Selectが「その他」の時だけ表示する制御が必要
-                        // ここでは簡易的に「Selectの値が'その他'」の時にInputを出すようにするが、
-                        // Inputに入力するとSelectの値は'その他'になる（リストにないから）のでOK
-                        (['滋賀大学', '滋賀県立大学', '聖泉大学', ''].includes(formData.university_name) === false || formData.university_name === '') && 
-                        // 直前のSelectで「その他」を選んだ場合、formData.university_nameは''になる
-                        // その場合に入力を出したいが、初期状態も''なので区別がつかない
-                        // なので、university_nameが空の場合はSelectで選ばせる
-                        // 一旦、値が入っているがリストにない場合のみInputを表示し、
-                        // 「その他」を選んだ時はInputにフォーカスさせるなどの工夫が必要
-                        // シンプルに: Selectでその他を選んだら、Inputを表示。
                         <input
                           type="text"
                           placeholder="大学名を入力してください"
@@ -646,6 +599,49 @@ export default function ProfileRegistrationModal({
                         />
                       )}
                     </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-gray-500 ml-2">学部</label>
+                      <select
+                        value={['経済学部', 'データサイエンス学部', '教育学部', '人間文化学部', '工学部', '人間看護学部', '環境科学学部', ''].includes(formData.faculty) ? formData.faculty : 'その他'}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setFormData({ 
+                            ...formData, 
+                            faculty: val === 'その他' ? '' : val 
+                          })
+                        }}
+                        className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm"
+                      >
+                        <option value="">学部を選択してください</option>
+                        {formData.university_name === '滋賀大学' && (
+                          <>
+                            <option value="経済学部">経済学部</option>
+                            <option value="データサイエンス学部">データサイエンス学部</option>
+                            <option value="教育学部">教育学部</option>
+                          </>
+                        )}
+                        {formData.university_name === '滋賀県立大学' && (
+                          <>
+                            <option value="人間文化学部">人間文化学部</option>
+                            <option value="工学部">工学部</option>
+                            <option value="人間看護学部">人間看護学部</option>
+                            <option value="環境科学学部">環境科学学部</option>
+                          </>
+                        )}
+                        <option value="その他">その他（自由入力）</option>
+                      </select>
+                      {(!['経済学部', 'データサイエンス学部', '教育学部', '人間文化学部', '工学部', '人間看護学部', '環境科学学部', ''].includes(formData.faculty) || formData.faculty === '') && (
+                        <input
+                          type="text"
+                          placeholder="学部を入力してください"
+                          className="w-full bg-white border-2 border-orange-100 rounded-xl py-3 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none text-sm mt-2"
+                          value={formData.faculty}
+                          onChange={(e) => setFormData({ ...formData, faculty: e.target.value })}
+                        />
+                      )}
+                    </div>
+
                   )}
 
                   {/* 大学生以外の場合: 学校名 */}
@@ -899,6 +895,18 @@ export default function ProfileRegistrationModal({
                   />
                 </div>
               )}
+
+              {/* 最寄り駅 */}
+              <div className="relative">
+                <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                <input
+                  type="text"
+                  value={formData.nearest_station}
+                  onChange={(e) => setFormData({ ...formData, nearest_station: e.target.value })}
+                  placeholder="最寄り駅"
+                  className="w-full bg-white border-2 border-gray-200 rounded-[1.5rem] py-4 pl-14 pr-5 font-bold text-black placeholder:text-gray-400 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm"
+                />
+              </div>
               
               {/* 選択状況の表示 */}
               {formData.city && (

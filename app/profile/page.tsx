@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import imageCompression from 'browser-image-compression'
 import { useRouter } from 'next/navigation'
-import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History, Camera, Home, School, GraduationCap, Layout, ShieldCheck, CheckCircle } from 'lucide-react'
+import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History, Camera, Home, School, GraduationCap, Layout, ShieldCheck, CheckCircle, RefreshCw } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
 import { usePoints, usePointHistory, getPointHistoryStyle, PointHistory } from '@/lib/hooks/usePoints'
@@ -12,7 +12,8 @@ import { applyReferralCode } from '@/lib/actions/referral'
 import { useFriends, addFriend, removeFriend, searchUserByCode, Friend } from '@/lib/hooks/useFriends'
 import { sendHikopo } from '@/lib/actions/transfer'
 import { getUniversityStats, UniversityStats } from '@/lib/actions/stats'
-import { getVerificationStatus, VerificationStatus } from '@/lib/actions/student-verification'
+import { getVerificationStatus, verifyStudentWithQR, VerificationStatus } from '@/lib/actions/student-verification'
+import { getProfileCompletionStatus } from '@/lib/actions/profile'
 import QRCode from 'react-qr-code'
 import { formatFullLocation, formatShortLocation } from '@/lib/constants/shigaRegions'
 import { ProfileSkeleton } from '@/components/Skeleton'
@@ -82,6 +83,16 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false)
   const [profile, setProfile] = useState<any>(null)
   
+  // プロフィール完了状況
+  const [completionStatus, setCompletionStatus] = useState<{
+    progress: number
+    isComplete: boolean
+    isAwarded: boolean
+  } | null>(null)
+
+  // コンプリートボーナスアニメーション表示用
+  const [showCompletionBonus, setShowCompletionBonus] = useState(false)
+  
   // QRスキャナー用のステート
   const [showScanner, setShowScanner] = useState(false)
   
@@ -91,6 +102,24 @@ export default function ProfilePage() {
       setProfile(authProfile)
     }
   }, [authProfile])
+  
+  // プロフィール完了状況の取得
+  useEffect(() => {
+    if (authUser?.id) {
+      getProfileCompletionStatus(authUser.id).then(status => {
+        setCompletionStatus(status)
+        // もし完了していて、かつ未受領なら（受領済みフラグはサーバー側で処理されるが、
+        // クライアント側でアニメーションを出すトリガーとして使うため）
+        if (status.isComplete && !status.isAwarded) {
+          // アニメーション表示などの処理（必要なら）
+          // 実際にはサーバー側でis_profile_completedが更新されるので、
+          // ここでは再取得した時点でisAwardedがtrueになっている可能性がある
+          // そのため、前の状態と比較する必要があるが、一旦シンプルに表示
+        }
+      })
+    }
+  }, [authUser?.id, profile]) // profileが変わったら再取得
+
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [copied, setCopied] = useState(false)
   const [generatingCode, setGeneratingCode] = useState(false)
@@ -106,6 +135,43 @@ export default function ProfilePage() {
   
   // 学生認証ステータス
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatus | null>(null)
+  
+  // 学生認証QRスキャナー用
+  const [showStudentScanner, setShowStudentScanner] = useState(false)
+  const [showStudentQR, setShowStudentQR] = useState(false)
+  const [studentQRData, setStudentQRData] = useState<string | null>(null)
+  
+  // QRコード生成（5分ごとに更新）
+  useEffect(() => {
+    if (authUser?.id && profile?.is_student) {
+      const updateQR = () => {
+        setStudentQRData(`student-verification:${authUser.id}:${Date.now()}`)
+      }
+      updateQR()
+      const interval = setInterval(updateQR, 5 * 60 * 1000) // 5 minutes
+      return () => clearInterval(interval)
+    }
+  }, [authUser?.id, profile?.is_student])
+
+  const handleStudentScanSuccess = async (code: string) => {
+    setShowStudentScanner(false)
+    try {
+      const result = await verifyStudentWithQR(code)
+      if (result.success) {
+        alert(result.message)
+        // Refresh status
+        if (authUser?.id) {
+          getVerificationStatus(authUser.id).then(setVerificationStatus)
+        }
+        refetchPoints()
+      } else {
+        alert(`❌ エラー: ${result.message}`)
+      }
+    } catch (e) {
+      console.error(e)
+      alert('認証処理に失敗しました')
+    }
+  }
   
   useEffect(() => {
     if (authUser?.id) {
@@ -758,6 +824,38 @@ export default function ProfilePage() {
           </button>
         </div>
 
+        {/* プロフィール入力進捗ゲージ */}
+        {completionStatus && !completionStatus.isAwarded && (
+          <div className="bg-white rounded-[2rem] p-5 shadow-lg border-2 border-indigo-100 relative overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="flex justify-between items-center mb-3 relative z-10">
+              <div className="flex items-center gap-2">
+                <div className="bg-indigo-100 p-2 rounded-xl">
+                  <UserCircle size={20} className="text-indigo-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-bold">プロフィール充実度</p>
+                  <p className="text-sm font-black text-gray-800">全て入力して200ptゲット！</p>
+                </div>
+              </div>
+              <span className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-xs font-black shadow-md shadow-indigo-200">
+                {completionStatus.isComplete ? '完了！' : `${Math.round(completionStatus.progress)}%`}
+              </span>
+            </div>
+            
+            <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
+              <div 
+                className="absolute top-0 left-0 h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-1000 ease-out rounded-full shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                style={{ width: `${completionStatus.progress}%` }}
+              />
+              {/* キラキラエフェクト */}
+              <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" style={{ transform: 'skewX(-20deg)' }} />
+            </div>
+
+            {/* 装飾 */}
+            <div className="absolute -top-6 -right-6 w-24 h-24 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-full opacity-50 blur-xl" />
+          </div>
+        )}
+
         {/* プロフィールヘッダー */}
         <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden">
           <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full" />
@@ -828,6 +926,55 @@ export default function ProfilePage() {
                       <div className="flex items-center gap-1 text-xs text-green-300 font-bold mt-1">
                         <Sparkles size={12} />
                         <span>認証完了バッジ付与済み</span>
+                      </div>
+                    )}
+
+                    {/* QR認証アクション */}
+                    <div className="mt-3 pt-3 border-t border-white/20 grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setShowStudentScanner(true)}
+                        className="bg-white/20 hover:bg-white/30 active:scale-95 text-white text-xs font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <Camera size={14} />
+                        相手を認証
+                      </button>
+                      <button
+                        onClick={() => setShowStudentQR(!showStudentQR)}
+                        className={`bg-white/20 hover:bg-white/30 active:scale-95 text-white text-xs font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${showStudentQR ? 'bg-white/40 ring-2 ring-white/50' : ''}`}
+                      >
+                        <QrCode size={14} />
+                        QRを表示
+                      </button>
+                    </div>
+
+                    {/* QRコード表示エリア */}
+                    {showStudentQR && (
+                      <div className="mt-3 bg-white p-3 rounded-xl animate-in fade-in zoom-in-95 duration-200">
+                        <p className="text-gray-800 text-xs font-bold text-center mb-2">学生認証用QRコード</p>
+                        <div className="flex justify-center">
+                          {studentQRData ? (
+                            <div className="bg-white p-2 rounded-lg border-2 border-purple-500 relative">
+                              <QRCode
+                                value={studentQRData}
+                                size={140}
+                                level="M"
+                                fgColor="#000000"
+                                bgColor="#ffffff"
+                              />
+                              <div className="absolute -bottom-2 -right-2 bg-purple-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                                {profile.full_name}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="w-[140px] h-[140px] bg-gray-100 flex items-center justify-center rounded-lg">
+                              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-gray-500 text-center mt-3 leading-tight">
+                          このQRコードは5分間有効です。<br/>
+                          同じ学校の学生にスキャンしてもらってください。
+                        </p>
                       </div>
                     )}
                   </div>
@@ -1516,6 +1663,17 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* 学生認証QRスキャナー */}
+      {showStudentScanner && (
+        <QRScanner
+          onScanSuccess={handleStudentScanSuccess}
+          onClose={() => setShowStudentScanner(false)}
+          title="学生認証QRスキャン"
+          instruction="相手の学生認証QRコードを枠内に入れてください"
+          validationMode="student_verification"
+        />
+      )}
+
       {/* 大学統計モーダル */}
       {showStatsModal && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center p-6">
@@ -1608,13 +1766,18 @@ export default function ProfilePage() {
           userId={authUser.id}
           userEmail={authUser.email}
           userFullName={authUser.user_metadata?.full_name || authUser.user_metadata?.name || profile?.full_name}
-          onComplete={async () => {
+          onComplete={async (bonusAwarded) => {
             setShowProfileModal(false)
             // 最新のプロフィールデータを再取得（キャッシュクリア）
             console.log('📋 [Profile] モーダル閉じ後、最新データを再取得')
             await fetchProfileData()
             // ポイント情報も再取得
             refetchPoints()
+            
+            // ボーナス獲得アニメーション表示
+            if (bonusAwarded) {
+              setShowCompletionBonus(true)
+            }
           }}
         />
       )}
@@ -1933,6 +2096,49 @@ export default function ProfilePage() {
         </div>
       )}
       
+      {/* 完了ボーナスアニメーション */}
+      {showCompletionBonus && (
+        <div className="fixed inset-0 z-[10002] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowCompletionBonus(false)}
+          />
+          <div className="relative bg-white rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-500 overflow-hidden text-center">
+            {/* 背景エフェクト */}
+            <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+               <div className="absolute -top-[50%] -left-[50%] w-[200%] h-[200%] bg-gradient-to-br from-yellow-200 via-transparent to-transparent opacity-30 animate-[spin_10s_linear_infinite]" />
+            </div>
+
+            <div className="relative z-10">
+              <div className="w-24 h-24 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
+                <span className="text-6xl">🎉</span>
+              </div>
+              
+              <h3 className="text-2xl font-black text-indigo-600 mb-2">おめでとう！</h3>
+              <p className="text-lg font-bold text-gray-700 mb-6">
+                プロフィールコンプリートボーナス<br/>
+                <span className="text-3xl font-black text-yellow-500 drop-shadow-sm">+200pt</span><br/>
+                獲得しました！
+              </p>
+
+              <div className="bg-yellow-50 rounded-2xl p-4 mb-6 border border-yellow-200">
+                 <p className="text-xs text-gray-500 font-bold mb-1">現在のポイント</p>
+                 <p className="text-3xl font-black text-gray-800">
+                   {points.toLocaleString()} <span className="text-sm">pt</span>
+                 </p>
+              </div>
+
+              <button
+                onClick={() => setShowCompletionBonus(false)}
+                className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-2xl font-black shadow-lg shadow-indigo-200 active:scale-95 transition-all"
+              >
+                やったね！
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 下部ナビゲーション */}
       <BottomNavigation />
 
