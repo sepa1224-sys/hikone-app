@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { X, User, MapPin, Save, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react'
+import { X, User, MapPin, Save, CheckCircle2, AlertCircle, Sparkles, Lock } from 'lucide-react'
 import { 
   SHIGA_REGIONS, 
   SHIGA_REGION_CITIES, 
@@ -134,6 +134,7 @@ export default function ProfileRegistrationModal({
   const [birthYear, setBirthYear] = useState<string>('')
   const [birthMonth, setBirthMonth] = useState<string>('')
   const [birthDay, setBirthDay] = useState<string>('')
+  const [birthdayLocked, setBirthdayLocked] = useState(false)
 
   // 年・月・日からYYYY-MM-DD形式の文字列を生成
   const formatBirthday = (year: string, month: string, day: string): string => {
@@ -272,6 +273,13 @@ export default function ProfileRegistrationModal({
         setBirthYear(year)
         setBirthMonth(month)
         setBirthDay(day)
+        
+        // 生年月日が既に設定されている場合はロックする
+        if (birthday) {
+          setBirthdayLocked(true)
+        } else {
+          setBirthdayLocked(false)
+        }
       } else {
         console.log('📋 [ProfileModal] No data found for user, using defaults')
       }
@@ -319,6 +327,13 @@ export default function ProfileRegistrationModal({
     // 必須項目のチェック
     if (!formData.full_name.trim()) {
       setErrorMsg('お名前を入力してください')
+      setTimeout(() => setErrorMsg(''), 3000)
+      return
+    }
+
+    // 生年月日の必須チェック
+    if (!birthYear || !birthMonth || !birthDay) {
+      setErrorMsg('生年月日を入力してください')
       setTimeout(() => setErrorMsg(''), 3000)
       return
     }
@@ -761,13 +776,22 @@ export default function ProfileRegistrationModal({
               <label className="flex items-center gap-2 ml-2">
                 <div className="w-1.5 h-4 bg-orange-500 rounded-full" />
                 <span className="text-xs font-black text-gray-400 uppercase tracking-widest">生年月日</span>
+                {birthdayLocked && (
+                  <span className="flex items-center gap-1 text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full border border-gray-200">
+                    <Lock size={10} />
+                    変更不可
+                  </span>
+                )}
               </label>
               <div className="flex gap-3">
                 {/* 年 */}
                 <select
                   value={birthYear}
                   onChange={(e) => setBirthYear(e.target.value)}
-                  className="flex-1 bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 px-4 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm"
+                  disabled={birthdayLocked}
+                  className={`flex-1 border-2 border-transparent rounded-[1.5rem] py-4 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none transition-all text-sm ${
+                    birthdayLocked ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-50 focus:bg-white'
+                  }`}
                 >
                   <option value="">年</option>
                   {years.map((year) => (
@@ -778,7 +802,10 @@ export default function ProfileRegistrationModal({
                 <select
                   value={birthMonth}
                   onChange={(e) => setBirthMonth(e.target.value)}
-                  className="flex-1 bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 px-4 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm"
+                  disabled={birthdayLocked}
+                  className={`flex-1 border-2 border-transparent rounded-[1.5rem] py-4 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none transition-all text-sm ${
+                    birthdayLocked ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-50 focus:bg-white'
+                  }`}
                 >
                   <option value="">月</option>
                   {months.map((month) => (
@@ -789,7 +816,10 @@ export default function ProfileRegistrationModal({
                 <select
                   value={birthDay}
                   onChange={(e) => setBirthDay(e.target.value)}
-                  className="flex-1 bg-gray-50 border-2 border-transparent rounded-[1.5rem] py-4 px-4 font-bold text-gray-700 focus:border-orange-400 focus:bg-white focus:outline-none transition-all text-sm"
+                  disabled={birthdayLocked}
+                  className={`flex-1 border-2 border-transparent rounded-[1.5rem] py-4 px-4 font-bold text-gray-700 focus:border-orange-400 focus:outline-none transition-all text-sm ${
+                    birthdayLocked ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-50 focus:bg-white'
+                  }`}
                 >
                   <option value="">日</option>
                   {days.map((day) => (

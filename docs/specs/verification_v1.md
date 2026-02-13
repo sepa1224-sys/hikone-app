@@ -44,6 +44,9 @@
 - **プログレスバー**:
   - 「学生認証まであと X 人」を表示。
   - 3人認証済みなら「認証済み」と表示。
+- **QRコード認証セクション**:
+  - **QR表示**: 自分の認証用QRコードを表示（5分間有効）。
+  - **スキャナー**: 相手のQRコードを読み取るためのカメラ起動ボタン。
 
 ## 5. API / Server Actions
 
@@ -53,3 +56,23 @@
 
 ### `getVerificationStatus(userId: string)`
 - 現在の認証数、認証済みかどうかを返す。
+
+### `verifyStudentWithQR(qrData: string)`
+- QRコード文字列 (`student-verification:{userId}:{timestamp}`) を検証。
+- タイムスタンプの有効期限（10分）をチェック。
+- 有効であれば `verifyStudent` を内部的に呼び出す。
+
+## 6. QRコード認証 (対面認証)
+
+### データフォーマット
+- `student-verification:{user_id}:{timestamp}`
+- 例: `student-verification:uuid-v4-xxx:1700000000000`
+
+### セキュリティ
+- **有効期限**: 生成から10分間（クライアント側では5分ごとに再生成）。
+- **なりすまし防止**: アプリ内生成のみ対応（外部生成QRの不正利用防止は完全ではないが、timestampで抑制）。
+- **バリデーション**:
+  - フォーマットチェック
+  - タイムスタンプチェック
+  - 同一ユーザーチェック
+  - 同一学校チェック（`verifyStudent` 内で実施）

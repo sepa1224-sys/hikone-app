@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import imageCompression from 'browser-image-compression'
 import { useRouter } from 'next/navigation'
-import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History, Camera, Home, School, GraduationCap, Layout, ShieldCheck, CheckCircle, RefreshCw } from 'lucide-react'
+import { User, MapPin, LogOut, Edit, Mail, Calendar, UserCircle, Heart, Cake, MessageSquare, ChevronRight, Gift, Copy, Check, Share2, ExternalLink, Ticket, Loader2, Send, Users, UserPlus, X, Trash2, Coins, ArrowRight, Sparkles, Search, QrCode, Settings, History, Camera, Home, School, GraduationCap, Layout, ShieldCheck, CheckCircle, RefreshCw, Grid } from 'lucide-react'
 import ProfileRegistrationModal from '@/components/ProfileRegistrationModal'
 import BottomNavigation from '@/components/BottomNavigation'
 import { usePoints, usePointHistory, getPointHistoryStyle, PointHistory } from '@/lib/hooks/usePoints'
@@ -14,6 +14,8 @@ import { sendHikopo } from '@/lib/actions/transfer'
 import { getUniversityStats, UniversityStats } from '@/lib/actions/stats'
 import { getVerificationStatus, verifyStudentWithQR, VerificationStatus } from '@/lib/actions/student-verification'
 import { getProfileCompletionStatus } from '@/lib/actions/profile'
+import { getWidgetSettings, UserWidgetSettings } from '@/lib/actions/user-settings'
+import WidgetSettingsModal from '@/components/home/WidgetSettingsModal'
 import QRCode from 'react-qr-code'
 import { formatFullLocation, formatShortLocation } from '@/lib/constants/shigaRegions'
 import { ProfileSkeleton } from '@/components/Skeleton'
@@ -140,6 +142,16 @@ export default function ProfilePage() {
   const [showStudentScanner, setShowStudentScanner] = useState(false)
   const [showStudentQR, setShowStudentQR] = useState(false)
   const [studentQRData, setStudentQRData] = useState<string | null>(null)
+
+  // ウィジェット設定
+  const [widgetSettings, setWidgetSettings] = useState<UserWidgetSettings | null>(null)
+  const [showWidgetSettings, setShowWidgetSettings] = useState(false)
+
+  useEffect(() => {
+    if (authUser?.id) {
+      getWidgetSettings(authUser.id).then(setWidgetSettings)
+    }
+  }, [authUser?.id])
   
   // QRコード生成（5分ごとに更新）
   useEffect(() => {
@@ -1550,6 +1562,21 @@ export default function ProfilePage() {
           <h3 className="text-lg font-black text-gray-800 mb-4">メニュー</h3>
           
           <div className="space-y-3">
+            {/* ホーム画面のカスタマイズ */}
+            <button
+              onClick={() => setShowWidgetSettings(true)}
+              className="w-full flex items-center gap-4 p-4 bg-gray-50 hover:bg-orange-50 rounded-2xl transition-colors group"
+            >
+              <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center group-hover:bg-orange-200 transition-colors">
+                <Grid size={20} className="text-orange-500" />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="font-black text-gray-800">ホーム画面のカスタマイズ</p>
+                <p className="text-xs text-gray-500 font-bold">ウィジェットの表示・並び替え</p>
+              </div>
+              <ChevronRight size={20} className="text-gray-400 group-hover:text-orange-500 transition-colors" />
+            </button>
+
             {/* フレンド一覧 */}
             <button
               onClick={() => router.push('/friends')}
@@ -2137,6 +2164,19 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ウィジェット設定モーダル */}
+      {authUser?.id && widgetSettings && (
+        <WidgetSettingsModal
+          isOpen={showWidgetSettings}
+          onClose={() => setShowWidgetSettings(false)}
+          settings={widgetSettings}
+          userId={authUser.id}
+          onSave={(newSettings) => {
+            setWidgetSettings(newSettings)
+          }}
+        />
       )}
 
       {/* 下部ナビゲーション */}

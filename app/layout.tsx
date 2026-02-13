@@ -1,6 +1,8 @@
 import './globals.css'
 import { AuthProvider } from '@/components/AuthProvider'
 import ShopStaffHeader from '@/components/shop/ShopStaffHeader'
+import { Toaster } from 'sonner'
+import BonusChecker from '@/components/BonusChecker'
 
 export default function RootLayout({
   children,
@@ -12,12 +14,14 @@ export default function RootLayout({
       <body className="bg-gray-50 pb-20" suppressHydrationWarning={true}>
         {/* 認証プロバイダーでアプリ全体をラップ */}
         <AuthProvider>
+          <BonusChecker />
           {/* 店舗スタッフ用ヘッダー（一般画面閲覧時のみ表示） */}
           <ShopStaffHeader />
           {/* メインコンテンツ */}
           {/* ボトムナビゲーションは各ページで個別に呼び出し（onNavigateプロパティ対応のため） */}
           <main>{children}</main>
         </AuthProvider>
+        <Toaster position="top-center" />
       </body>
     </html>
   )

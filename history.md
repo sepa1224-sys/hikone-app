@@ -19,3 +19,16 @@
   - プロフィール画面への進捗ゲージ表示
   - ポイント獲得時の完了アニメーション実装
   - ドキュメント: `docs/specs/point_system.md` 作成
+- **[PULSE] 生年月日ロック、誕生日・ログインボーナスの実装 (ADR-023, ADR-024)**
+  - 生年月日のImmutable化（登録時必須、変更不可ロック、Backendバリデーション）
+  - デイリーログインボーナス（10pt/日、連続ログイン記録）
+  - 誕生日ボーナス（500pt/年、初回ログイン時Confetti演出）
+  - UI実装: `BonusChecker` コンポーネント、`sonner` トースト通知
+  - ドキュメント: `docs/specs/point_system.md`, `docs/specs/user_profile.md` 更新
+- **パーソナライズ・ホームおよびウィジェットシステムの導入**
+  - ホーム画面のウィジェット化（WidgetGrid, Next Train, Garbage Info, Quick Action）
+  - ウィジェット設定の永続化（user_settingsテーブル, JSONB保存）
+  - ユーザー属性（学生/一般）に基づくデフォルトウィジェット構成の自動パーソナライズ
+  - ウィジェット設定モーダル（表示切替、並び替え機能）の実装
+  - プロフィール画面への設定導線追加
+  - ドキュメント: `docs/specs/home_widgets.md` 作成

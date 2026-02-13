@@ -5,13 +5,20 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Camera, X, Loader2, QrCode, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react'
 
 interface QRScannerProps {
-  onScanSuccess: (referralCode: string) => void
+  onScanSuccess: (code: string) => void
   onClose: () => void
   title?: string
   instruction?: string
+  validationMode?: 'referral' | 'student_verification'
 }
 
-export default function QRScanner({ onScanSuccess, onClose, title = 'QRスキャン', instruction = '相手のQRコードを枠内に入れてください' }: QRScannerProps) {
+export default function QRScanner({ 
+  onScanSuccess, 
+  onClose, 
+  title = 'QRスキャン', 
+  instruction = '相手のQRコードを枠内に入れてください',
+  validationMode = 'referral'
+}: QRScannerProps) {
   const [isScanning, setIsScanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -54,11 +61,20 @@ export default function QRScanner({ onScanSuccess, onClose, title = 'QRスキャ
     }
   }, [])
 
-  // QRコードから招待コードを抽出
-  const extractReferralCode = useCallback((qrData: string): string | null => {
+  // QRコードの検証と抽出
+  const validateAndExtractCode = useCallback((qrData: string): string | null => {
     if (!qrData) return null
     const cleaned = qrData.replace(/\s/g, '') // 全ての空白・改行を除去
     
+    // 学生認証モード
+    if (validationMode === 'student_verification') {
+      if (cleaned.startsWith('student-verification:')) {
+        return cleaned // サーバー側での検証用に生の文字列を返す
+      }
+      return null
+    }
+
+    // デフォルト: 招待コードモード
     if (cleaned.startsWith('hikopo:')) {
       const code = cleaned.replace('hikopo:', '').toUpperCase()
       if (/^[A-Z0-9]{8,12}$/.test(code)) {
@@ -72,7 +88,7 @@ export default function QRScanner({ onScanSuccess, onClose, title = 'QRスキャ
     }
     
     return null
-  }, [])
+  }, [validationMode])
 
   // スキャナーの停止
   const stopScanner = useCallback(async () => {
@@ -91,22 +107,27 @@ export default function QRScanner({ onScanSuccess, onClose, title = 'QRスキャ
 
   // スキャン成功時の処理
   const handleScanSuccess = useCallback(async (decodedText: string) => {
-    const referralCode = extractReferralCode(decodedText)
+    const validCode = validateAndExtractCode(decodedText)
     
-    if (referralCode) {
+    if (validCode) {
       // スキャン停止
       await stopScanner()
       
       // フィードバック
       playSuccessFeedback()
-      setSuccess(`コードを読み取りました: ${referralCode}`)
+      
+      const displayCode = validationMode === 'student_verification' 
+        ? '認証コードを確認しました'
+        : `コードを読み取りました: ${validCode}`
+      
+      setSuccess(displayCode)
       
       // 少し待ってからコールバック
       setTimeout(() => {
-        onScanSuccess(referralCode)
+        onScanSuccess(validCode)
       }, 800)
     }
-  }, [extractReferralCode, playSuccessFeedback, onScanSuccess, stopScanner])
+  }, [validateAndExtractCode, playSuccessFeedback, onScanSuccess, stopScanner, validationMode])
 
   // スキャナーの開始
   const startScanner = useCallback(async () => {
@@ -198,85 +219,54 @@ export default function QRScanner({ onScanSuccess, onClose, title = 'QRスキャ
           <div className="absolute inset-0 z-10 bg-black/80 flex items-center justify-center">
             <div className="bg-green-500 text-white p-6 rounded-3xl text-center animate-in zoom-in duration-200">
               <CheckCircle size={64} className="mx-auto mb-4" />
-              <p className="text-lg font-black">{success}</p>
+              <p className="font-bold text-xl">{success}</p>
             </div>
           </div>
         )}
-        
+
         {/* エラー表示 */}
         {error && (
-          <div className="text-center mb-4">
-            <div className="bg-red-500/20 text-red-400 p-4 rounded-2xl mb-4">
-              <AlertCircle size={32} className="mx-auto mb-2" />
-              <p className="font-bold">{error}</p>
-            </div>
-            <button
-              onClick={startScanner}
-              className="bg-white text-gray-800 px-6 py-3 rounded-xl font-black"
-            >
-              再試行
-            </button>
+          <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-4 rounded-xl mb-4 flex items-center gap-3">
+            <AlertCircle size={24} />
+            <p className="font-bold">{error}</p>
           </div>
         )}
-        
-        {/* カメラプレビュー */}
-        <div 
-          ref={containerRef}
-          className="relative w-full max-w-sm aspect-square rounded-3xl overflow-hidden bg-gray-900 shadow-2xl border-4 border-white/10"
-        >
+
+        {/* スキャナー本体 */}
+        <div ref={containerRef} className="relative w-full max-w-sm aspect-square bg-black rounded-3xl overflow-hidden shadow-2xl border-2 border-white/20">
           <div id="qr-reader" className="w-full h-full" />
           
-          {/* ローディング */}
-          {isScanning && !error && hasPermission === null && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-              <Loader2 size={48} className="animate-spin text-white" />
-            </div>
-          )}
-          
-          {/* スキャンガイド */}
-          {isScanning && !error && hasPermission && (
-            <div className="absolute inset-0 pointer-events-none">
-              {/* コーナーガイド */}
-              <div className="absolute top-[15%] left-[15%] w-12 h-12 border-t-4 border-l-4 border-red-500 rounded-tl-xl" />
-              <div className="absolute top-[15%] right-[15%] w-12 h-12 border-t-4 border-r-4 border-red-500 rounded-tr-xl" />
-              <div className="absolute bottom-[15%] left-[15%] w-12 h-12 border-b-4 border-l-4 border-red-500 rounded-bl-xl" />
-              <div className="absolute bottom-[15%] right-[15%] w-12 h-12 border-b-4 border-r-4 border-red-500 rounded-br-xl" />
+          {/* スキャン中のアニメーション */}
+          {!error && !success && hasPermission && (
+            <>
+              {/* 四隅の枠 */}
+              <div className="absolute top-8 left-8 w-12 h-12 border-t-4 border-l-4 border-emerald-500 rounded-tl-xl z-10" />
+              <div className="absolute top-8 right-8 w-12 h-12 border-t-4 border-r-4 border-emerald-500 rounded-tr-xl z-10" />
+              <div className="absolute bottom-8 left-8 w-12 h-12 border-b-4 border-l-4 border-emerald-500 rounded-bl-xl z-10" />
+              <div className="absolute bottom-8 right-8 w-12 h-12 border-b-4 border-r-4 border-emerald-500 rounded-br-xl z-10" />
               
               {/* スキャンライン */}
-              <div className="absolute top-[15%] left-[15%] right-[15%] h-0.5 bg-red-500 animate-pulse" 
-                   style={{ animation: 'scanLine 2s ease-in-out infinite' }} />
+              <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,1)] animate-[scan_2s_ease-in-out_infinite] z-10" />
+              
+              {/* ガイドテキスト */}
+              <div className="absolute bottom-12 left-0 right-0 text-center text-white/80 font-bold text-sm z-10">
+                QRコードをスキャン
+              </div>
+            </>
+          )}
+          
+          {/* ローディング */}
+          {!hasPermission && !error && (
+            <div className="absolute inset-0 flex items-center justify-center text-white">
+              <Loader2 size={32} className="animate-spin" />
             </div>
           )}
         </div>
         
-        {/* 説明 */}
-        <div className="mt-6 text-center">
-          <p className="text-white font-bold mb-2">
-            {instruction}
-          </p>
-          <p className="text-white/60 text-sm font-bold">
-            {facingMode === 'environment' ? '背面カメラ使用中' : '前面カメラ使用中'}
-          </p>
-        </div>
+        <p className="text-white/60 text-center mt-6 text-sm">
+          {instruction}
+        </p>
       </div>
-      
-      {/* フッター */}
-      <div className="p-4 bg-black/50">
-        <button
-          onClick={onClose}
-          className="w-full py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black transition-colors"
-        >
-          キャンセル
-        </button>
-      </div>
-      
-      {/* スキャンラインアニメーション用CSS */}
-      <style jsx>{`
-        @keyframes scanLine {
-          0%, 100% { transform: translateY(0); opacity: 1; }
-          50% { transform: translateY(250px); opacity: 0.5; }
-        }
-      `}</style>
     </div>
   )
 }

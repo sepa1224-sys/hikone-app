@@ -168,3 +168,36 @@ export async function verifyStudent(targetUserId: string) {
     return { success: false, message: '予期しないエラーが発生しました' }
   }
 }
+
+/**
+ * Verify a student using QR code
+ * QR Format: student-verification:{userId}:{timestamp}
+ */
+export async function verifyStudentWithQR(qrData: string) {
+  try {
+    // 1. Parse QR Data
+    const parts = qrData.split(':')
+    if (parts.length !== 3 || parts[0] !== 'student-verification') {
+      return { success: false, message: '無効なQRコードです' }
+    }
+
+    const targetUserId = parts[1]
+    const timestamp = parseInt(parts[2], 10)
+
+    // 2. Validate Timestamp (valid for 10 minutes)
+    const now = Date.now()
+    const diff = now - timestamp
+    const TEN_MINUTES = 10 * 60 * 1000
+
+    if (isNaN(timestamp) || diff < 0 || diff > TEN_MINUTES) {
+      return { success: false, message: 'QRコードの有効期限が切れています。再生成してください。' }
+    }
+
+    // 3. Call existing verification logic
+    return await verifyStudent(targetUserId)
+
+  } catch (error) {
+    console.error('QR verification error:', error)
+    return { success: false, message: 'QRコードの処理中にエラーが発生しました' }
+  }
+}

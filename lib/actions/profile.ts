@@ -73,7 +73,24 @@ export async function updateProfile(userId: string, data: ProfileUpdateData): Pr
       return { success: false, message: 'Unauthorized', bonusAwarded: false }
     }
 
-    // 2. Update Profile
+    // 2. Fetch Current Profile (to check for immutable fields and completion)
+    const { data: profile, error: fetchError } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.error('Profile fetch error:', fetchError)
+      return { success: false, message: 'プロフィールの取得に失敗しました', bonusAwarded: false }
+    }
+
+    // 3. Validate Immutable Fields
+    if (profile && profile.birthday && data.birthday && data.birthday !== profile.birthday) {
+      return { success: false, message: '生年月日は一度設定すると変更できません', bonusAwarded: false }
+    }
+
+    // 4. Update Profile
     const { error: updateError } = await supabaseAdmin
       .from('profiles')
       .update({
@@ -87,26 +104,29 @@ export async function updateProfile(userId: string, data: ProfileUpdateData): Pr
       return { success: false, message: 'プロフィールの更新に失敗しました', bonusAwarded: false, error: updateError.message }
     }
 
-    // 3. Check Completion Status
-    // Fetch the updated profile to check all fields (including ones not in `data`)
-    const { data: profile, error: fetchError } = await supabaseAdmin
+    // 5. Check Completion Status
+    // If profile didn't exist before update (unlikely for updateProfile but possible if row missing), fetch again or use merged data.
+    // However, since we used supabaseAdmin to update, we can't easily get the return data without another query or using select() in update.
+    // Let's just fetch the updated profile to be sure, or use the merged data if we trust it.
+    // Since we need to check *all* fields, fetching again is safest to ensure DB state.
+    const { data: updatedProfile, error: refetchError } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single()
 
-    if (fetchError || !profile) {
+    if (refetchError || !updatedProfile) {
       return { success: true, message: 'プロフィールを更新しました', bonusAwarded: false }
     }
 
     // Check if already awarded
-    if (profile.is_profile_completed) {
+    if (updatedProfile.is_profile_completed) {
       revalidatePath('/profile')
       return { success: true, message: 'プロフィールを更新しました', bonusAwarded: false }
     }
 
     // Check completion criteria
-    const isComplete = checkProfileCompletion(profile)
+    const isComplete = checkProfileCompletion(updatedProfile)
 
     if (isComplete) {
       // Award Bonus
@@ -119,7 +139,7 @@ export async function updateProfile(userId: string, data: ProfileUpdateData): Pr
         .from('profiles')
         .update({ 
           is_profile_completed: true,
-          points: (profile.points || 0) + COMPLETION_BONUS_POINTS
+          points: (updatedProfile.points || 0) + COMPLETION_BONUS_POINTS
         })
         .eq('id', userId)
 

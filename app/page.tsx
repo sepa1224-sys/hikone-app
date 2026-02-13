@@ -30,6 +30,8 @@ import {
 import { getMissions, Mission, getUserMissionStatus } from '@/lib/actions/missions'
 import MissionStampCard from '@/components/mission/MissionStampCard'
 import MissionModal from '@/components/mission/MissionModal'
+import { getWidgetSettings, UserWidgetSettings } from '@/lib/actions/user-settings'
+import WidgetGrid from '@/components/home/WidgetGrid'
 
 export default function AppHome() {
   const pathname = usePathname()
@@ -42,6 +44,15 @@ export default function AppHome() {
   const [userMissionStatuses, setUserMissionStatuses] = useState<Record<string, string>>({})
   const [selectedMission, setSelectedMission] = useState<Mission | null>(null)
   const [missionModalOpen, setMissionModalOpen] = useState(false)
+
+  // ウィジェット設定
+  const [widgetSettings, setWidgetSettings] = useState<UserWidgetSettings | null>(null)
+  
+  useEffect(() => {
+    if (authUser?.id) {
+      getWidgetSettings(authUser.id).then(setWidgetSettings)
+    }
+  }, [authUser?.id])
 
   // ミッションステータスを更新する関数
   const refreshMissionStatus = async () => {
@@ -503,6 +514,18 @@ export default function AppHome() {
                   </Link>
                 </div>
               </div>
+            )}
+
+            {/* 1. ウィジェットグリッド */}
+            {widgetSettings && (
+              <WidgetGrid
+                settings={widgetSettings}
+                userCity={userCity}
+                userSelectedArea={userSelectedArea}
+                userWasteSchedule={swrWasteSchedule}
+                onWasteSetupClick={() => setIsCitySelectorOpen(true)}
+                isStudent={authProfile?.is_student}
+              />
             )}
 
             {/* 2. フォトコンテストバナー */}
