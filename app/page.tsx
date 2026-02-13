@@ -414,22 +414,22 @@ export default function AppHome() {
 
             {/* 学生情報（学生の場合のみ表示） */}
             {authProfile?.is_student && (
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 shadow-sm border border-blue-100 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                    <Award size={18} className="text-blue-600" />
+              <Link href={`/school/${authProfile.school_id || 'unknown'}`} className="block group">
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 shadow-sm border border-blue-100 flex items-center justify-between transition-all duration-200 group-hover:bg-white group-hover:shadow-md group-active:scale-[0.98]">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                      <Award size={18} className="text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider group-hover:text-blue-500 transition-colors">所属</p>
+                      <p className="text-sm font-black text-gray-800">
+                        {authProfile?.school_name} {authProfile?.grade ? `${authProfile.grade}年` : ''}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">所属</p>
-                    <p className="text-sm font-black text-gray-800">
-                      {authProfile?.school_name} {authProfile?.grade ? `${authProfile.grade}年` : ''}
-                    </p>
-                  </div>
+                  <ChevronRight size={18} className="text-gray-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
                 </div>
-                <div className="bg-blue-500 text-white text-[10px] font-black px-2 py-1 rounded-lg">
-                  学生会員
-                </div>
-              </div>
+              </Link>
             )}
             
             {/* 0.5 支払いボタン（QR決済） */}
