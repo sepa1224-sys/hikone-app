@@ -254,7 +254,7 @@ export async function getShopSettings(userId: string, impersonateShopId?: string
     // 1. Shop Basic Info
     const { data: shopData } = await supabase
       .from('shops')
-      .select('id, name, address, phone_number, thumbnail_url, gallery_urls, owner_id')
+      .select('id, name, address, phone_number, phone, thumbnail_url, gallery_urls, owner_id, opening_hours, category_main, category_sub, meal_type, price_range')
       .eq('id', shop.id)
       .single()
 
@@ -566,14 +566,13 @@ export async function updateShopBasicInfo(
     name?: string
     address?: string
     phoneNumber?: string
+    phone?: string // Public phone number
     transactionPassword?: string
-    bankInfo?: {
-      bankName: string
-      branchName: string
-      accountType: 'ordinary' | 'current'
-      accountNumber: string
-      accountHolder: string
-    }
+    categoryMain?: string
+    categorySub?: string
+    mealType?: string
+    priceRange?: string
+    bankInfo?: any
   },
   impersonateShopId?: string
 ) {
@@ -615,6 +614,15 @@ export async function updateShopBasicInfo(
     if (params.phoneNumber !== undefined) {
       shopUpdateData.phone_number = params.phoneNumber
     }
+
+    if (params.phone !== undefined) {
+      shopUpdateData.phone = params.phone
+    }
+
+    if (params.categoryMain !== undefined) shopUpdateData.category_main = params.categoryMain
+    if (params.categorySub !== undefined) shopUpdateData.category_sub = params.categorySub
+    if (params.mealType !== undefined) shopUpdateData.meal_type = params.mealType
+    if (params.priceRange !== undefined) shopUpdateData.price_range = params.priceRange
 
     if (isAdmin) {
       if (params.name) shopUpdateData.name = params.name
@@ -659,6 +667,60 @@ export async function updateShopBasicInfo(
     return { success: true, message: 'Basic info saved' }
   } catch (error: any) {
     console.error('updateShopBasicInfo error:', error)
+    return { success: false, message: 'Save failed: ' + error.message }
+  }
+}
+
+// Update Shop Opening Hours
+export async function updateShopOpeningHours(
+  userId: string,
+  openingHours: any, // JSON object or string
+  impersonateShopId?: string
+) {
+  const supabase = createServiceClient(supabaseUrl, supabaseServiceKey)
+  
+  try {
+    const shop = await getShopTarget(supabase, userId, impersonateShopId)
+    
+    if (!shop) {
+      return { success: false, message: 'Shop info not found' }
+    }
+
+    if (impersonateShopId) {
+      console.log(`[ADMIN] Updating opening hours: ${shop.id} by Admin: ${userId}`)
+    } else {
+      console.log('[Debug] updateShopOpeningHours: Saving with ShopID', {
+        ownerId: userId,
+        shopId: shop.id
+      })
+    }
+
+    // Ensure openingHours is an object for JSONB column
+    let hoursData = openingHours
+    if (typeof openingHours === 'string') {
+      try {
+        hoursData = JSON.parse(openingHours)
+      } catch (e) {
+        console.warn('Failed to parse openingHours string, saving as is (might fail if column is jsonb)')
+      }
+    }
+
+    const { error } = await supabase
+      .from('shops')
+      .update({ 
+        opening_hours: hoursData,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', shop.id)
+    
+    if (error) {
+      console.error('Opening hours update error:', error)
+      return { success: false, message: 'Save failed: ' + error.message }
+    }
+
+    return { success: true, message: 'Opening hours saved' }
+  } catch (error: any) {
+    console.error('updateShopOpeningHours error:', error)
     return { success: false, message: 'Save failed: ' + error.message }
   }
 }

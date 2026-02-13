@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { supabase, Shop, isShopOpen, calculateDistance, formatDistance } from '@/lib/supabase'
-import { MapPin, Heart, Search, Coffee, Beer, Pizza, Utensils, IceCream, Store, CheckCircle2, X, Clock, Phone, UtensilsCrossed, Navigation, Map, ChevronLeft, ChevronRight, Image as ImageIcon, Locate, ArrowUpDown, ExternalLink, Globe, TrendingUp, Flame, Wine, Soup, Beef, Sandwich, Fish, CircleDot, Salad, Cookie, Drumstick } from 'lucide-react'
+import { MapPin, Heart, Search, Coffee, Beer, Pizza, Utensils, IceCream, Store, CheckCircle2, X, Clock, Phone, UtensilsCrossed, Navigation, Map, ChevronLeft, ChevronRight, Image as ImageIcon, Locate, ArrowUpDown, ExternalLink, Globe, TrendingUp, Flame, Wine, Soup, Beef, Sandwich, Fish, CircleDot, Salad, Cookie, Drumstick, ChevronDown, ChevronUp } from 'lucide-react'
 import BottomNavigation from '@/components/BottomNavigation'
 
 // ShopMap を動的インポート（SSR無効化 + エラーハンドリング）
@@ -45,6 +45,9 @@ const CATEGORIES = [
   { id: 'ハンバーガー', name: 'ハンバーガー', icon: <Sandwich size={14} />, color: 'bg-green-100 text-green-600' },
   { id: 'うどん', name: 'うどん', icon: <Soup size={14} />, color: 'bg-stone-100 text-stone-600' },
   { id: 'そば', name: 'そば', icon: <Soup size={14} />, color: 'bg-neutral-100 text-neutral-600' },
+  { id: 'フレンチ', name: 'フレンチ', icon: <Utensils size={14} />, color: 'bg-blue-100 text-blue-600' },
+  { id: '韓国料理', name: '韓国料理', icon: <Beef size={14} />, color: 'bg-rose-100 text-rose-600' },
+  { id: 'エスニック', name: 'エスニック', icon: <Soup size={14} />, color: 'bg-orange-100 text-orange-600' },
 ]
 
 // ===== カテゴリグループ化マッピング =====
@@ -56,13 +59,13 @@ const CATEGORY_GROUPS: Record<string, string[]> = {
   '居酒屋': ['居酒屋', '酒場', '飲み屋', 'ダイニングバー', '焼き鳥', '串カツ', '串揚げ', '飲食店', 'ダイニング', '酒処', '炉端'],
   '和食': ['和食', '定食', '割烹', '懐石', '料亭', '食堂', '惣菜'],
   'イタリアン': ['イタリアン', 'イタリア料理', 'パスタ', 'ピザ', 'pizza', 'pasta', 'italian', 'ピッツァ', 'トラットリア', 'リストランテ'],
-  '焼肉': ['焼肉', '焼き肉', 'やきにく', '肉', 'ステーキ', 'steak', 'ホルモン', '韓国料理', 'BBQ', 'バーベキュー', 'しゃぶしゃぶ', 'すき焼き', '鉄板焼き', '牛タン', 'カルビ'],
+  '焼肉': ['焼肉', '焼き肉', 'やきにく', '肉', 'ステーキ', 'steak', 'ホルモン', 'BBQ', 'バーベキュー', 'しゃぶしゃぶ', 'すき焼き', '鉄板焼き', '牛タン', 'カルビ'],
   'スイーツ': ['スイーツ', 'sweets', 'ケーキ', 'デザート', 'パフェ', 'アイス', 'アイスクリーム', 'クレープ', 'ドーナツ', 'チョコレート', '和菓子', '洋菓子', 'タピオカ', 'プリン', 'シュークリーム', 'マカロン', 'フルーツ', '甘味'],
   // 🆕 追加カテゴリ
   'バー': ['バー', 'bar', 'パブ', 'pub', 'ワインバー', 'ダイニングバー', 'ショットバー', 'カクテル', '酒'],
   'スナック': ['スナック', 'snack', 'クラブ', 'ラウンジ', 'キャバクラ'],
   'ラーメン': ['ラーメン', 'らーめん', 'ramen', '拉麺', 'つけ麺', 'つけめん', '担々麺', '味噌ラーメン', '塩ラーメン', '豚骨'],
-  '洋食': ['洋食', 'レストラン', 'restaurant', 'フレンチ', 'フランス料理', '欧風', 'ビストロ', 'オムライス', 'ハヤシライス', 'グラタン'],
+  '洋食': ['洋食', 'レストラン', 'restaurant', 'フランス料理', '欧風', 'ビストロ', 'オムライス', 'ハヤシライス', 'グラタン'],
   '日本料理': ['日本料理', '懐石', '会席', '割烹', '料亭', '天ぷら', '刺身', '魚', '海鮮', 'japanese'],
   '弁当': ['弁当', '惣菜', 'テイクアウト', '持ち帰り', 'お持ち帰り', '仕出し'],
   '軽食': ['軽食', 'サンドイッチ', 'サンドウィッチ', 'ホットドッグ', 'スナック', '軽食堂'],
@@ -76,6 +79,9 @@ const CATEGORY_GROUPS: Record<string, string[]> = {
   'ハンバーガー': ['ハンバーガー', 'バーガー', 'burger', 'hamburger', 'ハンバーグ'],
   'うどん': ['うどん', '讃岐うどん', '稲庭うどん', 'きつねうどん', 'カレーうどん', '釜揚げ'],
   'そば': ['そば', '蕎麦', 'soba', '十割そば', '二八そば', '天ぷらそば', 'ざるそば'],
+  'フレンチ': ['フレンチ', 'フランス料理', 'ビストロ', 'french'],
+  '韓国料理': ['韓国料理', 'korean', 'キムチ', 'ビビンバ', 'チゲ', 'サムギョプサル'],
+  'エスニック': ['エスニック', 'ethnic', 'タイ料理', 'ベトナム料理', 'フォー', 'ガパオ', 'トムヤムクン', 'ケバブ'],
 }
 
 // カテゴリマッチング関数（あいまい検索）
@@ -100,7 +106,7 @@ const matchesCategory = (shopCategory: string | null | undefined, selectedCatego
 // 都市ごとの座標マッピング（滋賀県・福井県の主要都市）
 const CITY_COORDINATES: Record<string, [number, number]> = {
   // 滋賀県
-  '彦根市': [35.2746, 136.2522],
+  '彦根市': [35.272, 136.257],
   '長浜市': [35.3776, 136.2646],
   '大津市': [35.0045, 135.8686],
   '草津市': [35.0173, 135.9608],
@@ -118,7 +124,7 @@ const CITY_COORDINATES: Record<string, [number, number]> = {
   '小浜市': [35.4958, 135.7466],
   '福井市': [36.0652, 136.2219],
   // デフォルト
-  'default': [35.2746, 136.2522] // 彦根市役所
+  'default': [35.272, 136.257] // 彦根駅
 }
 
 // ===== エリアマスターの型定義 =====
@@ -147,6 +153,102 @@ const DEFAULT_AREAS: AreaMaster[] = [
   { id: 'sakata', name: '坂田', keywords: ['坂田', 'さかた'], center_lat: 35.3100, center_lng: 136.2600, default_zoom: 15 },
 ]
 
+// 営業時間表示用コンポーネント
+const OpeningHoursDisplay = ({ openingHours }: { openingHours: any }) => {
+  const [isExpanded, setIsExpanded] = useState(false)
+  
+  if (!openingHours) {
+    return <span className="text-sm font-bold text-gray-400">営業時間情報なし</span>
+  }
+
+  let hoursData: any = openingHours
+
+  // 文字列の場合はJSONパースを試みる
+  if (typeof openingHours === 'string') {
+    if (openingHours.trim().startsWith('{')) {
+      try {
+        hoursData = JSON.parse(openingHours)
+      } catch (e) {
+        // パース失敗時はそのまま文字列として表示
+        return <span className="text-sm font-bold text-gray-700">{openingHours}</span>
+      }
+    } else {
+      // JSON形式でない文字列の場合はそのまま表示
+      return <span className="text-sm font-bold text-gray-700">{openingHours}</span>
+    }
+  }
+
+  // オブジェクトでない、または空の場合はフォールバック
+  if (typeof hoursData !== 'object' || Object.keys(hoursData).length === 0) {
+    return <span className="text-sm font-bold text-gray-400">営業時間情報なし</span>
+  }
+
+  const daysMap: { [key: string]: string } = {
+    mon: '月', tue: '火', wed: '水', thu: '木', fri: '金', sat: '土', sun: '日'
+  }
+  
+  // 今日の曜日を取得 (0: Sun, 1: Mon, ..., 6: Sat) -> mon..sunキーに変換
+  const today = new Date()
+  const dayIndex = today.getDay() // 0=Sun, 1=Mon...
+  const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+  const currentDayKey = dayKeys[dayIndex]
+  
+  // 月曜始まりの順序
+  const daysOrder = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+  
+  const todayData = hoursData[currentDayKey]
+
+  const formatTime = (data: any) => {
+    if (!data) return '不明'
+    if (data.is_closed) return '定休日'
+    if (!data.open || !data.close) return '不明'
+    return `${data.open} 〜 ${data.close}`
+  }
+
+  return (
+    <div className="w-full">
+      <div 
+        className="flex items-center justify-between cursor-pointer"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-gray-700">
+            {todayData ? (
+              <>
+                <span className={`inline-block text-[10px] font-black px-1.5 py-0.5 rounded mr-2 ${todayData.is_closed ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                  今日 ({daysMap[currentDayKey]})
+                </span>
+                {formatTime(todayData)}
+              </>
+            ) : (
+              '営業時間情報なし'
+            )}
+          </span>
+        </div>
+        {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+      </div>
+      
+      {isExpanded && (
+        <div className="mt-3 pl-2 border-l-2 border-orange-100 space-y-2">
+          {daysOrder.map(day => {
+            const data = hoursData[day]
+            const isToday = day === currentDayKey
+            return (
+              <div key={day} className={`flex justify-between text-xs items-center ${isToday ? 'bg-orange-50 -mx-2 px-2 py-1 rounded' : ''}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`font-bold w-6 ${isToday ? 'text-orange-600' : 'text-gray-500'}`}>{daysMap[day]}</span>
+                  {isToday && <span className="text-[10px] bg-orange-500 text-white px-1 rounded font-bold">Today</span>}
+                </div>
+                <span className={`font-medium ${isToday ? 'text-gray-900' : 'text-gray-600'}`}>{formatTime(data)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Taberu() {
   const [allShops, setAllShops] = useState<Shop[]>([])
   const [filteredShops, setFilteredShops] = useState<Shop[]>([])
@@ -166,8 +268,8 @@ export default function Taberu() {
   
   // ユーザーの登録都市と地図の初期位置
   const [userCity, setUserCity] = useState<string | null>(null)
-  // デフォルト座標を彦根市役所付近に固定（ログインしていない状態でも世界地図にならないように）
-  const [mapCenter, setMapCenter] = useState<[number, number]>([35.2746, 136.2522])
+  // デフォルト座標を彦根駅に固定（ログインしていない状態でも世界地図にならないように）
+  const [mapCenter, setMapCenter] = useState<[number, number]>([35.272, 136.257])
   const [isProfileLoaded, setIsProfileLoaded] = useState(false) // ③ プロフィール取得完了フラグ
   // 🆕 初回読み込みフラグ（fitBounds制御用）
   const [isInitialMapLoad, setIsInitialMapLoad] = useState(true)
@@ -670,6 +772,8 @@ export default function Taberu() {
             id: s.id,
             name: s.name ? String(s.name).trim() : '名称未設定',
             category_main: cleanCategory,
+            category_sub: s.category_sub ? String(s.category_sub).trim() : undefined,
+            meal_type: s.meal_type ? String(s.meal_type).trim() : undefined,
             address: s.address ? String(s.address).trim() : '',
             phone: s.phone || s.tel || '',
             opening_hours: s.opening_hours || s.hours || '',
@@ -998,15 +1102,19 @@ export default function Taberu() {
       
       result = result.filter(shop => {
         // ★★★ 1. DBのカテゴリデータの「ゆらぎ」を吸収 ★★★
-        // category_main, 店名 のいずれかにキーワードが含まれればOK
+        // category_main, category_sub, meal_type, 店名 のいずれかにキーワードが含まれればOK
         const normalizedCategory = normalize(shop.category_main)
+        const normalizedCategorySub = normalize(shop.category_sub)
+        const normalizedMealType = normalize(shop.meal_type)
         const normalizedName = normalize(shop.name)
         
         // OR検索: いずれかのキーワードにマッチすればOK
         const isMatch = allKeywords.some(kw => {
           const normalizedKw = normalize(kw)
-          // category_main, 店名のいずれかにキーワードが含まれていればマッチ
+          // いずれかのフィールドにキーワードが含まれていればマッチ
           return normalizedCategory.includes(normalizedKw) || 
+                 normalizedCategorySub.includes(normalizedKw) ||
+                 normalizedMealType.includes(normalizedKw) ||
                  normalizedName.includes(normalizedKw)
         })
         
@@ -1040,6 +1148,8 @@ export default function Taberu() {
       result = result.filter(s => 
         s.name?.toLowerCase().includes(query) ||
         s.category_main?.toLowerCase().includes(query) ||
+        s.category_sub?.toLowerCase().includes(query) ||
+        s.meal_type?.toLowerCase().includes(query) ||
         s.address?.toLowerCase().includes(query)
       )
       console.log(`🔍 [テキスト検索] "${searchQuery}" → ${result.length}件`)
@@ -1439,7 +1549,10 @@ export default function Taberu() {
                         }`}>
                           {isShopOpen(shop.opening_hours) ? '営業中' : '営業時間外'}
                         </span>
-                        <span className="text-gray-900">{shop.price_range || '¥ ---'}</span>
+                        <span className="text-gray-900 flex items-center gap-1">
+                          <span className="text-sm">💰</span>
+                          {shop.price_range || '---'}
+                        </span>
                         {/* 距離表示（現在地がある場合） */}
                         {shop.distance !== null && shop.distance !== undefined && (
                           <span className="text-blue-500 bg-blue-50 px-2 py-0.5 rounded flex items-center gap-1">
@@ -1563,7 +1676,10 @@ export default function Taberu() {
               <div className="flex items-center gap-2 mb-6 flex-wrap">
                 <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-xs font-black">{selectedShop.category_main}</span>
                 {selectedShop.price_range && (
-                  <span className="text-gray-900 font-black text-sm">{selectedShop.price_range}</span>
+                  <span className="text-gray-900 font-black text-sm flex items-center gap-1">
+                    <span className="text-lg">💰</span>
+                    {selectedShop.price_range}
+                  </span>
                 )}
                 {selectedShop.distance !== null && selectedShop.distance !== undefined && (
                   <span className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-xs font-black flex items-center gap-1">
@@ -1640,7 +1756,7 @@ export default function Taberu() {
                     </div>
                     <div className="flex-1 flex items-start gap-2">
                       <Clock size={16} className="text-orange-500 shrink-0 mt-0.5" />
-                      <span className="text-sm font-bold text-gray-700">{selectedShop.opening_hours || '営業時間不明'}</span>
+                      <OpeningHoursDisplay openingHours={selectedShop.opening_hours} />
                     </div>
                   </div>
                   

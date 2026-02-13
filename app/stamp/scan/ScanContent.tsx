@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import QRScanner from '@/components/shop/QRScanner'
-import { grantStamp } from '@/lib/actions/stamp'
-import { ArrowLeft, MapPin, CheckCircle2, AlertCircle, Loader2, Store } from 'lucide-react'
+import { grantStamp, getStampCard, getUserStamps } from '@/lib/actions/stamp'
+import { ArrowLeft, MapPin, CheckCircle2, AlertCircle, Loader2, Store, Gift, ScanLine } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function ScanContent() {
@@ -15,6 +16,10 @@ export default function ScanContent() {
   const [status, setStatus] = useState<'idle' | 'locating' | 'granting' | 'success' | 'error'>('idle')
   const [message, setMessage] = useState('')
   const [shopName, setShopName] = useState('')
+  
+  // Success state data
+  const [card, setCard] = useState<any>(null)
+  const [stamps, setStamps] = useState<any[]>([])
 
   // クエリパラメータでshopIdが渡された場合の処理
   useEffect(() => {
@@ -49,9 +54,24 @@ export default function ScanContent() {
           const result = await grantStamp(shopId, latitude, longitude)
           
           if (result.success) {
-            setStatus('success')
-            setMessage(result.message || 'スタンプを獲得しました！')
-            if (result.shopName) setShopName(result.shopName)
+            // Fetch updated card data for display
+            const [cardRes, stampsRes] = await Promise.all([
+              getStampCard(shopId),
+              getUserStamps(shopId)
+            ])
+
+            if (cardRes.success && cardRes.card && stampsRes.success && stampsRes.stamps) {
+              setCard(cardRes.card)
+              setStamps(stampsRes.stamps)
+              setShopName(result.shopName || cardRes.card.shops?.name || '')
+              setStatus('success')
+              setMessage(result.message || 'スタンプを獲得しました！')
+            } else {
+              // Fallback if data fetch fails
+              setStatus('success')
+              setMessage(result.message || 'スタンプを獲得しました！（カード情報の更新に失敗しました）')
+              if (result.shopName) setShopName(result.shopName)
+            }
           } else {
             setStatus('error')
             setMessage(result.message || 'エラーが発生しました')
@@ -74,8 +94,95 @@ export default function ScanContent() {
     setStatus('idle')
     setMessage('')
     setShopName('')
+    setCard(null)
+    setStamps([])
     // クエリパラメータがある場合は戻るボタンなどでリストに戻る想定だが、リセット時はスキャンモードへ
     router.replace('/stamp/scan')
+  }
+
+  // Render helper for stamp card
+  const renderStampCard = () => {
+    if (!card) return null
+
+    const currentCount = stamps.length
+    const targetCount = card.target_count || 10
+    const progress = Math.min((currentCount / targetCount) * 100, 100)
+    const isComplete = currentCount >= targetCount
+
+    return (
+      <div className="w-full max-w-sm mx-auto bg-white rounded-2xl shadow-lg overflow-hidden mb-8 border border-gray-100">
+        <div className="relative h-24 bg-gray-200">
+            {card.shops?.image_url ? (
+                <Image 
+                    src={card.shops.image_url} 
+                    alt={card.shops.name}
+                    fill
+                    className="object-cover"
+                />
+            ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                    <Store size={32} className="text-gray-400" />
+                </div>
+            )}
+            <div className="absolute inset-0 bg-black/30 flex items-end p-4">
+                <h2 className="text-white font-bold text-lg drop-shadow-md">
+                    {card.shops?.name}
+                </h2>
+            </div>
+        </div>
+        
+        <div className="p-4">
+            <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-500 font-bold">現在のスタンプ</span>
+                <span className="text-xl font-black text-blue-600">
+                    {currentCount} <span className="text-xs text-gray-400 font-bold">/ {targetCount}</span>
+                </span>
+            </div>
+            
+            <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-4">
+                <div 
+                    className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-gradient-to-r from-yellow-400 to-orange-500' : 'bg-blue-500'}`}
+                    style={{ width: `${progress}%` }}
+                />
+            </div>
+
+            <div className="grid grid-cols-5 gap-2">
+                {Array.from({ length: targetCount }).map((_, i) => {
+                    const isStamped = i < currentCount
+                    const isLast = i === targetCount - 1
+                    
+                    return (
+                        <div key={i} className="flex flex-col items-center gap-1">
+                            <div className={`
+                                w-8 h-8 rounded-full flex items-center justify-center border-2 
+                                ${isStamped 
+                                    ? 'bg-blue-100 border-blue-500 text-blue-600' 
+                                    : 'bg-gray-50 border-gray-200 text-gray-300'
+                                }
+                                ${isLast && !isStamped ? 'border-dashed border-pink-300' : ''}
+                            `}>
+                                {isStamped ? (
+                                    <ScanLine size={14} />
+                                ) : isLast ? (
+                                    <Gift size={14} className="text-pink-400" />
+                                ) : (
+                                    <span className="text-[10px] font-bold">{i + 1}</span>
+                                )}
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+            
+            {isComplete && (
+                <div className="mt-4 bg-orange-50 text-orange-800 p-2 rounded-lg text-xs font-bold flex items-center gap-2 animate-pulse">
+                    <Gift size={16} className="shrink-0" />
+                    <span>特典獲得条件を達成しました！</span>
+                </div>
+            )}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -157,25 +264,29 @@ export default function ScanContent() {
         )}
 
         {status === 'success' && (
-          <div className="text-center w-full mt-10 animate-in zoom-in duration-300">
-            <div className="bg-green-100 p-8 rounded-full inline-block mb-6 shadow-lg shadow-green-100">
-              <CheckCircle2 size={64} className="text-green-600" />
+          <div className="text-center w-full animate-in zoom-in duration-300 pb-10">
+            <div className="flex items-center justify-center gap-2 mb-4">
+                <CheckCircle2 size={32} className="text-green-600" />
+                <h2 className="text-2xl font-black text-gray-800">GET!</h2>
             </div>
-            <h2 className="text-2xl font-black text-gray-800 mb-2">GET!</h2>
-            <p className="font-bold text-lg text-green-600 mb-2">{shopName}</p>
-            <p className="text-gray-600 mb-8">{message}</p>
+            
+            <p className="font-bold text-lg text-green-600 mb-6">{message}</p>
+            
+            {/* スタンプカード表示 */}
+            {renderStampCard()}
             
             <button 
-              onClick={() => router.push('/')} // Ideally go to stamp card list
-              className="w-full bg-gray-900 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-black transition"
-            >
-              トップへ戻る
-            </button>
-            <button 
               onClick={reset}
-              className="mt-4 text-gray-500 text-sm font-bold hover:text-gray-800"
+              className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-blue-700 transition mb-3"
             >
               続けてスキャンする
+            </button>
+            
+            <button 
+              onClick={() => router.push('/')} 
+              className="w-full bg-white border-2 border-gray-200 text-gray-600 font-bold py-4 rounded-xl hover:bg-gray-50 transition"
+            >
+              ホームに戻る
             </button>
           </div>
         )}

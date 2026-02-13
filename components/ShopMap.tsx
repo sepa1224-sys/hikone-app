@@ -386,9 +386,37 @@ function ShopMap({
   shouldMoveToLocation = false,  // 🆕 現在地取得時のマップ移動フラグ
   onLocationMoveComplete  // 🆕 マップ移動完了時のコールバック
 }: ShopMapProps) {
-  // デフォルト座標を彦根市役所付近に固定（ログインしていない状態でも世界地図にならないように）
-  const defaultCenter: [number, number] = propDefaultCenter || [35.2746, 136.2522]
+  // 彦根駅の座標（デフォルト中心位置）
+  const HIKONE_STATION: [number, number] = [35.272, 136.257]
+  
+  // 表示範囲の制限（日本全体をカバーしつつ、極端な世界地図表示を防ぐ）
+  const JAPAN_BOUNDS: L.LatLngBoundsExpression = [
+    [20.0, 122.0], // 南西（沖縄・与那国島付近）
+    [46.0, 154.0]  // 北東（北海道・択捉島付近）
+  ]
+
+  // デフォルト座標を彦根駅に固定
+  const defaultCenter: [number, number] = propDefaultCenter || HIKONE_STATION
   const mapRef = useRef<L.Map | null>(null)
+
+  // 現在地が有効範囲内（滋賀県周辺）か判定するロジック
+  const effectiveCurrentLocation = useMemo(() => {
+    if (!currentLocation) return null
+
+    // 滋賀県（彦根）からの距離チェック
+    // 簡易的に緯度経度差で判定（約1度=111km）
+    // 許容範囲: 緯度±1.5度, 経度±1.5度 (近畿・東海圏程度)
+    const latDiff = Math.abs(currentLocation.lat - HIKONE_STATION[0])
+    const lngDiff = Math.abs(currentLocation.lng - HIKONE_STATION[1])
+
+    // 海外または遠方（滋賀から約150km以上）の場合は無効化
+    if (latDiff > 1.5 || lngDiff > 1.5) {
+      console.log('📍 現在地が対象エリア外のため、ピンを表示しません:', currentLocation)
+      return null
+    }
+
+    return currentLocation
+  }, [currentLocation])
 
   // デバッグ: 受け取ったデータを確認（データ自体は null でも受け取る）
   // shops の内容が変わった時に再実行されるよう、JSON.stringify で依存を追跡
@@ -484,7 +512,10 @@ function ShopMap({
     <div style={{ height: '100%', width: '100%' }} id="shop-map-container">
       <MapContainer 
         center={defaultCenter} 
-        zoom={13} 
+        zoom={15} // デフォルトズームを見やすい15に変更
+        minZoom={8} // 引きすぎ防止
+        maxBounds={JAPAN_BOUNDS} // 表示範囲を日本国内に制限
+        maxBoundsViscosity={1.0} // バウンド外へのドラッグを完全に禁止
         style={{ height: '100%', width: '100%' }}
         zoomControl={true}
         scrollWheelZoom={true}
@@ -493,6 +524,7 @@ function ShopMap({
         <TileLayer
           attribution='&copy; OpenStreetMap'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          noWrap={true} // 無限ループ（横方向の繰り返し）を禁止
         />
         
         <MapRecenter 
@@ -506,7 +538,7 @@ function ShopMap({
         
         {/* 🆕 現在地取得時のマップ移動 */}
         <LocationMove 
-          currentLocation={currentLocation || null}
+          currentLocation={effectiveCurrentLocation || null}
           shouldMove={shouldMoveToLocation}
           onComplete={onLocationMoveComplete}
         />
@@ -524,10 +556,10 @@ function ShopMap({
           />
         )}
 
-        {/* 現在地マーカー */}
-        {currentLocation && (
+        {/* 現在地マーカー（有効な場合のみ表示） */}
+        {effectiveCurrentLocation && (
           <Marker 
-            position={[currentLocation.lat, currentLocation.lng]} 
+            position={[effectiveCurrentLocation.lat, effectiveCurrentLocation.lng]} 
             icon={startIcon}
           >
             <Popup>

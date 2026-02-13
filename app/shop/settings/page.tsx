@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
-import { ArrowLeft, Store, Save, Loader2, Camera, Trash2, Plus, X, Lock, CreditCard, Utensils, Image as ImageIcon, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Store, Save, Loader2, Camera, Trash2, Plus, X, Lock, CreditCard, Utensils, Image as ImageIcon, ShieldAlert, Clock, Banknote } from 'lucide-react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { updateShopBasicInfo, updateShopImages, getMenuItems, upsertMenuItem, deleteMenuItem, getShopSettings, uploadShopImageAction, getShopStampSettings, updateShopBankInfo, uploadMenuImageAction } from '@/lib/actions/shop'
+import { updateShopBasicInfo, updateShopImages, getMenuItems, upsertMenuItem, deleteMenuItem, getShopSettings, uploadShopImageAction, getShopStampSettings, updateShopBankInfo, uploadMenuImageAction, updateShopOpeningHours } from '@/lib/actions/shop'
 import { updateStampCardSettings } from '@/lib/actions/stamp'
 import Image from 'next/image'
 import { Stamp } from 'lucide-react'
@@ -37,6 +37,25 @@ async function compressImage(file: File): Promise<Blob> {
   })
 }
 
+const CATEGORY_MAIN_OPTIONS = [
+  '和食', '洋食', '中華', 'イタリアン', 'フレンチ', 
+  'カフェ', '居酒屋', 'バー', 'ラーメン', 'カレー', 
+  '焼肉', '寿司', '韓国料理', 'エスニック', 'その他'
+]
+
+const MEAL_TYPE_OPTIONS = [
+  'ランチ', 'ディナー', 'ランチ・ディナー', 'モーニング', 'テイクアウトのみ', 'その他'
+]
+
+const PRICE_RANGE_OPTIONS = [
+  '~1,000円',
+  '1,000円~2,000円',
+  '2,000円~3,000円',
+  '3,000円~5,000円',
+  '5,000円~10,000円',
+  '10,000円~'
+]
+
 function ShopSettingsContent() {
   const { user } = useAuth()
   const searchParams = useSearchParams()
@@ -53,8 +72,15 @@ function ShopSettingsContent() {
   // Basic Info State
   const [address, setAddress] = useState('') // Read-only
   const [shopName, setShopName] = useState('')
-  const [phoneNumber, setPhoneNumber] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('') // Private owner phone
+  const [phone, setPhone] = useState('') // Public customer phone
   const [transactionPassword, setTransactionPassword] = useState('')
+  
+  // Genre Info State
+  const [categoryMain, setCategoryMain] = useState('')
+  const [categorySub, setCategorySub] = useState('')
+  const [mealType, setMealType] = useState('')
+  const [priceRange, setPriceRange] = useState('')
   
   // Bank Info State
   const [bankInfo, setBankInfo] = useState({
@@ -63,6 +89,17 @@ function ShopSettingsContent() {
     accountType: 'ordinary' as 'ordinary' | 'current',
     accountNumber: '',
     accountHolder: ''
+  })
+
+  // Opening Hours State
+  const [openingHours, setOpeningHours] = useState<any>({
+    mon: { open: '09:00', close: '18:00', is_closed: false },
+    tue: { open: '09:00', close: '18:00', is_closed: false },
+    wed: { open: '09:00', close: '18:00', is_closed: false },
+    thu: { open: '09:00', close: '18:00', is_closed: false },
+    fri: { open: '09:00', close: '18:00', is_closed: false },
+    sat: { open: '10:00', close: '20:00', is_closed: false },
+    sun: { open: '10:00', close: '20:00', is_closed: true }
   })
 
   // Photo State
@@ -136,10 +173,30 @@ function ShopSettingsContent() {
           setShopName(data.shop.name || '')
           setAddress(data.shop.address || '')
           setPhoneNumber(data.shop.phone_number || '')
+          setPhone(data.shop.phone || '')
+          setCategoryMain(data.shop.category_main || '')
+          setCategorySub(data.shop.category_sub || '')
+          setMealType(data.shop.meal_type || '')
           setThumbnailUrl(data.shop.thumbnail_url || null)
           setGalleryUrls(data.shop.gallery_urls || [])
           if (data.shop.id) {
             setCurrentShopId(data.shop.id)
+          }
+
+          // Set Opening Hours
+          if (data.shop.opening_hours) {
+            try {
+              // Try to parse if it's a JSON string
+              const parsed = typeof data.shop.opening_hours === 'string' && data.shop.opening_hours.startsWith('{')
+                ? JSON.parse(data.shop.opening_hours)
+                : (typeof data.shop.opening_hours === 'object' ? data.shop.opening_hours : null)
+              
+              if (parsed) {
+                 setOpeningHours((prev: any) => ({ ...prev, ...parsed }))
+              }
+            } catch (e) {
+              console.error('Failed to parse opening_hours')
+            }
           }
         }
 
@@ -199,11 +256,40 @@ function ShopSettingsContent() {
         name: shopName,
         address: address,
         phoneNumber,
+        phone,
         transactionPassword,
+        categoryMain,
+        categorySub,
+        mealType,
+        priceRange,
       }, impersonateShopId)
       
       if (result.success) {
         setMessage({ type: 'success', text: result.message || '店舗情報を保存しました' })
+        setTimeout(() => setMessage(null), 3000)
+      } else {
+        setMessage({ type: 'error', text: result.message || '保存に失敗しました' })
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'エラーが発生しました' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveOpeningHours = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+
+    setSaving(true)
+    setMessage(null)
+
+    try {
+      // Pass object directly (Server Action handles serialization/parsing)
+      const result = await updateShopOpeningHours(user.id, openingHours, impersonateShopId)
+
+      if (result.success) {
+        setMessage({ type: 'success', text: result.message || '営業時間を保存しました' })
         setTimeout(() => setMessage(null), 3000)
       } else {
         setMessage({ type: 'error', text: result.message || '保存に失敗しました' })
@@ -445,6 +531,84 @@ function ShopSettingsContent() {
           </div>
         </section>
 
+        {/* --- 1.2. 営業時間設定 --- */}
+        <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <h2 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg">
+            <Clock className="text-blue-500" />
+            営業時間設定
+          </h2>
+          
+          <form onSubmit={handleSaveOpeningHours} className="space-y-4">
+            <div className="space-y-3">
+              {[
+                { key: 'mon', label: '月曜日' },
+                { key: 'tue', label: '火曜日' },
+                { key: 'wed', label: '水曜日' },
+                { key: 'thu', label: '木曜日' },
+                { key: 'fri', label: '金曜日' },
+                { key: 'sat', label: '土曜日' },
+                { key: 'sun', label: '日曜日' },
+              ].map(({ key, label }) => (
+                <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <div className="font-bold text-gray-700 w-20">{label}</div>
+                  <div className="flex items-center gap-2 flex-1 justify-end">
+                     <label className="flex items-center gap-2 text-sm text-gray-600 mr-4 cursor-pointer select-none">
+                        <input 
+                          type="checkbox" 
+                          checked={openingHours[key]?.is_closed || false}
+                          onChange={(e) => setOpeningHours({
+                            ...openingHours,
+                            [key]: { ...openingHours[key], is_closed: e.target.checked }
+                          })}
+                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        定休日
+                     </label>
+
+                     {!openingHours[key]?.is_closed && (
+                       <>
+                         <input 
+                           type="time" 
+                           value={openingHours[key]?.open || ''}
+                           onChange={(e) => setOpeningHours({
+                             ...openingHours,
+                             [key]: { ...openingHours[key], open: e.target.value }
+                           })}
+                           className="p-2 border border-gray-200 rounded-lg text-sm bg-white"
+                         />
+                         <span className="text-gray-400">-</span>
+                         <input 
+                           type="time" 
+                           value={openingHours[key]?.close || ''}
+                           onChange={(e) => setOpeningHours({
+                             ...openingHours,
+                             [key]: { ...openingHours[key], close: e.target.value }
+                           })}
+                           className="p-2 border border-gray-200 rounded-lg text-sm bg-white"
+                         />
+                       </>
+                     )}
+                     {openingHours[key]?.is_closed && (
+                        <div className="text-sm text-gray-400 font-bold px-4 py-2 bg-gray-100 rounded-lg">
+                           CLOSE
+                        </div>
+                     )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={saving}
+              className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+              営業時間を保存
+            </button>
+          </form>
+        </section>
+
         {/* --- 1.5. スタンプカード設定 --- */}
         <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
           <h2 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg">
@@ -610,8 +774,63 @@ function ShopSettingsContent() {
                  </div>
                  
                  <div>
-                   <label className="block text-sm font-bold text-gray-700 mb-1">電話番号</label>
-                   <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" placeholder="0749-xx-xxxx" />
+                   <label className="block text-sm font-bold text-gray-700 mb-1">ジャンル設定</label>
+                   <div className="space-y-3">
+                     <select 
+                       value={categoryMain} 
+                       onChange={(e) => setCategoryMain(e.target.value)}
+                       className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl appearance-none"
+                     >
+                       <option value="">メインジャンルを選択</option>
+                       {CATEGORY_MAIN_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                     </select>
+                     
+                     <input 
+                       type="text" 
+                       value={categorySub} 
+                       onChange={(e) => setCategorySub(e.target.value)}
+                       placeholder="サブジャンル (例: オムライス専門店)" 
+                       className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl"
+                     />
+                     
+                     <select 
+                       value={mealType} 
+                       onChange={(e) => setMealType(e.target.value)}
+                       className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl appearance-none"
+                     >
+                       <option value="">食事タイプを選択</option>
+                       {MEAL_TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                     </select>
+
+                     <div className="relative">
+                       <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                       <select 
+                         value={priceRange} 
+                         onChange={(e) => setPriceRange(e.target.value)}
+                         className="w-full p-3 pl-10 bg-gray-50 border border-gray-200 rounded-xl appearance-none"
+                       >
+                         <option value="">予算を選択</option>
+                         {PRICE_RANGE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                       </select>
+                     </div>
+                   </div>
+                 </div>
+
+                 <div>
+                   <label className="block text-sm font-bold text-gray-700 mb-1">お客様問い合わせ用電話番号（一般公開）</label>
+                   <input 
+                     type="tel" 
+                     value={phone} 
+                     onChange={(e) => setPhone(e.target.value)} 
+                     className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" 
+                     placeholder="0749-xx-xxxx" 
+                   />
+                   <p className="text-xs text-blue-500 mt-1">※この番号はアプリ上でユーザーに公開されます</p>
+                 </div>
+
+                 <div>
+                   <label className="block text-sm font-bold text-gray-700 mb-1">オーナー連絡先（非公開）</label>
+                   <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" placeholder="090-xxxx-xxxx" />
                  </div>
 
                  <div>

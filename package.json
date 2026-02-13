@@ -12,6 +12,10 @@
     "trim-page": "node scripts/trim_page.js"
   },
   "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/ios": "^8.1.0",
     "@supabase/auth-ui-react": "^0.4.7",
     "@supabase/auth-ui-shared": "^0.1.8",
     "@supabase/ssr": "^0.8.0",
@@ -29,6 +33,7 @@
     "react-dom": "^18.2.0",
     "react-leaflet": "^4.2.1",
     "react-qr-code": "^2.0.18",
+    "recharts": "^3.7.0",
     "sharp": "^0.34.5",
     "swr": "^2.3.8"
   },

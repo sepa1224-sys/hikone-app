@@ -19,6 +19,8 @@ export type Shop = {
   id: string
   name: string
   category_main: string
+  category_sub?: string    // 詳細ジャンル
+  meal_type?: string       // ランチ/ディナー等
   address: string
   latitude: number | null  // 緯度（未取得の場合はnull）
   longitude: number | null // 経度（未取得の場合はnull）
@@ -90,6 +92,32 @@ export interface TrainTimetable {
   departure_time: string;
   train_type: string;
   is_weekday: boolean;
+}
+
+// --- 学生コミュニティ関連の型定義 ---
+export type School = {
+  id: string
+  name: string
+  type: 'high_school' | 'university'
+  created_at: string
+}
+
+export type StudentProfile = {
+  id: string
+  is_student: boolean
+  school_id: string | null
+  grade: number | null
+}
+
+export type ActivityLog = {
+  id: string
+  user_id: string
+  activity_type: 'run' | 'walk'
+  distance: number
+  duration: number
+  calories: number
+  steps: number
+  created_at: string
 }
 
 // ページから呼び出される検索関数
