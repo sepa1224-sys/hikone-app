@@ -1,36 +1,4 @@
-'use server'
-
-import { createClient } from '@supabase/supabase-js'
-import { revalidatePath } from 'next/cache'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-
-// Service Role Client (for point updates)
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
-
-// Regular Client (for auth check)
-// Note: In Server Actions, we usually create a client with cookies, 
-// but for simple checks we can use the admin client if we verify the user ID passed matches the session.
-// However, strictly speaking, we should verify the session. 
-// For now, I'll rely on the caller to pass the ID and I'll verify the session inside.
-import { cookies } from 'next/headers'
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
-
-async function createSupabaseServerClient() {
-  const cookieStore = cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
-}
+import { createClient } from '@/lib/supabase/client'
 
 export interface ProfileUpdateData {
   full_name?: string
@@ -65,16 +33,10 @@ const COMPLETION_BONUS_POINTS = 200
 
 export async function updateProfile(userId: string, data: ProfileUpdateData): Promise<UpdateProfileResult> {
   try {
-    const supabase = await createSupabaseServerClient()
-    
-    // 1. Verify Authentication
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session || session.user.id !== userId) {
-      return { success: false, message: 'Unauthorized', bonusAwarded: false }
-    }
+    const supabase = createClient()
 
-    // 2. Fetch Current Profile (to check for immutable fields and completion)
-    const { data: profile, error: fetchError } = await supabaseAdmin
+    // 1. Fetch Current Profile (to check for immutable fields and completion)
+    const { data: profile, error: fetchError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
@@ -91,7 +53,7 @@ export async function updateProfile(userId: string, data: ProfileUpdateData): Pr
     }
 
     // 4. Update Profile
-    const { error: updateError } = await supabaseAdmin
+    const { error: updateError } = await supabase
       .from('profiles')
       .update({
         ...data,
@@ -109,7 +71,7 @@ export async function updateProfile(userId: string, data: ProfileUpdateData): Pr
     // However, since we used supabaseAdmin to update, we can't easily get the return data without another query or using select() in update.
     // Let's just fetch the updated profile to be sure, or use the merged data if we trust it.
     // Since we need to check *all* fields, fetching again is safest to ensure DB state.
-    const { data: updatedProfile, error: refetchError } = await supabaseAdmin
+    const { data: updatedProfile, error: refetchError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
@@ -135,7 +97,7 @@ export async function updateProfile(userId: string, data: ProfileUpdateData): Pr
       // 3. Add point history
       
       // Use transaction-like logic or sequential updates
-      const { error: flagError } = await supabaseAdmin
+      const { error: flagError } = await supabase
         .from('profiles')
         .update({ 
           is_profile_completed: true,
@@ -150,7 +112,7 @@ export async function updateProfile(userId: string, data: ProfileUpdateData): Pr
       }
 
       // Add history
-      await supabaseAdmin.from('point_history').insert({
+      await supabase.from('point_history').insert({
         user_id: userId,
         amount: COMPLETION_BONUS_POINTS,
         type: 'earned',
@@ -158,7 +120,6 @@ export async function updateProfile(userId: string, data: ProfileUpdateData): Pr
         created_at: new Date().toISOString()
       })
 
-      revalidatePath('/profile')
       return { 
         success: true, 
         message: 'プロフィールを更新しました', 
@@ -167,7 +128,6 @@ export async function updateProfile(userId: string, data: ProfileUpdateData): Pr
       }
     }
 
-    revalidatePath('/profile')
     return { success: true, message: 'プロフィールを更新しました', bonusAwarded: false }
 
   } catch (e) {
@@ -216,7 +176,7 @@ function checkProfileCompletion(profile: any): boolean {
 }
 
 export async function getProfileCompletionStatus(userId: string) {
-  const supabase = await createSupabaseServerClient()
+  const supabase = createClient()
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single()
   
   if (!profile) return { progress: 0, isComplete: false }

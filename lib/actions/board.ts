@@ -1,7 +1,4 @@
-'use server'
-
-import { createClient } from '@/lib/supabase/server'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/client'
 
 export interface Post {
   id: string
@@ -18,7 +15,7 @@ export interface Post {
 
 export async function getPosts(universityName: string): Promise<{ success: boolean; data?: Post[]; error?: string }> {
   try {
-    const supabase = createClient(cookies())
+    const supabase = createClient()
 
     const { data, error } = await supabase
       .from('posts')
@@ -47,7 +44,7 @@ export async function getPosts(universityName: string): Promise<{ success: boole
 
 export async function createPost(content: string, universityName: string): Promise<{ success: boolean; data?: Post; error?: string }> {
   try {
-    const supabase = createClient(cookies())
+    const supabase = createClient()
     
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {

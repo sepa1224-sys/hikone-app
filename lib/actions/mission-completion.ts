@@ -1,5 +1,3 @@
-'use server'
-
 import { createClient } from '@supabase/supabase-js'
 import sharp from 'sharp'
 

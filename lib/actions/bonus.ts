@@ -1,30 +1,4 @@
-'use server'
-
-import { createClient } from '@supabase/supabase-js'
-import { revalidatePath } from 'next/cache'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-
-// Service Role Client (for point updates)
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
-
-async function createSupabaseServerClient() {
-  const cookieStore = cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
-}
+import { createClient } from '@/lib/supabase/client'
 
 export interface BonusResult {
   dailyBonus: {
@@ -43,17 +17,10 @@ const BIRTHDAY_BONUS_POINTS = 500
 
 export async function checkAndAwardLoginBonuses(userId: string): Promise<BonusResult> {
   try {
-    const supabase = await createSupabaseServerClient()
-    
-    // 1. Verify Authentication
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session || session.user.id !== userId) {
-      console.error('Unauthorized bonus check')
-      return { dailyBonus: { awarded: false, points: 0, consecutiveDays: 0 }, birthdayBonus: { awarded: false, points: 0 } }
-    }
+    const supabase = createClient()
 
-    // 2. Fetch Profile
-    const { data: profile, error } = await supabaseAdmin
+    // Fetch Profile
+    const { data: profile, error } = await supabase
       .from('profiles')
       .select('last_login_bonus_at, consecutive_login_days, birthday, last_birthday_bonus_year, points')
       .eq('id', userId)
@@ -146,7 +113,7 @@ export async function checkAndAwardLoginBonuses(userId: string): Promise<BonusRe
       updates.points = (profile.points || 0) + pointsToAdd
       updates.updated_at = now.toISOString()
 
-      const { error: updateError } = await supabaseAdmin
+      const { error: updateError } = await supabase
         .from('profiles')
         .update(updates)
         .eq('id', userId)
@@ -158,7 +125,7 @@ export async function checkAndAwardLoginBonuses(userId: string): Promise<BonusRe
 
       // Insert History
       if (historyEntries.length > 0) {
-        const { error: historyError } = await supabaseAdmin
+        const { error: historyError } = await supabase
           .from('point_history')
           .insert(historyEntries)
         
@@ -167,8 +134,6 @@ export async function checkAndAwardLoginBonuses(userId: string): Promise<BonusRe
         }
       }
 
-      revalidatePath('/profile')
-      revalidatePath('/') // Revalidate home/layout if points are shown
     }
 
     return {

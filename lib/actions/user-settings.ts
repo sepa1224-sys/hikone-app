@@ -1,6 +1,4 @@
-'use server'
-
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/client'
 
 export type WidgetType = 'next_train' | 'garbage_info' | 'quick_action'
 
@@ -22,7 +20,7 @@ const DEFAULT_WIDGETS: WidgetConfig[] = [
 ]
 
 export async function getWidgetSettings(userId: string): Promise<UserWidgetSettings> {
-  const supabase = await createSupabaseServerClient()
+  const supabase = createClient()
 
   // 1. Get user settings
   const { data: settingsData } = await supabase
@@ -67,7 +65,7 @@ export async function getWidgetSettings(userId: string): Promise<UserWidgetSetti
 }
 
 export async function updateWidgetSettings(userId: string, settings: UserWidgetSettings) {
-  const supabase = await createSupabaseServerClient()
+  const supabase = createClient()
 
   const { error } = await supabase
     .from('user_settings')

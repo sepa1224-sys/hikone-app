@@ -1,23 +1,4 @@
-'use server'
-
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-
-// Server Actions用のクライアント作成ヘルパー
-const createClient = () => {
-  const cookieStore = cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
-}
+import { createClient } from '@/lib/supabase/client'
 
 export type MissionType = 'qr' | 'photo'
 
