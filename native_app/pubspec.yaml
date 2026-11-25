@@ -1,0 +1,33 @@
+name: native_app
+description: 彦根市ポータルアプリ
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Supabase
+  supabase_flutter: ^2.8.0
+
+  # ディープリンク
+  app_links: ^6.4.1
+
+  # ストレージ・プリファレンス
+  path_provider: ^2.1.0
+  shared_preferences: ^2.3.0
+
+  # URL起動
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
