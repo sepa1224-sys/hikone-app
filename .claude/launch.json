@@ -1,1 +1,12 @@
-{"version":"0.0.1","configurations":[{"name":"hikone-web","runtimeExecutable":"npm","runtimeArgs":["run","dev"],"port":3000}]}
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hikone-app",
+      "runtimeExecutable": "/usr/local/share/flutter/bin/flutter",
+      "runtimeArgs": ["run", "-d", "web-server", "--web-port", "8080", "--dart-define-from-file=env.json"],
+      "cwd": "native_app",
+      "port": 8080
+    }
+  ]
+}
