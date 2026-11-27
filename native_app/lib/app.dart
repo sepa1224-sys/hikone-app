@@ -42,13 +42,18 @@ class AuthGate extends StatefulWidget {
 class _AuthGateState extends State<AuthGate> {
   late AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
+  StreamSubscription<AuthState>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
     _appLinks = AppLinks();
     _initDeepLinks();
-    _checkAuth();
+    // ログイン・ログアウトのたびに画面を切り替える
+    _authSubscription =
+        Supabase.instance.client.auth.onAuthStateChange.listen((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _initDeepLinks() async {
@@ -69,13 +74,8 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void dispose() {
     _linkSubscription?.cancel();
+    _authSubscription?.cancel();
     super.dispose();
-  }
-
-  Future<void> _checkAuth() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
-    setState(() {});
   }
 
   @override
