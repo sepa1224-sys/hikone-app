@@ -39,3 +39,6 @@ ios/Flutter/Flutter.podspec
 
 # Supabase接続情報（env.example.json を参考に作成）
 env.json
+
+# テスト用アカウント情報
+test_account.local.json
